@@ -43,7 +43,10 @@ Required keys:
 - `NEXT_PUBLIC_CONVEX_URL`
 - `NEXT_PUBLIC_CONVEX_SITE_URL`
 - `NEXT_PUBLIC_SITE_URL`
-- `GATEWAY_TOKEN` (used by `/api/agents` and `/api/skills`)
+- `GATEWAY_TOKEN` (used by runtime-backed kanban agent endpoints)
+
+Optional local env:
+- `OPENCLAW_HOME` (defaults to `~/.openclaw`)
 
 4) Set Convex env vars
 
@@ -77,6 +80,14 @@ pnpm dev
 - Next route `/api/auth/[...all]` proxies to Convex Better Auth handlers.
 - Convex enforces board ownership authorization in backend functions.
 - `boards.list` is safe when auth is not ready yet.
+
+## OpenClaw integration
+
+- Kanban agent option/avatar loading now uses server-side OpenClaw adapters under `lib/server/openclaw/`.
+- Agent list comes from `openclaw agents list --json`.
+- Agent avatar resolution uses local OpenClaw config + workspace filesystem.
+- Runtime-backed skill data uses a singleton server-side Gateway client with a short cache.
+- Card modals reuse app-level agent and skill option state instead of refetching those lists on every open.
 
 ## Agent automation API (v1)
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Clock, Cpu, MessageSquare, Puzzle } from "lucide-react";
+import { toast } from "sonner";
 
 import { authHeaders } from "@/components/dashboard/auth";
 import { StatusDot } from "@/components/dashboard/common";
@@ -137,12 +138,18 @@ export function AgentChips({ agent, uniqueSkills, sections, onRefreshData }: Age
                         value={cr.model || "__default__"}
                         onChange={async (e) => {
                           const model = e.target.value === "__default__" ? null : e.target.value;
-                          await fetch(`/api/crons/${cr.id}/model`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json", ...authHeaders() },
-                            body: JSON.stringify({ model }),
-                          });
-                          await onRefreshData();
+                          try {
+                            const res = await fetch(`/api/crons/${cr.id}/model`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json", ...authHeaders() },
+                              body: JSON.stringify({ model }),
+                            });
+                            const data = await res.json();
+                            if (!data.ok) throw new Error(data.error || "Failed to update cron model");
+                            await onRefreshData();
+                          } catch (error) {
+                            toast.error(error instanceof Error ? error.message : "Failed to update cron model");
+                          }
                         }}
                         className="text-[11px] bg-transparent text-zinc-600 dark:text-zinc-400 focus:outline-none cursor-pointer"
                       >

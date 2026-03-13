@@ -1,15 +1,12 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 
 import { isAuthorized } from "@/lib/server/api-auth";
+import { gatewayCall } from "@/lib/server/openclaw/cli";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const execFileAsync = promisify(execFile);
-const WORKSPACE_DIR = "/root/.openclaw/workspace";
 const KANBAN_WORKER_MESSAGE =
   "Read the kanban skill first. Run one cron-safe SuperClaw Kanban worker pass for the current agent. Follow the skill and its reference exactly. If nothing actionable exists, reply NO_REPLY.";
 
@@ -35,21 +32,7 @@ async function startManualWorker(agentId: string) {
     idempotencyKey,
   };
 
-  const { stdout } = await execFileAsync(
-    "openclaw",
-    ["gateway", "call", "agent", "--json", "--params", JSON.stringify(params)],
-    {
-      cwd: WORKSPACE_DIR,
-      maxBuffer: 1024 * 1024,
-      env: {
-        ...process.env,
-        OPENCLAW_HIDE_BANNER: "1",
-        OPENCLAW_SUPPRESS_NOTES: "1",
-      },
-    },
-  );
-
-  const parsed = JSON.parse(stdout) as GatewayAgentResponse;
+  const parsed = await gatewayCall<GatewayAgentResponse>("agent", params);
 
   return {
     runId: parsed.runId ?? null,
