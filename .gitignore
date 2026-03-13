@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# Build output
+.next/
+out/
+build/
+dist/
+.output/
+.turbo/
+
+# Convex / local generated state
+.convex/
+convex/_generated/
+
+# Local app state
+memory/
+
+# Coverage / logs
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*
+!.env.example
+!.env.local.example
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# OS / misc
+.DS_Store
+*.pem
+.vercel/
