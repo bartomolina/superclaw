@@ -408,6 +408,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [isInboxDebugOpen, setIsInboxDebugOpen] = useState(false);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
   const [sidebarAgentOptions, setSidebarAgentOptions] = useState<AgentOption[]>([]);
+  const [sidebarSkillOptions, setSidebarSkillOptions] = useState<SkillOption[]>([]);
   const [runningAgentId, setRunningAgentId] = useState<string | null>(null);
   const [activeCardId, setActiveCardId] = useState<Id<"cards"> | null>(null);
   const [activeBoardId, setActiveBoardId] = useState<Id<"boards"> | null>(null);
@@ -498,15 +499,19 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
     let cancelled = false;
 
-    async function loadSidebarAgents() {
+    async function loadSidebarOptions() {
       try {
-        const response = await fetch("/api/agents");
-        if (!response.ok) return;
-
-        const data = (await response.json()) as { agents?: AgentOption[] };
+        const [agentsResponse, skillsResponse] = await Promise.all([
+          fetch("/api/agents").catch(() => null),
+          fetch("/api/skills").catch(() => null),
+        ]);
         if (cancelled) return;
 
-        const normalized = (data.agents ?? [])
+        const agentsData = agentsResponse && agentsResponse.ok ? ((await agentsResponse.json()) as { agents?: AgentOption[] }) : null;
+        const skillsData = skillsResponse && skillsResponse.ok ? ((await skillsResponse.json()) as { skills?: SkillOption[] }) : null;
+        if (cancelled) return;
+
+        const normalizedAgents = (agentsData?.agents ?? [])
           .map((agent) => ({
             id: String(agent.id),
             name: String(agent.name),
@@ -515,13 +520,19 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           }))
           .sort((a, b) => a.name.localeCompare(b.name));
 
-        setSidebarAgentOptions(normalized);
+        const normalizedSkills = (skillsData?.skills ?? [])
+          .filter((skill) => skill?.name && skill.eligible === true)
+          .map((skill) => ({ name: String(skill.name), eligible: true }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        setSidebarAgentOptions(normalizedAgents);
+        setSidebarSkillOptions(normalizedSkills);
       } catch {
-        // Ignore sidebar agent loading failures.
+        // Ignore sidebar option loading failures.
       }
     }
 
-    void loadSidebarAgents();
+    void loadSidebarOptions();
 
     return () => {
       cancelled = true;
@@ -1156,6 +1167,8 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           card={activeCard}
           columns={boardView.columns}
           boards={boards ?? []}
+          agentOptions={sidebarAgentOptions}
+          skillOptions={sidebarSkillOptions}
           onClose={() => setActiveCardId(null)}
         />
       ) : null}
@@ -1661,11 +1674,15 @@ function CardModal({
   card,
   columns,
   boards,
+  agentOptions,
+  skillOptions,
   onClose,
 }: {
   card: CardModel;
   columns: ColumnModel[];
   boards: BoardModel[];
+  agentOptions: AgentOption[];
+  skillOptions: SkillOption[];
   onClose: () => void;
 }) {
   const updateCard = useMutation(api.cards.update);
@@ -1695,8 +1712,6 @@ function CardModal({
   const [skillsDraft, setSkillsDraft] = useState<string[]>(card.skills ?? []);
   const [commentDraft, setCommentDraft] = useState("");
   const [isSavingComment, setIsSavingComment] = useState(false);
-  const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
-  const [skillOptions, setSkillOptions] = useState<SkillOption[]>([]);
 
   useEffect(() => {
     function onEscape(event: KeyboardEvent) {
@@ -1717,54 +1732,6 @@ function CardModal({
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
   }
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadOptions() {
-      try {
-        const [agentsRes, skillsRes] = await Promise.all([
-          fetch("/api/agents"),
-          fetch("/api/skills"),
-        ]);
-
-        if (!agentsRes.ok || !skillsRes.ok) return;
-
-        const [agentsData, skillsData] = (await Promise.all([
-          agentsRes.json(),
-          skillsRes.json(),
-        ])) as [{ agents?: AgentOption[] }, { skills?: SkillOption[] }];
-
-        if (cancelled) return;
-
-        const normalizedAgents = (agentsData.agents ?? [])
-          .map((agent) => ({
-            id: String(agent.id),
-            name: String(agent.name),
-            emoji: agent.emoji,
-            avatarUrl: agent.avatarUrl || null,
-          }))
-          .sort((a, b) => a.name.localeCompare(b.name));
-
-        const normalizedSkills = (skillsData.skills ?? [])
-          .filter((skill) => skill?.name && skill.eligible === true)
-          .map((skill) => ({ name: String(skill.name), eligible: true }))
-          .sort((a, b) => a.name.localeCompare(b.name));
-
-        setAgentOptions(normalizedAgents);
-        setSkillOptions(normalizedSkills);
-      } catch {
-        // Keep current values if backend options fail.
-      }
-    }
-
-    void loadOptions();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
 
   const agentOptionsById = useMemo(
     () => new Map(agentOptions.map((agent) => [agent.id, agent] as const)),

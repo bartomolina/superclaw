@@ -6,18 +6,17 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { authFetch, authHeaders } from "@/components/dashboard/auth";
-import { type Agent } from "@/components/dashboard/types";
+import { type Model } from "@/components/dashboard/types";
 
 export function ModelsPage({
-  agents,
+  configuredModels,
   defaultModel,
   onRefresh,
 }: {
-  agents: Agent[];
+  configuredModels: Model[];
   defaultModel: { primary: string | null; fallbacks: string[] };
   onRefresh: () => Promise<void>;
 }) {
-  const configuredModels = agents[0]?.models || [];
   const primaryModel = defaultModel.primary || "—";
   const fallbacks = defaultModel.fallbacks || [];
   const primaryModelIndex = configuredModels.findIndex((model) => model.id === primaryModel);

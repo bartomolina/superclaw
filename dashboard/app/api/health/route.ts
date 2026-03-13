@@ -1,4 +1,4 @@
-import { json } from "@/lib/server/dashboard-api";
+import { json } from "@/lib/server/openclaw";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

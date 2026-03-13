@@ -24,6 +24,14 @@ export function resolveExistingFileWithin(baseDir: string, relativePath: string 
   }
 }
 
+export function resolvePathWithin(baseDir: string, relativePath: string | null | undefined) {
+  if (!baseDir || !relativePath) return null;
+  if (path.isAbsolute(relativePath)) return null;
+
+  const resolved = path.resolve(baseDir, relativePath);
+  return isPathWithin(baseDir, resolved) ? resolved : null;
+}
+
 export function isSafeWorkspacePath(openclawHome: string, workspacePath: string | null | undefined) {
   if (!openclawHome || !workspacePath) return false;
 

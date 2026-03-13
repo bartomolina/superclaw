@@ -2,29 +2,10 @@ import { readFileSync } from "fs";
 import path from "path";
 
 import { isAuthorized } from "@/lib/server/api-auth";
-import { request } from "@/lib/server/gateway";
-import { resolveExistingFileWithin } from "@/lib/server/path-safety";
+import { resolveAgentAvatarPath } from "@/lib/server/openclaw/files";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-type RawConfig = {
-  agents?: {
-    defaults?: {
-      workspace?: string;
-    };
-    list?: Array<{
-      id?: string;
-      workspace?: string;
-    }>;
-  };
-};
-
-function parseAvatarFromIdentity(content: string | null | undefined) {
-  if (!content) return null;
-  const match = content.match(/\*\*Avatar:\*\*\s*(.+)/i);
-  return match?.[1]?.trim() || null;
-}
 
 function isValidAgentId(value: string) {
   return /^[a-zA-Z0-9_-]+$/.test(value);
@@ -51,32 +32,7 @@ export async function GET(req: Request, context: { params: Promise<{ agentId: st
   }
 
   try {
-    const [identityFile, config] = (await Promise.all([
-      request("agents.files.get", { agentId, name: "IDENTITY.md" }),
-      request("config.get", {}),
-    ])) as [{ file?: { content?: string } }, { raw?: string }];
-
-    const avatarRelPath = parseAvatarFromIdentity(identityFile?.file?.content);
-    if (!avatarRelPath) {
-      return new Response(JSON.stringify({ ok: false, error: "no avatar" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    let rawConfig: RawConfig = {};
-    try {
-      rawConfig = JSON.parse(config.raw ?? "{}") as RawConfig;
-    } catch {
-      rawConfig = {};
-    }
-
-    const defaultsWorkspace = String(rawConfig.agents?.defaults?.workspace ?? "");
-    const configuredAgents = Array.isArray(rawConfig.agents?.list) ? rawConfig.agents.list : [];
-    const configuredAgent = configuredAgents.find((agent) => agent?.id === agentId);
-    const workspace = String(configuredAgent?.workspace ?? defaultsWorkspace);
-
-    const absPath = resolveExistingFileWithin(workspace, avatarRelPath);
+    const absPath = resolveAgentAvatarPath(agentId);
     if (!absPath) {
       return new Response(JSON.stringify({ ok: false, error: "avatar file not found" }), {
         status: 404,

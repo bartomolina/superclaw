@@ -12,7 +12,7 @@ import { DebugPage, PerformancePage, UsagePage } from "@/components/dashboard/de
 import { LoginScreen } from "@/components/dashboard/login-screen";
 import { ModelsPage } from "@/components/dashboard/models-page";
 import { SkillsPage } from "@/components/dashboard/skills-page";
-import { type Agent, type Page } from "@/components/dashboard/types";
+import { type Agent, type Model, type Page } from "@/components/dashboard/types";
 import { useTheme } from "@/components/dashboard/use-theme";
 
 const BASE_NAV_ITEMS: { id: Page; label: string; icon: typeof Users }[] = [
@@ -47,11 +47,54 @@ export default function App() {
   };
   const [agents, setAgents] = useState<Agent[]>([]);
   const [version, setVersion] = useState("—");
+  const [configuredModels, setConfiguredModels] = useState<Model[]>([]);
   const [defaultModel, setDefaultModel] = useState<{ primary: string | null; fallbacks: string[] }>({ primary: null, fallbacks: [] });
   const [gatewayUp, setGatewayUp] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [restarting, setRestarting] = useState(false);
+
+  const hydrateRuntimeData = useCallback(async (mapped: Agent[]) => {
+    const enrichment = await Promise.all(
+      mapped.map(async (agent) => {
+        const [channelsData, skillsData] = await Promise.all([
+          authFetch(`/api/agents/${agent.id}/channels`).catch(() => ({ channels: [] })),
+          authFetch(`/api/agents/${agent.id}/skills`).catch(() => ({ skills: [] })),
+        ]);
+
+        return {
+          id: agent.id,
+          channels: (channelsData.channels || []).map((c: any) => ({
+            id: c.id,
+            name: c.name || c.id,
+            detail: c.detail || null,
+            running: c.running ?? false,
+            mode: c.mode || null,
+            streaming: c.streaming || null,
+            pairedUsers: (c.pairedUsers || []).map((u: any) => ({ id: u.id, name: u.name || u.id })),
+            groups: (c.groups || []).map((g: any) => ({ id: g.id, requireMention: g.requireMention ?? true, groupPolicy: g.groupPolicy ?? "allowlist" })),
+          })),
+          skills: (skillsData.skills || []).map((s: any) => ({
+            name: s.name,
+            emoji: s.emoji || "📦",
+            description: s.description || "",
+            eligible: s.eligible ?? false,
+            disabled: s.disabled ?? false,
+            source: s.source || "",
+          })),
+        };
+      }),
+    );
+
+    const enrichmentById = new Map(enrichment.map((entry) => [entry.id, entry]));
+    setAgents((current) =>
+      current.map((agent) => {
+        const next = enrichmentById.get(agent.id);
+        if (!next) return agent;
+        return { ...agent, channels: next.channels, skills: next.skills };
+      }),
+    );
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,24 +140,35 @@ export default function App() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [agentsRes, gwStatus, featuresRes] = await Promise.all([
+      const [agentsRes, gwStatus, featuresRes, modelsRes, cronsRes] = await Promise.all([
         authFetch("/api/agents"),
         authFetch("/api/gateway-status").catch(() => ({ online: false })),
         authFetch("/api/features").catch(() => ({ debugRpcEnabled: false })),
+        authFetch("/api/models").catch(() => ({ configuredModels: [], defaultModel: { primary: null, fallbacks: [] } })),
+        authFetch("/api/crons").catch(() => ({ jobs: [] })),
       ]);
 
-      if (agentsRes.error === "unauthorized") {
-        clearToken();
-        setAuthenticated(false);
-        return;
-      }
-
       setVersion(gwStatus.version || agentsRes.version || "—");
-      setDefaultModel(agentsRes.defaultModel || { primary: null, fallbacks: [] });
+      setConfiguredModels(modelsRes.configuredModels || []);
+      setDefaultModel(modelsRes.defaultModel || agentsRes.defaultModel || { primary: null, fallbacks: [] });
       setGatewayUp(gwStatus.online ?? false);
       setDebugRpcEnabled(featuresRes.debugRpcEnabled ?? false);
 
-      const mapped: Agent[] = (agentsRes.agents || []).map((a: any): Agent => ({
+      if (Array.isArray(agentsRes.warnings) && agentsRes.warnings.length > 0 && (agentsRes.agents?.length ?? 0) === 0) {
+        console.warn("Dashboard agent warnings:", agentsRes.warnings);
+      }
+
+      const jobsByAgent = new Map<string, any[]>();
+      for (const job of cronsRes.jobs || []) {
+        const agentId = job.agentId || "main";
+        const current = jobsByAgent.get(agentId) || [];
+        current.push(job);
+        jobsByAgent.set(agentId, current);
+      }
+
+      const mapped: Agent[] = (agentsRes.agents || []).map((a: any): Agent => {
+        const agentCrons = jobsByAgent.get(a.id) || [];
+        return {
         id: a.id,
         name: a.name ?? a.id,
         emoji: a.emoji ?? "🤖",
@@ -128,38 +182,14 @@ export default function App() {
         sandboxed: a.sandboxed ?? false,
         workspaceAccess: a.workspaceAccess ?? null,
         isDefault: a.isDefault ?? false,
-        channels: (a.channels || []).map((c: any) => ({
-          id: c.id,
-          name: c.name || c.id,
-          detail: c.detail || null,
-          running: c.running ?? false,
-          mode: c.mode || null,
-          streaming: c.streaming || null,
-          pairedUsers: (c.pairedUsers || []).map((u: any) => ({ id: u.id, name: u.name || u.id })),
-          groups: (c.groups || []).map((g: any) => ({ id: g.id, requireMention: g.requireMention ?? true, groupPolicy: g.groupPolicy ?? "allowlist" })),
-        })),
-        skills: (a.skills || []).map((s: any) => ({
-          name: s.name,
-          emoji: s.emoji || "📦",
-          description: s.description || "",
-          eligible: s.eligible ?? false,
-          disabled: s.disabled ?? false,
-          source: s.source || "",
-        })),
+        channels: [],
+        skills: [],
         models: (a.models || []).map((m: any) => ({
           id: m.id,
           name: m.name || m.id,
           provider: m.provider || "",
         })),
-        toolGroups: (a.toolGroups || []).map((g: any) => ({
-          id: g.id,
-          label: g.label,
-          tools: (g.tools || []).map((t: any) => ({
-            id: t.id,
-            label: t.label,
-            description: t.description || "",
-          })),
-        })),
+        toolGroups: [],
         files: (a.files || []).map((f: any) => ({
           name: f.name,
           path: f.path || "",
@@ -168,19 +198,25 @@ export default function App() {
           updatedAtMs: f.updatedAtMs ?? 0,
         })),
         heartbeat: a.heartbeat || { every: null, model: null, active: false },
-        crons: (a.crons || []).map((cr: any) => ({
+        crons: agentCrons.map((cr: any) => ({
           id: cr.id,
           name: cr.name || cr.id,
-          schedule: cr.schedule || "",
-          scheduleKind: cr.scheduleKind || "",
-          model: cr.model || null,
-          message: cr.message || null,
+          schedule:
+            cr.schedule?.expr ||
+            cr.schedule?.at ||
+            (cr.schedule?.everyMs ? `${Math.round(cr.schedule.everyMs / 60000)}m` : ""),
+          scheduleKind: cr.schedule?.kind || "",
+          model: cr.payload?.model || null,
+          message: cr.payload?.message || cr.payload?.text || null,
           enabled: cr.enabled ?? true,
-          nextRunAtMs: cr.nextRunAtMs || null,
+          nextRunAtMs: cr.state?.nextRunAtMs || cr.nextRunAtMs || null,
         })),
-      }));
+      }});
 
       setAgents(mapped);
+      setLoading(false);
+      setRefreshing(false);
+      void hydrateRuntimeData(mapped);
     } catch (e: any) {
       if (e.message === "unauthorized") {
         clearToken();
@@ -193,7 +229,7 @@ export default function App() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [hydrateRuntimeData]);
 
   useEffect(() => { if (authenticated) fetchAll(); }, [authenticated, fetchAll]);
 
@@ -379,7 +415,7 @@ export default function App() {
           {loading ? <div className="text-center py-24 text-zinc-400 dark:text-zinc-500 text-sm">Connecting to gateway...</div> : (
             <>
               {page === "agents" && <AgentsPage agents={agents} defaultPrimary={defaultModel.primary || "—"} onModelChange={handleModelChange} onRefresh={waitForGateway} onRefreshQuick={fetchAll} />}
-              {page === "models" && <ModelsPage agents={agents} defaultModel={defaultModel} onRefresh={waitForGateway} />}
+              {page === "models" && <ModelsPage configuredModels={configuredModels} defaultModel={defaultModel} onRefresh={waitForGateway} />}
               {page === "skills" && <SkillsPage />}
               {page === "debug" && debugRpcEnabled && <DebugPage />}
               {page === "ops" && <ComingSoon title="Ops" />}

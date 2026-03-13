@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-import { errorResponse, handleVerify } from "@/lib/server/dashboard-api";
+import { errorResponse, handleVerify } from "@/lib/server/openclaw";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

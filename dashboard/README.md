@@ -8,7 +8,13 @@ It provides a web UI to inspect and manage agents, models, skills, config files,
 
 - Next.js App Router (React + TypeScript)
 - Tailwind CSS + shadcn/ui primitives
-- Server-side gateway client over WebSocket (`ws`)
+- Server-side OpenClaw adapter layer under `lib/server/openclaw/`
+
+## Runtime model
+
+- Durable/local state uses CLI/filesystem-backed adapters where possible.
+- Live/runtime state uses a singleton server-side Gateway client for fast status, channels, and skills reads.
+- The browser still talks only to the dashboard app; it does not connect directly to the Gateway WebSocket.
 
 ## Prerequisites
 
@@ -36,8 +42,8 @@ Required:
 
 Optional:
 
-- `GATEWAY_URL`: Gateway WebSocket URL (default `ws://127.0.0.1:18789`)
 - `OPENCLAW_HOME`: OpenClaw home directory (default `~/.openclaw`)
+- `OPENCLAW_PACKAGE_JSON`: Override installed OpenClaw package metadata path if needed
 - `GEMINI_API_KEY`: Enables avatar generation when creating an agent with description
 - `UV_PATH`: Path prefix for `uv` binary (default `~/.local/bin`)
 - `DEBUG_RPC_ENABLED`: Enables raw debug RPC endpoint `/api/debug/ws` (default disabled)
@@ -59,12 +65,16 @@ Optional:
 
 ## API Design
 
-Routes are split by domain (agents/models/config/debug) under `app/api/*`, with shared server handlers in `lib/server/dashboard-api.ts`.
+Routes are split by domain under `app/api/*`, with shared server adapters in `lib/server/openclaw/`.
 
 Main route groups:
 
 - `/api/agents*`
+- `/api/agents/:id/channels`
+- `/api/agents/:id/skills`
+- `/api/agents/:id/files*`
 - `/api/models*`
+- `/api/crons*`
 - `/api/config`
 - `/api/features`
 - `/api/debug/ws` (feature-flagged)
@@ -80,3 +90,4 @@ Before sharing publicly:
 - Keep `.env.example` up to date when adding env vars
 - Run `pnpm lint && pnpm build`
 - Remove local-only hostnames/paths if your environment differs
+- If you update OpenClaw, rerun `node scripts/probe-gateway-ws.mjs --device-identity --client-id gateway-client --mode backend --cap tool-events` to validate the runtime Gateway client path

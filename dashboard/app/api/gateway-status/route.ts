@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-import { errorResponse, handleGatewayStatus, isAuthorized, json } from "@/lib/server/dashboard-api";
+import { errorResponse, handleGatewayStatus, isAuthorized, json } from "@/lib/server/openclaw";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
