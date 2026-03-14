@@ -87,5 +87,13 @@ export default defineSchema({
     order: v.number(),
   })
     .index("by_owner_order", ["ownerId", "order"])
-    .index("by_owner_email", ["ownerId", "email"]),
+    .index("by_owner_email", ["ownerId", "email"])
+    .index("by_email", ["email"]),
+
+  authRateLimits: defineTable({
+    scope: v.string(),
+    key: v.string(),
+    lastTriggeredAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_scope_key", ["scope", "key"]),
 });

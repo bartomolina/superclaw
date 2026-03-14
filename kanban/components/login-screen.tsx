@@ -63,7 +63,7 @@ export function LoginScreen({ errorMessage }: { errorMessage?: string }) {
           {error ? <p className="mt-2 text-xs text-red-500">{error}</p> : null}
           {sent ? (
             <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
-              Magic link sent. Check your inbox.
+              If your email is allowed, you&apos;ll receive a sign-in link.
             </p>
           ) : null}
 

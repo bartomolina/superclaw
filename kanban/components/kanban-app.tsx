@@ -428,6 +428,10 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const boards = useQuery(api.boards.list, isConvexAuthenticated ? {} : "skip") as
     | BoardModel[]
     | undefined;
+  const viewer = useQuery(api.users.viewer, isConvexAuthenticated ? {} : "skip") as
+    | { isSuperuser?: boolean; email?: string | null; name?: string | null; userId?: string | null }
+    | null
+    | undefined;
   const createBoard = useMutation(api.boards.create);
   const renameBoard = useMutation(api.boards.rename);
   const deleteBoard = useMutation(api.boards.remove);
@@ -510,6 +514,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
   const selectedBoardName = selectedBoard?.name ?? "Kanban";
   const selectedBoardUrl = selectedBoard?.url;
+  const isSuperuser = viewer?.isSuperuser === true;
 
   useEffect(() => {
     if (!isMobileSidebarOpen) return;
@@ -965,15 +970,17 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
             </div>
 
             <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setIsUserManagementOpen(true)}
-                className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-                title="Manage users"
-                aria-label="Manage users"
-              >
-                <Settings className="h-4 w-4" />
-              </button>
+              {isSuperuser ? (
+                <button
+                  type="button"
+                  onClick={() => setIsUserManagementOpen(true)}
+                  className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                  title="Manage users"
+                  aria-label="Manage users"
+                >
+                  <Settings className="h-4 w-4" />
+                </button>
+              ) : null}
 
               <button
                 type="button"
@@ -1076,46 +1083,48 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
               ) : null}
             </div>
 
-            {!showNewBoardForm ? (
-              <button
-                type="button"
-                onClick={() => setShowNewBoardForm(true)}
-                className="mt-2 inline-flex h-7 w-full items-center justify-center gap-1 rounded-lg bg-zinc-900 px-2.5 text-xs font-medium text-white transition-colors hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-              >
-                <span className="text-sm leading-none">+</span>
-                Add Board
-              </button>
-            ) : (
-              <form onSubmit={handleCreateBoard} className="mt-2 space-y-1.5">
-                <input
-                  id="new-board"
-                  className={`${inputClass} h-8 px-2.5 text-xs`}
-                  value={newBoardName}
-                  onChange={(event) => setNewBoardName(event.target.value)}
-                  placeholder="Board name"
-                  autoFocus
-                />
-                <div className="flex items-center justify-end gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowNewBoardForm(false);
-                      setNewBoardName("");
-                    }}
-                    className="inline-flex h-7 items-center justify-center px-1.5 text-xs text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="inline-flex h-7 items-center justify-center rounded-md bg-zinc-900 px-2.5 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-                    disabled={!newBoardName.trim()}
-                  >
-                    Create
-                  </button>
-                </div>
-              </form>
-            )}
+            {isSuperuser ? (
+              !showNewBoardForm ? (
+                <button
+                  type="button"
+                  onClick={() => setShowNewBoardForm(true)}
+                  className="mt-2 inline-flex h-7 w-full items-center justify-center gap-1 rounded-lg bg-zinc-900 px-2.5 text-xs font-medium text-white transition-colors hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                >
+                  <span className="text-sm leading-none">+</span>
+                  Add Board
+                </button>
+              ) : (
+                <form onSubmit={handleCreateBoard} className="mt-2 space-y-1.5">
+                  <input
+                    id="new-board"
+                    className={`${inputClass} h-8 px-2.5 text-xs`}
+                    value={newBoardName}
+                    onChange={(event) => setNewBoardName(event.target.value)}
+                    placeholder="Board name"
+                    autoFocus
+                  />
+                  <div className="flex items-center justify-end gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNewBoardForm(false);
+                        setNewBoardName("");
+                      }}
+                      className="inline-flex h-7 items-center justify-center px-1.5 text-xs text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="inline-flex h-7 items-center justify-center rounded-md bg-zinc-900 px-2.5 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                      disabled={!newBoardName.trim()}
+                    >
+                      Create
+                    </button>
+                  </div>
+                </form>
+              )
+            ) : null}
 
             <div className="mt-auto space-y-3">
               <div>

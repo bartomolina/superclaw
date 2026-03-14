@@ -13,6 +13,7 @@ import type * as activity from "../activity.js";
 import type * as agent_automation from "../agent_automation.js";
 import type * as agent_http from "../agent_http.js";
 import type * as auth from "../auth.js";
+import type * as auth_rate_limits from "../auth_rate_limits.js";
 import type * as boards from "../boards.js";
 import type * as cards from "../cards.js";
 import type * as columns from "../columns.js";
@@ -33,6 +34,7 @@ declare const fullApi: ApiFromModules<{
   agent_automation: typeof agent_automation;
   agent_http: typeof agent_http;
   auth: typeof auth;
+  auth_rate_limits: typeof auth_rate_limits;
   boards: typeof boards;
   cards: typeof cards;
   columns: typeof columns;

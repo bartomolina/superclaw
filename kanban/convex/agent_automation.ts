@@ -4,7 +4,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery, query } from "./_generated/server";
-import { getUser } from "./access";
+import { requireMember } from "./access";
 import { getNextOrder, optionalText, touchBoard } from "./helpers";
 
 type AgentRole = "assignee" | "reviewer";
@@ -376,10 +376,7 @@ export const debugAgentInbox = query({
     refreshKey: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await getUser(ctx);
-    if (!user) {
-      throw new Error("Unauthorized");
-    }
+    const user = await requireMember(ctx);
 
     const agentId = args.agentId.trim();
     if (!agentId) {

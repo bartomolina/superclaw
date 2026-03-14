@@ -4,7 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { getNextOrder, normalizeText, optionalText, optionalUrl } from "./helpers";
-import { getUser, requireAccessibleBoard, requireOwnedBoard, requireUser } from "./access";
+import { getViewer, requireAccessibleBoard, requireSuperuser } from "./access";
 
 const FIXED_COLUMNS = ["Ideas", "TODO", "In Progress", "Review", "Done"] as const;
 
@@ -120,11 +120,13 @@ async function syncBoardPermissions(
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const user = await getUser(ctx);
+    const viewer = await getViewer(ctx);
 
-    if (!user) {
+    if (!viewer?.isMember) {
       return [];
     }
+
+    const user = viewer;
 
     const ownedBoards = await ctx.db
       .query("boards")
@@ -205,7 +207,7 @@ export const create = mutation({
     url: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await requireSuperuser(ctx);
 
     const now = Date.now();
     const boards = await ctx.db
@@ -247,7 +249,13 @@ export const rename = mutation({
     sharedUserIds: v.optional(v.array(v.id("managedUsers"))),
   },
   handler: async (ctx, args) => {
-    const { board } = await requireOwnedBoard(ctx, args.boardId);
+    await requireSuperuser(ctx);
+
+    const board = await ctx.db.get(args.boardId);
+    if (!board) {
+      throw new Error("Board not found");
+    }
+
     const description = optionalText(args.description);
     const url = optionalUrl(args.url);
     const now = Date.now();
@@ -278,7 +286,12 @@ export const remove = mutation({
     boardId: v.id("boards"),
   },
   handler: async (ctx, args) => {
-    await requireOwnedBoard(ctx, args.boardId);
+    await requireSuperuser(ctx);
+
+    const boardExists = await ctx.db.get(args.boardId);
+    if (!boardExists) {
+      throw new Error("Board not found");
+    }
 
     const [cards, comments, columns, permissions] = await Promise.all([
       ctx.db.query("cards").withIndex("by_board", (q) => q.eq("boardId", args.boardId)).collect(),
@@ -315,7 +328,7 @@ export const reorder = mutation({
     boardIds: v.array(v.id("boards")),
   },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await requireSuperuser(ctx);
 
     const boards = await ctx.db
       .query("boards")
