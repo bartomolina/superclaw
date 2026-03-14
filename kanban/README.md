@@ -53,11 +53,15 @@ Optional local env:
 ```bash
 pnpm exec convex env set BETTER_AUTH_SECRET "$(openssl rand -base64 32)"
 pnpm exec convex env set SITE_URL http://localhost:3000
+pnpm exec convex env set SUPERUSER_EMAIL you@example.com
 pnpm exec convex env set RESEND_API_KEY <your_resend_api_key>
 pnpm exec convex env set AUTH_FROM_EMAIL "SuperClaw <noreply@mail.your-domain.com>"
 pnpm exec convex env set KANBAN_AGENT_SHARED_TOKEN "$(openssl rand -hex 24)"
 # optional (extra local/testing origins):
 pnpm exec convex env set TRUSTED_ORIGINS "http://127.0.0.1:3000,http://localhost:3000"
+# optional (magic-link throttling):
+pnpm exec convex env set MAGIC_LINK_EMAIL_COOLDOWN_MS 120000
+pnpm exec convex env set MAGIC_LINK_GLOBAL_COOLDOWN_MS 5000
 ```
 
 5) Start Convex sync
@@ -77,8 +81,10 @@ pnpm dev
 ## Auth status
 
 - Passwordless magic-link login via Better Auth.
+- Sign-in is invite-only: magic links are only sent to `SUPERUSER_EMAIL` or emails already present in the app's invited users list.
+- Magic-link sending is throttled server-side with a per-email cooldown and a small global cooldown.
 - Next route `/api/auth/[...all]` proxies to Convex Better Auth handlers.
-- Convex enforces board ownership authorization in backend functions.
+- Board and user administration are superuser-only.
 - `boards.list` is safe when auth is not ready yet.
 
 ## OpenClaw integration

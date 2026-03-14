@@ -12,8 +12,30 @@ type AuthUser = {
   name?: string;
 };
 
+const SUPERUSER_EMAIL = normalizeEmail(process.env.SUPERUSER_EMAIL);
+
 function normalizeEmail(value?: string | null) {
   return value?.trim().toLowerCase() || null;
+}
+
+function isSuperuserEmail(email?: string | null) {
+  const normalized = normalizeEmail(email);
+  return Boolean(SUPERUSER_EMAIL && normalized && normalized === SUPERUSER_EMAIL);
+}
+
+async function isInvitedEmail(ctx: Ctx, email?: string | null) {
+  const normalized = normalizeEmail(email);
+
+  if (!normalized) {
+    return false;
+  }
+
+  const invitedUser = await ctx.db
+    .query("managedUsers")
+    .withIndex("by_email", (q) => q.eq("email", normalized))
+    .first();
+
+  return Boolean(invitedUser);
 }
 
 export async function getUser(ctx: Ctx) {
@@ -51,6 +73,59 @@ export async function requireUser(ctx: Ctx) {
   return user;
 }
 
+export async function requireMember(ctx: Ctx) {
+  const user = await requireUser(ctx);
+
+  if (isSuperuserEmail(user.email)) {
+    return {
+      ...user,
+      isSuperuser: true,
+      isMember: true,
+    };
+  }
+
+  if (!(await isInvitedEmail(ctx, user.email))) {
+    throw new Error("Forbidden");
+  }
+
+  return {
+    ...user,
+    isSuperuser: false,
+    isMember: true,
+  };
+}
+
+export async function requireSuperuser(ctx: Ctx) {
+  const user = await requireUser(ctx);
+
+  if (!isSuperuserEmail(user.email)) {
+    throw new Error("Forbidden");
+  }
+
+  return {
+    ...user,
+    isSuperuser: true,
+    isMember: true,
+  };
+}
+
+export async function getViewer(ctx: Ctx) {
+  const user = await getUser(ctx);
+
+  if (!user) {
+    return null;
+  }
+
+  const isSuperuser = isSuperuserEmail(user.email);
+  const isMember = isSuperuser || (await isInvitedEmail(ctx, user.email));
+
+  return {
+    ...user,
+    isSuperuser,
+    isMember,
+  };
+}
+
 async function hasBoardAccess(ctx: Ctx, board: BoardDoc, user: Awaited<ReturnType<typeof requireUser>>) {
   if (board.ownerId === user.userId) {
     return true;
@@ -84,7 +159,7 @@ export async function requireOwnedBoard(ctx: Ctx, boardId: Id<"boards">) {
 }
 
 export async function requireAccessibleBoard(ctx: Ctx, boardId: Id<"boards">) {
-  const user = await requireUser(ctx);
+  const user = await requireMember(ctx);
   const board = await ctx.db.get(boardId);
 
   if (!board) {

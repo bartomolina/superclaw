@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 
-import { requireUser } from "./access";
-import { mutation, query } from "./_generated/server";
+import { getViewer, requireSuperuser } from "./access";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { getNextOrder, normalizeText, optionalText } from "./helpers";
 
 function normalizeEmail(value: string) {
@@ -20,10 +20,32 @@ function normalizeEmail(value: string) {
   return normalized;
 }
 
+export const viewer = query({
+  args: {},
+  handler: async (ctx) => {
+    return await getViewer(ctx);
+  },
+});
+
+export const isInvitedEmail = internalQuery({
+  args: {
+    email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const email = normalizeEmail(args.email);
+    const invitedUsers = await ctx.db
+      .query("managedUsers")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .collect();
+
+    return invitedUsers.length > 0;
+  },
+});
+
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireUser(ctx);
+    const user = await requireSuperuser(ctx);
 
     return await ctx.db
       .query("managedUsers")
@@ -39,7 +61,7 @@ export const upsert = mutation({
     email: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await requireSuperuser(ctx);
     const email = normalizeEmail(args.email);
     const fallbackName = email.split("@")[0] || "User";
     const name = normalizeText(optionalText(args.name) ?? fallbackName, fallbackName);
@@ -82,7 +104,7 @@ export const remove = mutation({
     userId: v.id("managedUsers"),
   },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await requireSuperuser(ctx);
     const managedUser = await ctx.db.get(args.userId);
 
     if (!managedUser) {

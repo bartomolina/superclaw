@@ -102,7 +102,7 @@ export function UserManagementSheet({
           <div>
             <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Users</div>
             <div className="text-xs text-zinc-500 dark:text-zinc-400">
-              Add or remove people available for future board selection.
+              Add or remove invited members who are allowed to sign in and be granted board access.
             </div>
           </div>
           <button
@@ -152,7 +152,7 @@ export function UserManagementSheet({
               className={`${primaryButtonClass} h-10 whitespace-nowrap px-4`}
               disabled={isSaving || !email.trim()}
             >
-              {isSaving ? "Saving…" : "Save user"}
+              {isSaving ? "Saving…" : "Invite user"}
             </button>
           </div>
         </form>

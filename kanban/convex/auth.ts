@@ -1,6 +1,6 @@
 import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex } from "@convex-dev/better-auth/plugins";
-import { components } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { betterAuth } from "better-auth/minimal";
 import { magicLink } from "better-auth/plugins";
@@ -11,8 +11,64 @@ const siteUrl = process.env.SITE_URL;
 const resendApiKey = process.env.RESEND_API_KEY;
 const authFromEmail = process.env.AUTH_FROM_EMAIL || "SuperClaw <noreply@mail.bartomolina.io>";
 const trustedOriginsEnv = process.env.TRUSTED_ORIGINS || "";
+const superuserEmail = normalizeEmail(process.env.SUPERUSER_EMAIL);
+const magicLinkEmailCooldownMs = parseCooldownMs(process.env.MAGIC_LINK_EMAIL_COOLDOWN_MS, 120_000);
+const magicLinkGlobalCooldownMs = parseCooldownMs(process.env.MAGIC_LINK_GLOBAL_COOLDOWN_MS, 5_000);
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
+
+function normalizeEmail(value?: string | null) {
+  return value?.trim().toLowerCase() || null;
+}
+
+function parseCooldownMs(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+
+  return Math.floor(parsed);
+}
+
+function isSuperuser(email: string) {
+  const normalized = normalizeEmail(email);
+  return Boolean(superuserEmail && normalized && normalized === superuserEmail);
+}
+
+async function canSendMagicLink(ctx: GenericCtx<DataModel>, email: string) {
+  if (isSuperuser(email)) {
+    return true;
+  }
+
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    return false;
+  }
+
+  return await ctx.runQuery(internal.users.isInvitedEmail, {
+    email: normalizedEmail,
+  });
+}
+
+async function consumeMagicLinkQuota(ctx: GenericCtx<DataModel>, email: string) {
+  const actionCtx = ctx as GenericCtx<DataModel> & {
+    runMutation: (
+      reference: typeof internal.auth_rate_limits.consumeMagicLinkQuota,
+      args: {
+        email: string;
+        emailCooldownMs: number;
+        globalCooldownMs: number;
+      },
+    ) => Promise<boolean>;
+  };
+
+  return await actionCtx.runMutation(internal.auth_rate_limits.consumeMagicLinkQuota, {
+    email,
+    emailCooldownMs: magicLinkEmailCooldownMs,
+    globalCooldownMs: magicLinkGlobalCooldownMs,
+  });
+}
 
 function resolveTrustedOrigins(primarySiteUrl: string) {
   const origins = [primarySiteUrl, ...trustedOriginsEnv.split(",")]
@@ -67,6 +123,16 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
       magicLink({
         expiresIn: 15 * 60,
         sendMagicLink: async ({ email, url }) => {
+          if (!(await canSendMagicLink(ctx, email))) {
+            return;
+          }
+
+          const allowed = await consumeMagicLinkQuota(ctx, email);
+
+          if (!allowed) {
+            return;
+          }
+
           await sendMagicLinkEmail(email, url);
         },
       }),
