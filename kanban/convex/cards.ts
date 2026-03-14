@@ -2,7 +2,7 @@ import { v } from "convex/values";
 
 import { mutation } from "./_generated/server";
 import { getNextOrder, normalizeText, optionalText, touchBoard } from "./helpers";
-import { requireOwnedBoard, requireOwnedCard } from "./access";
+import { requireAccessibleBoard, requireAccessibleCard, requireOwnedBoard, requireOwnedCard } from "./access";
 
 function normalizeSkills(skills?: string[]) {
   if (!skills || skills.length === 0) return [];
@@ -31,6 +31,7 @@ export const create = mutation({
     reviewerId: v.optional(v.string()),
     priority: v.optional(v.string()),
     size: v.optional(v.string()),
+    type: v.optional(v.string()),
     acp: v.optional(v.string()),
     skills: v.optional(v.array(v.string())),
   },
@@ -41,7 +42,7 @@ export const create = mutation({
       throw new Error("Column not found");
     }
 
-    await requireOwnedBoard(ctx, column.boardId);
+    await requireAccessibleBoard(ctx, column.boardId);
 
     const cards = await ctx.db
       .query("cards")
@@ -55,6 +56,7 @@ export const create = mutation({
     const reviewerId = optionalText(args.reviewerId);
     const priority = optionalText(args.priority);
     const size = optionalText(args.size);
+    const type = optionalText(args.type);
     const acp = optionalText(args.acp);
     const skills = normalizeSkills(args.skills);
 
@@ -67,6 +69,7 @@ export const create = mutation({
       ...(reviewerId ? { reviewerId } : {}),
       ...(priority ? { priority } : {}),
       ...(size ? { size } : {}),
+      ...(type ? { type } : {}),
       ...(acp ? { acp } : {}),
       ...(skills.length > 0 ? { skills } : {}),
       order: getNextOrder(cards),
@@ -86,17 +89,19 @@ export const update = mutation({
     reviewerId: v.optional(v.string()),
     priority: v.optional(v.string()),
     size: v.optional(v.string()),
+    type: v.optional(v.string()),
     acp: v.optional(v.string()),
     skills: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const card = await requireOwnedCard(ctx, args.cardId);
+    const card = await requireAccessibleCard(ctx, args.cardId);
 
     const description = optionalText(args.description);
     const agentId = optionalText(args.agentId);
     const reviewerId = optionalText(args.reviewerId);
     const priority = optionalText(args.priority);
     const size = optionalText(args.size);
+    const type = optionalText(args.type);
     const acp = optionalText(args.acp);
     const skills = normalizeSkills(args.skills);
 
@@ -109,6 +114,7 @@ export const update = mutation({
       ...(reviewerId ? { reviewerId } : {}),
       ...(priority ? { priority } : {}),
       ...(size ? { size } : {}),
+      ...(type ? { type } : {}),
       ...(acp ? { acp } : {}),
       ...(skills.length > 0 ? { skills } : {}),
       order: card.order,
@@ -123,7 +129,7 @@ export const remove = mutation({
     cardId: v.id("cards"),
   },
   handler: async (ctx, args) => {
-    const card = await requireOwnedCard(ctx, args.cardId);
+    const card = await requireAccessibleCard(ctx, args.cardId);
 
     const comments = await ctx.db
       .query("comments")
@@ -154,7 +160,7 @@ export const moveToColumn = mutation({
       throw new Error("Card not found");
     }
 
-    await requireOwnedBoard(ctx, card.boardId);
+    await requireAccessibleBoard(ctx, card.boardId);
 
     if (!targetColumn) {
       throw new Error("Target column not found");
@@ -253,7 +259,7 @@ export const applyLayout = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireOwnedBoard(ctx, args.boardId);
+    await requireAccessibleBoard(ctx, args.boardId);
 
     const [boardColumns, boardCards] = await Promise.all([
       ctx.db.query("columns").withIndex("by_board", (q) => q.eq("boardId", args.boardId)).collect(),
@@ -305,7 +311,7 @@ export const reorder = mutation({
     position: v.optional(v.union(v.literal("before"), v.literal("after"))),
   },
   handler: async (ctx, args) => {
-    const card = await requireOwnedCard(ctx, args.cardId);
+    const card = await requireAccessibleCard(ctx, args.cardId);
     const targetColumn = await ctx.db.get(args.targetColumnId);
 
     if (!targetColumn) {

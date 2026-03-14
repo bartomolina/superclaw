@@ -7,12 +7,26 @@ export default defineSchema({
     name: v.string(),
     description: v.optional(v.string()),
     url: v.optional(v.string()),
+    sharedUserIds: v.optional(v.array(v.id("managedUsers"))),
     createdAt: v.number(),
     updatedAt: v.number(),
     order: v.number(),
   })
     .index("by_order", ["order"])
     .index("by_owner_order", ["ownerId", "order"]),
+
+  boardPermissions: defineTable({
+    boardId: v.id("boards"),
+    ownerId: v.string(),
+    managedUserId: v.id("managedUsers"),
+    userEmail: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_board", ["boardId"])
+    .index("by_email", ["userEmail"])
+    .index("by_managed_user", ["managedUserId"])
+    .index("by_board_email", ["boardId", "userEmail"]),
 
   columns: defineTable({
     boardId: v.id("boards"),
@@ -31,6 +45,7 @@ export default defineSchema({
     reviewerId: v.optional(v.string()),
     priority: v.optional(v.string()),
     size: v.optional(v.string()),
+    type: v.optional(v.string()),
     acp: v.optional(v.string()),
     skills: v.optional(v.array(v.string())),
     order: v.number(),
@@ -62,4 +77,15 @@ export default defineSchema({
   })
     .index("by_board_created", ["boardId", "createdAt"])
     .index("by_card_created", ["cardId", "createdAt"]),
+
+  managedUsers: defineTable({
+    ownerId: v.string(),
+    name: v.string(),
+    email: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    order: v.number(),
+  })
+    .index("by_owner_order", ["ownerId", "order"])
+    .index("by_owner_email", ["ownerId", "email"]),
 });

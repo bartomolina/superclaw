@@ -22,13 +22,14 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { ExternalLink, Moon, MoveRight, Sun } from "lucide-react";
+import { ExternalLink, Menu, Moon, MoveRight, Settings, Sun, UserRound, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { ActivitySheet } from "@/components/activity-sheet";
 import { InboxDebugSheet } from "@/components/inbox-debug-sheet";
+import { UserManagementSheet } from "@/components/user-management-sheet";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -38,9 +39,22 @@ import type { Id } from "@/convex/_generated/dataModel";
 type BoardModel = {
   _id: Id<"boards">;
   _creationTime: number;
+  ownerId?: string;
+  isOwner?: boolean;
   name: string;
   description?: string;
   url?: string;
+  sharedUserIds?: Id<"managedUsers">[];
+  createdAt: number;
+  updatedAt: number;
+  order: number;
+};
+
+type ManagedUserModel = {
+  _id: Id<"managedUsers">;
+  _creationTime: number;
+  name: string;
+  email: string;
   createdAt: number;
   updatedAt: number;
   order: number;
@@ -57,6 +71,7 @@ type CardModel = {
   reviewerId?: string;
   priority?: string;
   size?: string;
+  type?: string;
   acp?: string;
   skills?: string[];
   order: number;
@@ -113,6 +128,14 @@ type SkillOption = {
   eligible?: boolean;
 };
 
+type ChoiceOption = string | { value: string; label: string; title?: string };
+
+const cardTypeOptions: ChoiceOption[] = [
+  { value: "feature", label: "🧩", title: "Feature" },
+  { value: "bug", label: "🐞", title: "Bug" },
+  { value: "cosmetic", label: "🎨", title: "Cosmetic change" },
+];
+
 const inputClass =
   "w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 transition focus:ring-2 focus:ring-zinc-300 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:placeholder:text-zinc-600 dark:focus:ring-zinc-700";
 const textareaClass = `${inputClass} min-h-32 resize-y`;
@@ -162,11 +185,13 @@ function AgentAvatar({
   agentName,
   avatarUrl,
   emoji,
+  fallbackIcon,
   size = "md",
 }: {
   agentName: string;
   avatarUrl?: string | null;
   emoji?: string;
+  fallbackIcon?: "user";
   size?: "sm" | "md" | "lg";
 }) {
   const [loadedAvatar, setLoadedAvatar] = useState<{ url: string; src: string } | null>(null);
@@ -217,11 +242,13 @@ function AgentAvatar({
     );
   }
 
+  const iconSizeClass = size === "sm" ? "h-3.5 w-3.5" : size === "lg" ? "h-5 w-5" : "h-4 w-4";
+
   return (
     <div
       className={`inline-flex ${sizeClass} shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 font-semibold text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300`}
     >
-      {fallback}
+      {fallbackIcon === "user" ? <UserRound className={iconSizeClass} aria-hidden="true" /> : fallback}
     </div>
   );
 }
@@ -329,13 +356,16 @@ function ChoiceChips({
   emptyLabel,
 }: {
   value: string;
-  options: string[];
+  options: ChoiceOption[];
   onChange: (value: string) => void;
   emptyLabel?: string;
 }) {
+  const normalizedOptions = options.map((option) =>
+    typeof option === "string" ? { label: option, value: option } : option,
+  );
   const renderedOptions = emptyLabel
-    ? [{ label: emptyLabel, value: "" }, ...options.map((option) => ({ label: option, value: option }))]
-    : options.map((option) => ({ label: option, value: option }));
+    ? [{ label: emptyLabel, value: "" }, ...normalizedOptions]
+    : normalizedOptions;
 
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -346,6 +376,8 @@ function ChoiceChips({
           <button
             key={`${option.label}-${option.value || "empty"}`}
             type="button"
+            title={option.title}
+            aria-label={option.title ?? option.label}
             onClick={() => onChange(selected ? "" : option.value)}
             className={`inline-flex h-8 min-w-10 items-center justify-center rounded-full border px-2.5 text-xs font-medium transition-all ${
               selected
@@ -405,8 +437,10 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [newBoardName, setNewBoardName] = useState("");
   const [showNewBoardForm, setShowNewBoardForm] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isInboxDebugOpen, setIsInboxDebugOpen] = useState(false);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [sidebarAgentOptions, setSidebarAgentOptions] = useState<AgentOption[]>([]);
   const [sidebarSkillOptions, setSidebarSkillOptions] = useState<SkillOption[]>([]);
   const [runningAgentId, setRunningAgentId] = useState<string | null>(null);
@@ -476,6 +510,25 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
   const selectedBoardName = selectedBoard?.name ?? "Kanban";
   const selectedBoardUrl = selectedBoard?.url;
+
+  useEffect(() => {
+    if (!isMobileSidebarOpen) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMobileSidebarOpen(false);
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isMobileSidebarOpen]);
 
   useEffect(() => {
     if (!boards) return;
@@ -592,6 +645,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     setNewBoardName("");
     setShowNewBoardForm(false);
     setSelectedBoardId(boardId);
+    setIsMobileSidebarOpen(false);
     navigateToBoard(boardId, "push");
   }
 
@@ -600,27 +654,35 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     currentName,
     currentDescription,
     currentUrl,
+    currentSharedUserIds,
     nextName,
     nextDescription,
     nextUrl,
+    nextSharedUserIds,
   }: {
     boardId: Id<"boards">;
     currentName: string;
     currentDescription?: string;
     currentUrl?: string;
+    currentSharedUserIds?: Id<"managedUsers">[];
     nextName: string;
     nextDescription: string;
     nextUrl: string;
+    nextSharedUserIds: Id<"managedUsers">[];
   }) {
     const normalizedName = nextName.trim();
     if (!normalizedName) return;
 
     const normalizedDescription = nextDescription.trim();
     const normalizedUrl = nextUrl.trim();
+    const normalizedSharedUserIds = Array.from(new Set(nextSharedUserIds.map((userId) => String(userId)))) as Id<"managedUsers">[];
+    const currentSharedSig = JSON.stringify((currentSharedUserIds ?? []).map((userId) => String(userId)).sort());
+    const nextSharedSig = JSON.stringify(normalizedSharedUserIds.map((userId) => String(userId)).sort());
     const didChange =
       normalizedName !== currentName ||
       normalizedDescription !== (currentDescription ?? "") ||
-      normalizedUrl !== (currentUrl ?? "");
+      normalizedUrl !== (currentUrl ?? "") ||
+      currentSharedSig !== nextSharedSig;
 
     if (!didChange) {
       setEditingBoard(null);
@@ -632,6 +694,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
       name: normalizedName,
       description: normalizedDescription,
       url: normalizedUrl,
+      sharedUserIds: normalizedSharedUserIds,
     });
 
     setEditingBoard(null);
@@ -652,7 +715,14 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   async function handleBoardReorder(sourceBoardId: Id<"boards">, targetBoardId: Id<"boards">) {
     if (!boards || sourceBoardId === targetBoardId) return;
 
-    const orderedIds = boards.map((board) => board._id);
+    const sourceBoard = boards.find((board) => board._id === sourceBoardId);
+    const targetBoard = boards.find((board) => board._id === targetBoardId);
+
+    if (!sourceBoard?.isOwner || !targetBoard?.isOwner) {
+      return;
+    }
+
+    const orderedIds = boards.filter((board) => board.isOwner).map((board) => board._id);
     const sourceIndex = orderedIds.indexOf(sourceBoardId);
     const targetIndex = orderedIds.indexOf(targetBoardId);
 
@@ -869,6 +939,16 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
           <div className="flex min-w-0 flex-1 items-center justify-between px-3 lg:px-4">
             <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsMobileSidebarOpen((value) => !value)}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:text-zinc-200 lg:hidden"
+                aria-label={isMobileSidebarOpen ? "Close navigation" : "Open navigation"}
+                title={isMobileSidebarOpen ? "Close navigation" : "Open navigation"}
+              >
+                {isMobileSidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+              </button>
+
               <div className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{selectedBoardName}</div>
               {selectedBoardUrl ? (
                 <a
@@ -885,6 +965,16 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
             </div>
 
             <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setIsUserManagementOpen(true)}
+                className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                title="Manage users"
+                aria-label="Manage users"
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+
               <button
                 type="button"
                 onClick={toggleTheme}
@@ -915,12 +1005,36 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 w-full flex-col overflow-hidden lg:flex-row">
+      <div className="relative flex min-h-0 flex-1 w-full flex-col overflow-hidden lg:flex-row">
+        {isMobileSidebarOpen ? (
+          <button
+            type="button"
+            aria-label="Close navigation"
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="fixed inset-x-0 bottom-0 top-12 z-20 bg-zinc-950/40 backdrop-blur-[1px] lg:hidden"
+          />
+        ) : null}
+
         <aside
-          className={`min-h-0 overflow-y-auto overscroll-contain border-b border-zinc-200 bg-white py-3 transition-all dark:border-zinc-800 dark:bg-zinc-950 lg:flex lg:flex-col lg:shrink-0 lg:border-b-0 lg:border-r ${
-            isSidebarCollapsed ? "px-2 lg:w-12" : "px-3 lg:w-48"
-          }`}
+          className={`fixed inset-y-12 left-0 z-30 min-h-0 w-[min(18rem,100vw)] overflow-y-auto overscroll-contain border-r border-zinc-200 bg-white py-3 shadow-xl transition-transform dark:border-zinc-800 dark:bg-zinc-950 lg:static lg:inset-auto lg:z-auto lg:flex lg:translate-x-0 lg:flex-col lg:shrink-0 lg:border-b-0 lg:shadow-none ${
+            isMobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          } ${isSidebarCollapsed ? "px-3 lg:w-12 lg:px-2" : "px-3 lg:w-48"}`}
         >
+          <div className="mb-3 flex items-center justify-between border-b border-zinc-200 px-1 pb-3 dark:border-zinc-800 lg:hidden">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xl">🦞</span>
+              <span className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">SuperClaw</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-200"
+              aria-label="Close navigation"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
           <div className={`${isSidebarCollapsed ? "lg:hidden" : ""} flex h-full min-h-0 flex-col`}>
             <div className="space-y-1">
               {boards === undefined ? (
@@ -944,6 +1058,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                         isDragging={activeBoardId === board._id}
                         onSelect={() => {
                           setSelectedBoardId(board._id);
+                          setIsMobileSidebarOpen(false);
                           navigateToBoard(board._id, "push");
                         }}
                         onRename={() => setEditingBoard(board)}
@@ -1142,6 +1257,11 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
       <InboxDebugSheet open={isInboxDebugOpen} onClose={() => setIsInboxDebugOpen(false)} />
 
+      <UserManagementSheet
+        open={isUserManagementOpen}
+        onClose={() => setIsUserManagementOpen(false)}
+      />
+
       {editingBoard ? (
         <BoardEditModal
           key={editingBoard._id}
@@ -1153,9 +1273,11 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
               currentName: editingBoard.name,
               currentDescription: editingBoard.description,
               currentUrl: editingBoard.url,
+              currentSharedUserIds: editingBoard.sharedUserIds,
               nextName: values.name,
               nextDescription: values.description,
               nextUrl: values.url,
+              nextSharedUserIds: values.sharedUserIds,
             })
           }
         />
@@ -1183,11 +1305,20 @@ function BoardEditModal({
 }: {
   board: BoardModel;
   onClose: () => void;
-  onSave: (values: { name: string; description: string; url: string }) => Promise<void> | void;
+  onSave: (values: {
+    name: string;
+    description: string;
+    url: string;
+    sharedUserIds: Id<"managedUsers">[];
+  }) => Promise<void> | void;
 }) {
+  const managedUsers = useQuery(api.users.list, {}) as ManagedUserModel[] | undefined;
   const [nameDraft, setNameDraft] = useState(board.name);
   const [descriptionDraft, setDescriptionDraft] = useState(board.description ?? "");
   const [urlDraft, setUrlDraft] = useState(board.url ?? "");
+  const [sharedUserIdsDraft, setSharedUserIdsDraft] = useState<Id<"managedUsers">[]>(
+    board.sharedUserIds ?? [],
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -1210,6 +1341,17 @@ function BoardEditModal({
     event.currentTarget.form?.requestSubmit();
   }
 
+  function toggleSharedUser(userId: Id<"managedUsers">) {
+    setSharedUserIdsDraft((current) => {
+      const key = String(userId);
+      if (current.some((value) => String(value) === key)) {
+        return current.filter((value) => String(value) !== key);
+      }
+
+      return [...current, userId];
+    });
+  }
+
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!nameDraft.trim() || isSaving) return;
@@ -1220,6 +1362,7 @@ function BoardEditModal({
         name: nameDraft,
         description: descriptionDraft,
         url: urlDraft,
+        sharedUserIds: sharedUserIdsDraft,
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update board");
@@ -1229,14 +1372,24 @@ function BoardEditModal({
     }
   }
 
+  const sortedManagedUsers = useMemo(
+    () =>
+      [...(managedUsers ?? [])].sort((a, b) => {
+        const byName = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+        if (byName !== 0) return byName;
+        return a.email.localeCompare(b.email, undefined, { sensitivity: "base" });
+      }),
+    [managedUsers],
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-[1px]" onMouseDown={onClose}>
       <div
         className="w-[min(96vw,560px)] overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <form onSubmit={handleSave} className="flex flex-col">
-          <div className="space-y-5 p-6">
+        <form onSubmit={handleSave} className="flex max-h-[min(90vh,760px)] flex-col">
+          <div className="space-y-5 overflow-y-auto p-6">
             <div className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Edit board</div>
 
             <div>
@@ -1272,6 +1425,55 @@ function BoardEditModal({
                 onKeyDown={handleEditorSubmitShortcut}
                 placeholder="https://example.com"
               />
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Board access</div>
+                <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                  Select saved users who should be able to open and work inside this board.
+                </div>
+              </div>
+
+              {managedUsers === undefined ? (
+                <div className="rounded-xl border border-dashed border-zinc-200 px-4 py-4 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                  Loading saved users…
+                </div>
+              ) : sortedManagedUsers.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-zinc-200 px-4 py-4 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                  Add users from the gear menu first, then assign board access here.
+                </div>
+              ) : (
+                <div className="space-y-2 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800">
+                  {sortedManagedUsers.map((user) => {
+                    const checked = sharedUserIdsDraft.some(
+                      (value) => String(value) === String(user._id),
+                    );
+
+                    return (
+                      <label
+                        key={user._id}
+                        className="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/70"
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                          checked={checked}
+                          onChange={() => toggleSharedUser(user._id)}
+                        />
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                            {user.name}
+                          </div>
+                          <div className="truncate text-sm text-zinc-500 dark:text-zinc-400">
+                            {user.email}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1311,6 +1513,7 @@ function BoardSidebarItem({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: String(board._id),
+    disabled: !board.isOwner,
   });
 
   return (
@@ -1335,43 +1538,45 @@ function BoardSidebarItem({
         <div className="truncate">{board.name}</div>
       </button>
 
-      <div className="flex items-center gap-0.5 px-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-        <button
-          type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            onRename();
-          }}
-          className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-          aria-label={`Edit ${board.name}`}
-          title="Edit board"
-        >
-          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete();
-          }}
-          className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-          aria-label={`Delete ${board.name}`}
-          title="Delete board"
-        >
-          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M3 6h18" />
-            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-            <line x1="10" y1="11" x2="10" y2="17" />
-            <line x1="14" y1="11" x2="14" y2="17" />
-          </svg>
-        </button>
-      </div>
+      {board.isOwner ? (
+        <div className="flex items-center gap-0.5 px-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+          <button
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onRename();
+            }}
+            className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+            aria-label={`Edit ${board.name}`}
+            title="Edit board"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}
+            className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+            aria-label={`Delete ${board.name}`}
+            title="Delete board"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 6h18" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+              <line x1="10" y1="11" x2="10" y2="17" />
+              <line x1="14" y1="11" x2="14" y2="17" />
+            </svg>
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1536,6 +1741,20 @@ function KanbanCard({
                 : "border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-300",
         }
       : null,
+    card.type
+      ? {
+          key: `type-${card.type}`,
+          label: card.type === "feature" ? "🧩" : card.type === "bug" ? "🐞" : "🎨",
+          title:
+            card.type === "feature" ? "Feature" : card.type === "bug" ? "Bug" : "Cosmetic change",
+          className:
+            card.type === "feature"
+              ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 dark:border-fuchsia-900/70 dark:bg-fuchsia-950/40 dark:text-fuchsia-200"
+              : card.type === "bug"
+                ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-200"
+                : "border-pink-200 bg-pink-50 text-pink-700 dark:border-pink-900/70 dark:bg-pink-950/40 dark:text-pink-200",
+        }
+      : null,
     card.acp
       ? {
           key: `acp-${card.acp}`,
@@ -1544,7 +1763,7 @@ function KanbanCard({
             "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/70 dark:bg-cyan-950/40 dark:text-cyan-200",
         }
       : null,
-  ].filter((tag): tag is { key: string; label: string; className: string } => Boolean(tag));
+  ].filter((tag): tag is { key: string; label: string; className: string; title?: string } => Boolean(tag));
 
   useEffect(() => {
     if (!menuPosition) return;
@@ -1621,30 +1840,35 @@ function KanbanCard({
       >
         <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{card.title}</div>
         {summary ? <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{summary}</div> : null}
-        {cardMetaTags.length > 0 ? (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {cardMetaTags.map((tag) => (
-              <span
-                key={tag.key}
-                className={`inline-flex h-6 items-center rounded-full border px-2 text-[10px] font-medium ${tag.className}`}
-              >
-                {tag.label}
-              </span>
-            ))}
-          </div>
-        ) : null}
-        {hasAssignee || hasReviewer ? (
-          <div className="mt-2 flex items-center gap-2 text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-            {hasAssignee ? (
-              <div className="inline-flex items-center" title={`Assignee: ${assigneeName}`}>
-                <span className="sr-only">Assignee: {assigneeName}</span>
-                <AgentAvatar agentName={assigneeName} avatarUrl={assigneeAvatarUrl} size="sm" />
+        {cardMetaTags.length > 0 || hasAssignee || hasReviewer ? (
+          <div className="mt-2 flex items-start justify-between gap-2">
+            {cardMetaTags.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {cardMetaTags.map((tag) => (
+                  <span
+                    key={tag.key}
+                    title={tag.title}
+                    className={`inline-flex h-6 items-center rounded-full border px-2 text-[10px] font-medium ${tag.className}`}
+                  >
+                    {tag.label}
+                  </span>
+                ))}
               </div>
             ) : null}
-            {hasReviewer ? (
-              <div className="inline-flex items-center" title={`Reviewer: ${reviewerName}`}>
-                <span className="sr-only">Reviewer: {reviewerName}</span>
-                <AgentAvatar agentName={reviewerName} avatarUrl={reviewerAvatarUrl} size="sm" />
+            {hasAssignee || hasReviewer ? (
+              <div className="ml-auto flex shrink-0 items-center gap-2 text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                {hasAssignee ? (
+                  <div className="inline-flex items-center" title={`Assignee: ${assigneeName}`}>
+                    <span className="sr-only">Assignee: {assigneeName}</span>
+                    <AgentAvatar agentName={assigneeName} avatarUrl={assigneeAvatarUrl} size="sm" />
+                  </div>
+                ) : null}
+                {hasReviewer ? (
+                  <div className="inline-flex items-center" title={`Reviewer: ${reviewerName}`}>
+                    <span className="sr-only">Reviewer: {reviewerName}</span>
+                    <AgentAvatar agentName={reviewerName} avatarUrl={reviewerAvatarUrl} size="sm" />
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -1708,6 +1932,9 @@ function CardModal({
   const [sizeDraft, setSizeDraft] = useState(
     card.size === "S" || card.size === "M" || card.size === "L" ? card.size : "",
   );
+  const [typeDraft, setTypeDraft] = useState(
+    card.type === "feature" || card.type === "bug" || card.type === "cosmetic" ? card.type : "",
+  );
   const [acpDraft, setAcpDraft] = useState(card.acp === "codex" || card.acp === "cursor" ? card.acp : "");
   const [skillsDraft, setSkillsDraft] = useState<string[]>(card.skills ?? []);
   const [commentDraft, setCommentDraft] = useState("");
@@ -1748,6 +1975,12 @@ function CardModal({
       return true;
     });
   }, [skillOptions]);
+
+  const currentBoard = useMemo(
+    () => boards.find((board) => board._id === card.boardId) ?? null,
+    [boards, card.boardId],
+  );
+  const canMoveAcrossBoards = currentBoard?.isOwner === true;
 
   useEffect(() => {
     if (availableSkillOptions.length === 0) return;
@@ -1837,6 +2070,7 @@ function CardModal({
       name: comment.authorLabel?.trim() || fallbackName,
       avatarUrl: null,
       emoji: undefined,
+      fallbackIcon: comment.authorType === "human" ? ("user" as const) : undefined,
     };
   }
 
@@ -1853,6 +2087,7 @@ function CardModal({
       reviewerId: reviewerDraft,
       priority: priorityDraft,
       size: sizeDraft,
+      type: typeDraft,
       acp: acpDraft,
       skills: parsedSkills,
     });
@@ -1939,6 +2174,7 @@ function CardModal({
                               agentName={author.name}
                               avatarUrl={author.avatarUrl}
                               emoji={author.emoji}
+                              fallbackIcon={author.fallbackIcon}
                               size="sm"
                             />
                             <div className="min-w-0 flex-1 space-y-1">
@@ -2000,6 +2236,11 @@ function CardModal({
               </div>
 
               <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Type</label>
+                <ChoiceChips value={typeDraft} options={cardTypeOptions} onChange={setTypeDraft} />
+              </div>
+
+              <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">ACP</label>
                 <ChoiceChips value={acpDraft} options={["codex", "cursor"]} onChange={setAcpDraft} />
               </div>
@@ -2024,6 +2265,7 @@ function CardModal({
                 <select
                   className={`${inputClass} h-9`}
                   value={moveBoardDraft}
+                  disabled={!canMoveAcrossBoards}
                   onChange={(event) =>
                     setMoveBoardDraft(
                       event.target.value === 'current' ? 'current' : (event.target.value as Id<'boards'>),
@@ -2032,13 +2274,18 @@ function CardModal({
                 >
                   <option value="current">Current board</option>
                   {boards
-                    .filter((board) => board._id !== card.boardId)
+                    .filter((board) => board._id !== card.boardId && board.isOwner)
                     .map((board) => (
                       <option key={board._id} value={board._id}>
                         {board.name}
                       </option>
                     ))}
                 </select>
+                {!canMoveAcrossBoards ? (
+                  <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                    Only board owners can move cards across boards.
+                  </div>
+                ) : null}
               </div>
 
               <div>
