@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 
 import { internalMutation, query } from "./_generated/server";
-import { requireOwnedBoard } from "./access";
+import { requireAccessibleBoard } from "./access";
 
 export const listByBoard = query({
   args: {
@@ -9,7 +9,7 @@ export const listByBoard = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireOwnedBoard(ctx, args.boardId);
+    await requireAccessibleBoard(ctx, args.boardId);
 
     const limit = Math.min(Math.max(Math.floor(args.limit ?? 20), 1), 100);
 

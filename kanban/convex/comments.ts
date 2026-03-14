@@ -2,14 +2,14 @@ import { v } from "convex/values";
 
 import { mutation, query } from "./_generated/server";
 import { optionalText, touchBoard } from "./helpers";
-import { requireOwnedCard, requireUser } from "./access";
+import { requireAccessibleCard, requireUser } from "./access";
 
 export const listByCard = query({
   args: {
     cardId: v.id("cards"),
   },
   handler: async (ctx, args) => {
-    await requireOwnedCard(ctx, args.cardId);
+    await requireAccessibleCard(ctx, args.cardId);
 
     return await ctx.db
       .query("comments")
@@ -25,7 +25,7 @@ export const add = mutation({
     body: v.string(),
   },
   handler: async (ctx, args) => {
-    const card = await requireOwnedCard(ctx, args.cardId);
+    const card = await requireAccessibleCard(ctx, args.cardId);
     const user = await requireUser(ctx);
 
     const body = optionalText(args.body);
