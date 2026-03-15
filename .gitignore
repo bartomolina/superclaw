@@ -10,6 +10,7 @@ out/
 build/
 dist/
 .output/
+.wxt/
 .turbo/
 
 # Convex / local generated state
