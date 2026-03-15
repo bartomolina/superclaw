@@ -168,4 +168,5 @@ pnpm build
 
 - **Invalid origin**
   - Ensure `SITE_URL` matches the actual app origin.
-  - Add additional origins in `TRUSTED_ORIGINS` if you access the app via multiple URLs.
+  - Add additional origins in `TRUSTED_ORIGINS` only if you intentionally support multiple URLs for the same app.
+URLs.
