@@ -4,7 +4,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery, query } from "./_generated/server";
-import { requireMember } from "./access";
+import { requireMember, resolveCommentAuthorLabel } from "./access";
 import { getNextOrder, optionalText, touchBoard } from "./helpers";
 
 type AgentRole = "assignee" | "reviewer";
@@ -231,9 +231,18 @@ async function enrichTask(
     .order("asc")
     .collect();
 
-  const lastComment = comments[comments.length - 1] ?? null;
+  const resolvedComments = await Promise.all(
+    comments.map(async (comment) => ({
+      ...comment,
+      authorLabel: (await resolveCommentAuthorLabel(ctx, comment)) ?? undefined,
+    })),
+  );
+
+  const lastComment = resolvedComments[resolvedComments.length - 1] ?? null;
   const lastAuthor = lastComment ? commentAuthor(lastComment) : null;
-  const hasAgentComment = comments.some((comment) => isAgentAuthor(commentAuthor(comment), agent.normalizedId));
+  const hasAgentComment = resolvedComments.some((comment) =>
+    isAgentAuthor(commentAuthor(comment), agent.normalizedId),
+  );
 
   return {
     ...task,
@@ -242,7 +251,7 @@ async function enrichTask(
     lastCommentByType: lastAuthor?.type ?? null,
     lastCommentBy: lastAuthor?.id ?? null,
     lastCommentByLabel: lastAuthor?.label ?? null,
-    comments: comments.map((comment) => serializeDiscussionComment(comment)),
+    comments: resolvedComments.map((comment) => serializeDiscussionComment(comment)),
   };
 }
 

@@ -8,6 +8,7 @@ export default defineSchema({
     description: v.optional(v.string()),
     url: v.optional(v.string()),
     sharedUserIds: v.optional(v.array(v.id("managedUsers"))),
+    allowedAgentIds: v.optional(v.array(v.string())),
     createdAt: v.number(),
     updatedAt: v.number(),
     order: v.number(),
@@ -60,6 +61,7 @@ export default defineSchema({
     createdAt: v.number(),
     authorType: v.union(v.literal("agent"), v.literal("human"), v.literal("system")),
     authorId: v.optional(v.string()),
+    authorEmail: v.optional(v.string()),
     authorLabel: v.optional(v.string()),
   })
     .index("by_board", ["boardId"])
@@ -89,6 +91,13 @@ export default defineSchema({
     .index("by_owner_order", ["ownerId", "order"])
     .index("by_owner_email", ["ownerId", "email"])
     .index("by_email", ["email"]),
+
+  superuserProfiles: defineTable({
+    email: v.string(),
+    name: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_email", ["email"]),
 
   authRateLimits: defineTable({
     scope: v.string(),

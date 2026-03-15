@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { getViewer, requireSuperuser } from "./access";
+import { getSuperuserEmail, getViewer, requireSuperuser } from "./access";
 import { internalQuery, mutation, query } from "./_generated/server";
 import { getNextOrder, normalizeText, optionalText } from "./helpers";
 
@@ -39,6 +39,72 @@ export const isInvitedEmail = internalQuery({
       .collect();
 
     return invitedUsers.length > 0;
+  },
+});
+
+export const superuserProfile = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireSuperuser(ctx);
+    const email = getSuperuserEmail();
+
+    if (!email) {
+      throw new Error("SUPERUSER_EMAIL is not configured");
+    }
+
+    const existing = await ctx.db
+      .query("superuserProfiles")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .unique();
+
+    const fallbackName = user.name?.trim() || email.split("@")[0] || "Superuser";
+
+    return {
+      email,
+      name: existing?.name?.trim() || fallbackName,
+      hasCustomName: Boolean(existing?.name?.trim()),
+      createdAt: existing?.createdAt ?? 0,
+      updatedAt: existing?.updatedAt ?? 0,
+    };
+  },
+});
+
+export const setSuperuserProfile = mutation({
+  args: {
+    name: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireSuperuser(ctx);
+    const email = getSuperuserEmail();
+
+    if (!email) {
+      throw new Error("SUPERUSER_EMAIL is not configured");
+    }
+
+    const fallbackName = user.name?.trim() || email.split("@")[0] || "Superuser";
+    const name = normalizeText(optionalText(args.name) ?? fallbackName, fallbackName);
+    const now = Date.now();
+
+    const existing = await ctx.db
+      .query("superuserProfiles")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        name,
+        updatedAt: now,
+      });
+
+      return existing._id;
+    }
+
+    return await ctx.db.insert("superuserProfiles", {
+      email,
+      name,
+      createdAt: now,
+      updatedAt: now,
+    });
   },
 });
 

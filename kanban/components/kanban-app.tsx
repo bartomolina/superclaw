@@ -22,7 +22,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { ExternalLink, Menu, Moon, MoveRight, Settings, Sun, UserRound, X } from "lucide-react";
+import { Copy, ExternalLink, Menu, Moon, MoveRight, Radio, Settings, Sun, UserRound, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -45,6 +45,7 @@ type BoardModel = {
   description?: string;
   url?: string;
   sharedUserIds?: Id<"managedUsers">[];
+  allowedAgentIds?: string[];
   createdAt: number;
   updatedAt: number;
   order: number;
@@ -86,6 +87,7 @@ type CommentModel = {
   createdAt: number;
   authorType: "agent" | "human" | "system";
   authorId?: string;
+  authorEmail?: string;
   authorLabel?: string;
 };
 
@@ -115,6 +117,15 @@ type BoardView = {
   board: BoardModel;
   columns: ColumnModel[];
 } | null;
+
+type ActiveCardSession = {
+  sessionId: string;
+  sessionKey: string;
+  agentId: string;
+  updatedAt: number;
+};
+
+type ActiveCardSessionsById = Record<string, ActiveCardSession[]>;
 
 type AgentOption = {
   id: string;
@@ -169,6 +180,24 @@ function summarize(text?: string) {
   return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
 }
 
+function formatRelativeActivityTime(timestamp: number) {
+  const elapsedMs = Math.max(0, Date.now() - timestamp);
+
+  if (elapsedMs < 60_000) {
+    return "just now";
+  }
+
+  if (elapsedMs < 3_600_000) {
+    return `${Math.max(1, Math.floor(elapsedMs / 60_000))}m ago`;
+  }
+
+  if (elapsedMs < 86_400_000) {
+    return `${Math.max(1, Math.floor(elapsedMs / 3_600_000))}h ago`;
+  }
+
+  return `${Math.max(1, Math.floor(elapsedMs / 86_400_000))}d ago`;
+}
+
 function resolveAgentName(agentId?: string) {
   const normalizedId = agentId?.trim();
   if (normalizedId) return normalizedId;
@@ -179,6 +208,18 @@ function resolveAgentAvatarUrl(agentId?: string) {
   const normalizedId = agentId?.trim();
   if (!normalizedId) return null;
   return `/api/agents/${encodeURIComponent(normalizedId)}/avatar`;
+}
+
+function filterBoardAgentOptions(options: AgentOption[], allowedAgentIds?: string[]) {
+  const normalizedAllowedAgentIds = Array.from(
+    new Set((allowedAgentIds ?? []).map((agentId) => agentId.trim()).filter(Boolean)),
+  );
+
+  if (normalizedAllowedAgentIds.length === 0) {
+    return options;
+  }
+
+  return options.filter((agent) => normalizedAllowedAgentIds.includes(agent.id.trim()));
 }
 
 function AgentAvatar({
@@ -445,7 +486,9 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [isInboxDebugOpen, setIsInboxDebugOpen] = useState(false);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
+  const [allAgentOptions, setAllAgentOptions] = useState<AgentOption[]>([]);
   const [sidebarAgentOptions, setSidebarAgentOptions] = useState<AgentOption[]>([]);
+  const [isSidebarAgentsLoading, setIsSidebarAgentsLoading] = useState(false);
   const [sidebarSkillOptions, setSidebarSkillOptions] = useState<SkillOption[]>([]);
   const [runningAgentId, setRunningAgentId] = useState<string | null>(null);
   const [activeCardId, setActiveCardId] = useState<Id<"cards"> | null>(null);
@@ -453,6 +496,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [activeDragCardId, setActiveDragCardId] = useState<Id<"cards"> | null>(null);
   const [dragColumns, setDragColumns] = useState<ColumnModel[] | null>(null);
   const [editingBoard, setEditingBoard] = useState<BoardModel | null>(null);
+  const [activeCardSessionsById, setActiveCardSessionsById] = useState<ActiveCardSessionsById>({});
 
   const router = useRouter();
   const pathname = usePathname();
@@ -505,6 +549,12 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     effectiveSelectedBoardId ? { boardId: effectiveSelectedBoardId, limit: 14 } : "skip",
   ) as ActivityEventModel[] | undefined;
 
+  const boardCardIds = useMemo(
+    () => boardView?.columns.flatMap((column) => column.cards.map((card) => String(card._id))) ?? [],
+    [boardView],
+  );
+  const boardCardIdsSignature = useMemo(() => boardCardIds.join(","), [boardCardIds]);
+
   const selectedBoard = useMemo(() => {
     if (!boards || boards.length === 0) return null;
     if (!effectiveSelectedBoardId) return boards[0] ?? null;
@@ -514,6 +564,9 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
   const selectedBoardName = selectedBoard?.name ?? "Kanban";
   const selectedBoardUrl = selectedBoard?.url;
+  const selectedBoardAgentPolicyKey = JSON.stringify(
+    (boardView?.board.allowedAgentIds ?? selectedBoard?.allowedAgentIds ?? []).slice().sort(),
+  );
   const isSuperuser = viewer?.isSuperuser === true;
 
   useEffect(() => {
@@ -553,15 +606,21 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   }, [boards, boardParam, effectiveSelectedBoardId, navigateToBoard]);
 
   useEffect(() => {
-    if (!isConvexAuthenticated) return;
+    if (!isConvexAuthenticated || !effectiveSelectedBoardId) {
+      setIsSidebarAgentsLoading(false);
+      setSidebarAgentOptions([]);
+      return;
+    }
 
     let cancelled = false;
+    setIsSidebarAgentsLoading(true);
+    setSidebarAgentOptions([]);
 
     async function loadSidebarOptions() {
       try {
         const [agentsResponse, skillsResponse] = await Promise.all([
-          fetch("/api/agents").catch(() => null),
-          fetch("/api/skills").catch(() => null),
+          fetch(`/api/agents?boardId=${encodeURIComponent(String(effectiveSelectedBoardId))}`, { cache: "no-store" }).catch(() => null),
+          fetch("/api/skills", { cache: "no-store" }).catch(() => null),
         ]);
         if (cancelled) return;
 
@@ -587,6 +646,10 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
         setSidebarSkillOptions(normalizedSkills);
       } catch {
         // Ignore sidebar option loading failures.
+      } finally {
+        if (!cancelled) {
+          setIsSidebarAgentsLoading(false);
+        }
       }
     }
 
@@ -595,7 +658,91 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, [isConvexAuthenticated]);
+  }, [effectiveSelectedBoardId, isConvexAuthenticated, selectedBoardAgentPolicyKey]);
+
+  useEffect(() => {
+    if (!isConvexAuthenticated || !effectiveSelectedBoardId || boardCardIds.length === 0) {
+      setActiveCardSessionsById({});
+      return;
+    }
+
+    let cancelled = false;
+    let intervalId: number | null = null;
+
+    async function refreshActiveSessions() {
+      try {
+        const response = await fetch("/api/agent-workers/active", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ cardIds: boardCardIds }),
+        });
+
+        const data = (await response.json()) as {
+          ok?: boolean;
+          activeByCardId?: ActiveCardSessionsById;
+        };
+
+        if (!response.ok || !data.ok || cancelled) {
+          return;
+        }
+
+        setActiveCardSessionsById(data.activeByCardId ?? {});
+      } catch {
+        if (!cancelled) {
+          setActiveCardSessionsById({});
+        }
+      }
+    }
+
+    void refreshActiveSessions();
+    intervalId = window.setInterval(() => {
+      void refreshActiveSessions();
+    }, 15_000);
+
+    return () => {
+      cancelled = true;
+      if (intervalId) {
+        window.clearInterval(intervalId);
+      }
+    };
+  }, [boardCardIds, boardCardIdsSignature, effectiveSelectedBoardId, isConvexAuthenticated]);
+
+  useEffect(() => {
+    if (!isConvexAuthenticated || !isSuperuser) return;
+
+    let cancelled = false;
+
+    async function loadAllAgentOptions() {
+      try {
+        const response = await fetch("/api/agents", { cache: "no-store" }).catch(() => null);
+        if (!response || !response.ok || cancelled) return;
+
+        const data = (await response.json()) as { agents?: AgentOption[] };
+        if (cancelled) return;
+
+        const normalizedAgents = (data.agents ?? [])
+          .map((agent) => ({
+            id: String(agent.id),
+            name: String(agent.name),
+            emoji: agent.emoji,
+            avatarUrl: agent.avatarUrl ?? null,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        setAllAgentOptions(normalizedAgents);
+      } catch {
+        // Ignore full agent option loading failures.
+      }
+    }
+
+    void loadAllAgentOptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isConvexAuthenticated, isSuperuser]);
 
   const activeCard = useMemo(() => {
     if (!boardView || !activeCardId) return null;
@@ -660,20 +807,24 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     currentDescription,
     currentUrl,
     currentSharedUserIds,
+    currentAllowedAgentIds,
     nextName,
     nextDescription,
     nextUrl,
     nextSharedUserIds,
+    nextAllowedAgentIds,
   }: {
     boardId: Id<"boards">;
     currentName: string;
     currentDescription?: string;
     currentUrl?: string;
     currentSharedUserIds?: Id<"managedUsers">[];
+    currentAllowedAgentIds?: string[];
     nextName: string;
     nextDescription: string;
     nextUrl: string;
     nextSharedUserIds: Id<"managedUsers">[];
+    nextAllowedAgentIds: string[];
   }) {
     const normalizedName = nextName.trim();
     if (!normalizedName) return;
@@ -681,13 +832,19 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     const normalizedDescription = nextDescription.trim();
     const normalizedUrl = nextUrl.trim();
     const normalizedSharedUserIds = Array.from(new Set(nextSharedUserIds.map((userId) => String(userId)))) as Id<"managedUsers">[];
+    const normalizedAllowedAgentIds = Array.from(
+      new Set(nextAllowedAgentIds.map((agentId) => agentId.trim()).filter(Boolean)),
+    );
     const currentSharedSig = JSON.stringify((currentSharedUserIds ?? []).map((userId) => String(userId)).sort());
     const nextSharedSig = JSON.stringify(normalizedSharedUserIds.map((userId) => String(userId)).sort());
+    const currentAllowedAgentsSig = JSON.stringify((currentAllowedAgentIds ?? []).map((agentId) => agentId.trim()).filter(Boolean).sort());
+    const nextAllowedAgentsSig = JSON.stringify(normalizedAllowedAgentIds.slice().sort());
     const didChange =
       normalizedName !== currentName ||
       normalizedDescription !== (currentDescription ?? "") ||
       normalizedUrl !== (currentUrl ?? "") ||
-      currentSharedSig !== nextSharedSig;
+      currentSharedSig !== nextSharedSig ||
+      currentAllowedAgentsSig !== nextAllowedAgentsSig;
 
     if (!didChange) {
       setEditingBoard(null);
@@ -700,6 +857,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
       description: normalizedDescription,
       url: normalizedUrl,
       sharedUserIds: normalizedSharedUserIds,
+      allowedAgentIds: normalizedAllowedAgentIds,
     });
 
     setEditingBoard(null);
@@ -844,7 +1002,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   }
 
   async function handleRunAgentNow(agentId: string) {
-    if (!agentId || runningAgentId) return;
+    if (!agentId || runningAgentId || !effectiveSelectedBoardId) return;
 
     setRunningAgentId(agentId);
 
@@ -854,7 +1012,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ agentId }),
+        body: JSON.stringify({ agentId, boardId: effectiveSelectedBoardId }),
       });
 
       const data = (await response.json()) as { ok?: boolean; error?: string };
@@ -1128,7 +1286,9 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
             <div className="mt-auto space-y-3">
               <div>
-                {sidebarAgentOptions.length > 0 ? (
+                {isSidebarAgentsLoading ? (
+                  <div className="px-1 text-sm text-zinc-500 dark:text-zinc-400">Loading agents...</div>
+                ) : sidebarAgentOptions.length > 0 ? (
                   <div className="space-y-2 px-1">
                     {sidebarAgentOptions.map((agent) => {
                       const isRunning = runningAgentId === agent.id;
@@ -1220,6 +1380,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                         key={column._id}
                         column={column}
                         accentClass={getColumnTone(column.name)}
+                        activeSessionsByCardId={activeCardSessionsById}
                         onOpenCard={(cardId) => setActiveCardId(cardId)}
                       />
                     ))}
@@ -1264,7 +1425,11 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
         loading={effectiveSelectedBoardId ? boardActivity === undefined : false}
       />
 
-      <InboxDebugSheet open={isInboxDebugOpen} onClose={() => setIsInboxDebugOpen(false)} />
+      <InboxDebugSheet
+        open={isInboxDebugOpen}
+        boardId={effectiveSelectedBoardId}
+        onClose={() => setIsInboxDebugOpen(false)}
+      />
 
       <UserManagementSheet
         open={isUserManagementOpen}
@@ -1275,6 +1440,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
         <BoardEditModal
           key={editingBoard._id}
           board={editingBoard}
+          allAgentOptions={allAgentOptions}
           onClose={() => setEditingBoard(null)}
           onSave={(values) =>
             handleRenameBoard({
@@ -1283,10 +1449,12 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
               currentDescription: editingBoard.description,
               currentUrl: editingBoard.url,
               currentSharedUserIds: editingBoard.sharedUserIds,
+              currentAllowedAgentIds: editingBoard.allowedAgentIds,
               nextName: values.name,
               nextDescription: values.description,
               nextUrl: values.url,
               nextSharedUserIds: values.sharedUserIds,
+              nextAllowedAgentIds: values.allowedAgentIds,
             })
           }
         />
@@ -1298,7 +1466,8 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           card={activeCard}
           columns={boardView.columns}
           boards={boards ?? []}
-          agentOptions={sidebarAgentOptions}
+          activeSessions={activeCardSessionsById[String(activeCard._id)] ?? []}
+          agentOptions={filterBoardAgentOptions(sidebarAgentOptions, boardView.board.allowedAgentIds)}
           skillOptions={sidebarSkillOptions}
           onClose={() => setActiveCardId(null)}
         />
@@ -1309,16 +1478,19 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
 function BoardEditModal({
   board,
+  allAgentOptions,
   onClose,
   onSave,
 }: {
   board: BoardModel;
+  allAgentOptions: AgentOption[];
   onClose: () => void;
   onSave: (values: {
     name: string;
     description: string;
     url: string;
     sharedUserIds: Id<"managedUsers">[];
+    allowedAgentIds: string[];
   }) => Promise<void> | void;
 }) {
   const managedUsers = useQuery(api.users.list, {}) as ManagedUserModel[] | undefined;
@@ -1328,6 +1500,7 @@ function BoardEditModal({
   const [sharedUserIdsDraft, setSharedUserIdsDraft] = useState<Id<"managedUsers">[]>(
     board.sharedUserIds ?? [],
   );
+  const [allowedAgentIdsDraft, setAllowedAgentIdsDraft] = useState<string[]>(board.allowedAgentIds ?? []);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -1361,6 +1534,21 @@ function BoardEditModal({
     });
   }
 
+  function toggleAllowedAgent(agentId: string) {
+    setAllowedAgentIdsDraft((current) => {
+      const normalizedAgentId = agentId.trim();
+      if (!normalizedAgentId) {
+        return current;
+      }
+
+      if (current.some((value) => value.trim() === normalizedAgentId)) {
+        return current.filter((value) => value.trim() !== normalizedAgentId);
+      }
+
+      return [...current, normalizedAgentId];
+    });
+  }
+
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!nameDraft.trim() || isSaving) return;
@@ -1372,6 +1560,7 @@ function BoardEditModal({
         description: descriptionDraft,
         url: urlDraft,
         sharedUserIds: sharedUserIdsDraft,
+        allowedAgentIds: allowedAgentIdsDraft,
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update board");
@@ -1389,6 +1578,11 @@ function BoardEditModal({
         return a.email.localeCompare(b.email, undefined, { sensitivity: "base" });
       }),
     [managedUsers],
+  );
+
+  const sortedAgentOptions = useMemo(
+    () => [...allAgentOptions].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
+    [allAgentOptions],
   );
 
   return (
@@ -1476,6 +1670,49 @@ function BoardEditModal({
                           </div>
                           <div className="truncate text-sm text-zinc-500 dark:text-zinc-400">
                             {user.email}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Allowed agents</div>
+                <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                  Leave empty to allow all agents on this board. Once you select any agents here, everyone using this board only sees and runs those specific agents.
+                </div>
+              </div>
+
+              {sortedAgentOptions.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-zinc-200 px-4 py-4 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                  No agents available.
+                </div>
+              ) : (
+                <div className="space-y-2 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800">
+                  {sortedAgentOptions.map((agent) => {
+                    const checked = allowedAgentIdsDraft.some((value) => value.trim() === agent.id);
+
+                    return (
+                      <label
+                        key={agent.id}
+                        className="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/70"
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                          checked={checked}
+                          onChange={() => toggleAllowedAgent(agent.id)}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                            {agent.name}
+                          </div>
+                          <div className="truncate text-sm text-zinc-500 dark:text-zinc-400">
+                            {agent.id}
                           </div>
                         </div>
                       </label>
@@ -1593,10 +1830,12 @@ function BoardSidebarItem({
 function KanbanColumn({
   column,
   accentClass,
+  activeSessionsByCardId,
   onOpenCard,
 }: {
   column: ColumnModel;
   accentClass: string;
+  activeSessionsByCardId: ActiveCardSessionsById;
   onOpenCard: (cardId: Id<"cards">) => void;
 }) {
   const createCard = useMutation(api.cards.create);
@@ -1652,7 +1891,13 @@ function KanbanColumn({
       <SortableContext items={column.cards.map((card) => String(card._id))} strategy={verticalListSortingStrategy}>
         <div className="space-y-2">
           {column.cards.map((card) => (
-            <KanbanCard key={card._id} card={card} columnId={column._id} onOpenCard={onOpenCard} />
+            <KanbanCard
+              key={card._id}
+              card={card}
+              columnId={column._id}
+              activeSessions={activeSessionsByCardId[String(card._id)] ?? []}
+              onOpenCard={onOpenCard}
+            />
           ))}
 
           {!showComposer ? (
@@ -1704,10 +1949,12 @@ function KanbanColumn({
 function KanbanCard({
   card,
   columnId,
+  activeSessions,
   onOpenCard,
 }: {
   card: CardModel;
   columnId: Id<"columns">;
+  activeSessions: ActiveCardSession[];
   onOpenCard: (cardId: Id<"cards">) => void;
 }) {
   const deleteCard = useMutation(api.cards.remove);
@@ -1719,6 +1966,10 @@ function KanbanCard({
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
 
   const summary = summarize(card.description);
+  const isActive = activeSessions.length > 0;
+  const activeSessionSummary = activeSessions
+    .map((session) => `${session.sessionId} · ${session.agentId} · ${formatRelativeActivityTime(session.updatedAt)}`)
+    .join("\n");
   const assigneeName = resolveAgentName(card.agentId);
   const reviewerName = resolveAgentName(card.reviewerId);
   const assigneeAvatarUrl = resolveAgentAvatarUrl(card.agentId);
@@ -1726,6 +1977,15 @@ function KanbanCard({
   const hasAssignee = Boolean(card.agentId);
   const hasReviewer = Boolean(card.reviewerId);
   const cardMetaTags = [
+    isActive
+      ? {
+          key: "active",
+          label: activeSessions.length > 1 ? `Active · ${activeSessions.length}` : "Active",
+          title: activeSessionSummary,
+          className:
+            "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-200",
+        }
+      : null,
     card.priority
       ? {
           key: `priority-${card.priority}`,
@@ -1838,16 +2098,22 @@ function KanbanCard({
       <button
         ref={setNodeRef}
         type="button"
+        title={isActive ? activeSessionSummary : undefined}
         {...attributes}
         {...listeners}
         onClick={() => onOpenCard(card._id)}
         onContextMenu={handleContextMenu}
         style={{ transform: CSS.Transform.toString(transform), transition }}
-        className={`w-full touch-none cursor-grab active:cursor-grabbing rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left transition hover:border-zinc-300 hover:shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700 ${
-          isDragging ? "opacity-0" : ""
-        }`}
+        className={`w-full touch-none cursor-grab active:cursor-grabbing rounded-lg border bg-white px-3 py-2 text-left transition hover:shadow-sm dark:bg-zinc-900 ${
+          isActive
+            ? "border-sky-300 shadow-[0_0_0_1px_rgba(56,189,248,0.18)] hover:border-sky-400 dark:border-sky-800 dark:hover:border-sky-700"
+            : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
+        } ${isDragging ? "opacity-0" : ""}`}
       >
-        <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{card.title}</div>
+        <div className="flex items-start justify-between gap-2">
+          <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{card.title}</div>
+          {isActive ? <Radio className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-500" aria-hidden="true" /> : null}
+        </div>
         {summary ? <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{summary}</div> : null}
         {cardMetaTags.length > 0 || hasAssignee || hasReviewer ? (
           <div className="mt-2 flex items-start justify-between gap-2">
@@ -1907,6 +2173,7 @@ function CardModal({
   card,
   columns,
   boards,
+  activeSessions,
   agentOptions,
   skillOptions,
   onClose,
@@ -1914,6 +2181,7 @@ function CardModal({
   card: CardModel;
   columns: ColumnModel[];
   boards: BoardModel[];
+  activeSessions: ActiveCardSession[];
   agentOptions: AgentOption[];
   skillOptions: SkillOption[];
   onClose: () => void;
@@ -1990,6 +2258,15 @@ function CardModal({
     [boards, card.boardId],
   );
   const canMoveAcrossBoards = currentBoard?.isOwner === true;
+
+  async function copyValue(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copied`);
+    } catch {
+      toast.error(`Failed to copy ${label.toLowerCase()}`);
+    }
+  }
 
   useEffect(() => {
     if (availableSkillOptions.length === 0) return;
@@ -2074,9 +2351,10 @@ function CardModal({
     }
 
     const fallbackName = comment.authorType === "system" ? "System" : "Human";
+    const humanLabel = comment.authorLabel?.trim() || comment.authorEmail?.trim() || fallbackName;
 
     return {
-      name: comment.authorLabel?.trim() || fallbackName,
+      name: humanLabel,
       avatarUrl: null,
       emoji: undefined,
       fallbackIcon: comment.authorType === "human" ? ("user" as const) : undefined,
@@ -2224,6 +2502,46 @@ function CardModal({
             </div>
 
             <aside className="min-h-0 space-y-3 overflow-y-auto border-t border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-950/60 lg:border-t-0">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Card ID</label>
+                <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 py-2 dark:border-zinc-800 dark:bg-zinc-900">
+                  <code className="min-w-0 flex-1 break-all text-[11px] text-zinc-700 dark:text-zinc-200">{card._id}</code>
+                  <button
+                    type="button"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
+                    onClick={() => void copyValue(String(card._id), "Card ID")}
+                    aria-label="Copy card ID"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Runtime</label>
+                {activeSessions.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] font-medium text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-200">
+                      <Radio className="h-3 w-3" />
+                      {activeSessions.length > 1 ? `Active (${activeSessions.length})` : "Active"}
+                    </div>
+                    {activeSessions.map((session) => (
+                      <div key={session.sessionId} className="space-y-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-2 dark:border-zinc-800 dark:bg-zinc-900">
+                        <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                          <span>{session.agentId}</span>
+                          <span>{formatRelativeActivityTime(session.updatedAt)}</span>
+                        </div>
+                        <code className="block break-all text-[11px] text-zinc-700 dark:text-zinc-200">{session.sessionId}</code>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-zinc-200 px-2.5 py-2 text-[11px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                    No live worker activity detected for this card.
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Agent</label>
                 <AgentSelect value={agentDraft} options={agentOptions} onChange={setAgentDraft} />

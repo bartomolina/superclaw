@@ -4,7 +4,13 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { getNextOrder, normalizeText, optionalText, optionalUrl } from "./helpers";
-import { getViewer, requireAccessibleBoard, requireSuperuser } from "./access";
+import {
+  getBoardAgentAccess,
+  getViewer,
+  isAgentAllowedForBoard,
+  requireAccessibleBoard,
+  requireSuperuser,
+} from "./access";
 
 const FIXED_COLUMNS = ["Ideas", "TODO", "In Progress", "Review", "Done"] as const;
 
@@ -28,6 +34,23 @@ function normalizeSharedUserIds(sharedUserIds?: Id<"managedUsers">[]) {
 
 function normalizeEmail(value?: string | null) {
   return value?.trim().toLowerCase() || null;
+}
+
+function normalizeAllowedAgentIds(allowedAgentIds?: string[]) {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const agentId of allowedAgentIds ?? []) {
+    const value = optionalText(agentId);
+    if (!value || seen.has(value)) {
+      continue;
+    }
+
+    seen.add(value);
+    normalized.push(value);
+  }
+
+  return normalized;
 }
 
 async function resolveSharedUsers(
@@ -117,6 +140,38 @@ async function syncBoardPermissions(
   }
 }
 
+async function clearDisallowedBoardAgents(
+  ctx: MutationCtx,
+  boardId: Id<"boards">,
+  allowedAgentIds?: string[],
+) {
+  const restriction = getBoardAgentAccess({ allowedAgentIds });
+  if (!restriction.restricted) {
+    return;
+  }
+
+  const cards = await ctx.db
+    .query("cards")
+    .withIndex("by_board", (q) => q.eq("boardId", boardId))
+    .collect();
+
+  for (const card of cards) {
+    const nextPatch: Partial<Pick<Doc<"cards">, "agentId" | "reviewerId">> = {};
+
+    if (!isAgentAllowedForBoard({ allowedAgentIds }, card.agentId)) {
+      nextPatch.agentId = undefined;
+    }
+
+    if (!isAgentAllowedForBoard({ allowedAgentIds }, card.reviewerId)) {
+      nextPatch.reviewerId = undefined;
+    }
+
+    if (Object.keys(nextPatch).length > 0) {
+      await ctx.db.patch(card._id, nextPatch);
+    }
+  }
+}
+
 export const list = query({
   args: {},
   handler: async (ctx) => {
@@ -200,6 +255,16 @@ export const get = query({
   },
 });
 
+export const agentAccess = query({
+  args: {
+    boardId: v.id("boards"),
+  },
+  handler: async (ctx, args) => {
+    const { board } = await requireAccessibleBoard(ctx, args.boardId);
+    return getBoardAgentAccess(board);
+  },
+});
+
 export const create = mutation({
   args: {
     name: v.string(),
@@ -247,6 +312,7 @@ export const rename = mutation({
     description: v.optional(v.string()),
     url: v.optional(v.string()),
     sharedUserIds: v.optional(v.array(v.id("managedUsers"))),
+    allowedAgentIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     await requireSuperuser(ctx);
@@ -260,6 +326,7 @@ export const rename = mutation({
     const url = optionalUrl(args.url);
     const now = Date.now();
     const { normalizedIds } = await resolveSharedUsers(ctx, board.ownerId, args.sharedUserIds);
+    const normalizedAllowedAgentIds = normalizeAllowedAgentIds(args.allowedAgentIds);
 
     await ctx.db.replace(args.boardId, {
       ownerId: board.ownerId,
@@ -267,6 +334,7 @@ export const rename = mutation({
       ...(description ? { description } : {}),
       ...(url ? { url } : {}),
       ...(normalizedIds.length > 0 ? { sharedUserIds: normalizedIds } : {}),
+      ...(normalizedAllowedAgentIds.length > 0 ? { allowedAgentIds: normalizedAllowedAgentIds } : {}),
       createdAt: board.createdAt,
       updatedAt: now,
       order: board.order,
@@ -278,6 +346,8 @@ export const rename = mutation({
       sharedUserIds: normalizedIds,
       now,
     });
+
+    await clearDisallowedBoardAgents(ctx, args.boardId, normalizedAllowedAgentIds);
   },
 });
 
