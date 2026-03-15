@@ -3,7 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import type { FormEvent } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { api } from "@/convex/_generated/api";
@@ -18,6 +18,14 @@ type ManagedUser = {
   _id: Id<"managedUsers">;
   name: string;
   email: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type SuperuserProfile = {
+  email: string;
+  name: string;
+  hasCustomName: boolean;
   createdAt: number;
   updatedAt: number;
 };
@@ -39,12 +47,24 @@ export function UserManagementSheet({
   onClose: () => void;
 }) {
   const users = useQuery(api.users.list, open ? {} : "skip") as ManagedUser[] | undefined;
+  const superuserProfile = useQuery(api.users.superuserProfile, open ? {} : "skip") as
+    | SuperuserProfile
+    | undefined;
   const upsertUser = useMutation(api.users.upsert);
   const removeUser = useMutation(api.users.remove);
+  const setSuperuserProfile = useMutation(api.users.setSuperuserProfile);
+  const [superuserName, setSuperuserName] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [isSavingSuperuser, setIsSavingSuperuser] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (superuserProfile?.name) {
+      setSuperuserName(superuserProfile.name);
+    }
+  }, [superuserProfile?.name]);
 
   const sortedUsers = useMemo(
     () =>
@@ -58,6 +78,24 @@ export function UserManagementSheet({
 
   if (!open) {
     return null;
+  }
+
+  async function handleSuperuserSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (isSavingSuperuser) {
+      return;
+    }
+
+    try {
+      setIsSavingSuperuser(true);
+      await setSuperuserProfile({ name: superuserName });
+      toast.success("Superuser name saved.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save superuser name.");
+    } finally {
+      setIsSavingSuperuser(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -102,7 +140,7 @@ export function UserManagementSheet({
           <div>
             <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Users</div>
             <div className="text-xs text-zinc-500 dark:text-zinc-400">
-              Add or remove invited members who are allowed to sign in and be granted board access.
+              Manage member access.
             </div>
           </div>
           <button
@@ -115,9 +153,63 @@ export function UserManagementSheet({
         </div>
 
         <form
-          onSubmit={handleSubmit}
+          onSubmit={handleSuperuserSubmit}
           className="border-b border-zinc-200 pb-4 dark:border-zinc-800"
         >
+          <div className="mb-3">
+            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Superuser</div>
+            <div className="text-xs text-zinc-500 dark:text-zinc-400">
+              Set the name shown for the superuser in the app and card discussions.
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+            <label className="space-y-1.5">
+              <div className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                Name
+              </div>
+              <input
+                className={inputClass}
+                value={superuserName}
+                onChange={(event) => setSuperuserName(event.target.value)}
+                placeholder="Barto"
+                autoComplete="name"
+              />
+            </label>
+
+            <label className="space-y-1.5">
+              <div className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                Email
+              </div>
+              <input
+                className={inputClass}
+                value={superuserProfile?.email ?? ""}
+                readOnly
+                disabled
+              />
+            </label>
+
+            <button
+              type="submit"
+              className={`${primaryButtonClass} h-10 whitespace-nowrap px-4`}
+              disabled={isSavingSuperuser || !superuserProfile}
+            >
+              {isSavingSuperuser ? "Saving…" : "Save name"}
+            </button>
+          </div>
+        </form>
+
+        <form
+          onSubmit={handleSubmit}
+          className="border-b border-zinc-200 py-4 dark:border-zinc-800"
+        >
+          <div className="mb-3">
+            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Invited members</div>
+            <div className="text-xs text-zinc-500 dark:text-zinc-400">
+              Add or remove people who can sign in.
+            </div>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
             <label className="space-y-1.5">
               <div className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">

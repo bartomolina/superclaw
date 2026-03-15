@@ -12,10 +12,77 @@ type AuthUser = {
   name?: string;
 };
 
+type HumanIdentity = {
+  email?: string | null;
+  name?: string | null;
+  userId?: string | null;
+};
+
+export type BoardAgentAccess = {
+  allowedAgentIds: string[];
+  restricted: boolean;
+};
+
 const SUPERUSER_EMAIL = normalizeEmail(process.env.SUPERUSER_EMAIL);
 
 function normalizeEmail(value?: string | null) {
   return value?.trim().toLowerCase() || null;
+}
+
+export function getSuperuserEmail() {
+  return SUPERUSER_EMAIL;
+}
+
+function normalizeAgentId(value?: string | null) {
+  return value?.trim() || null;
+}
+
+export function getBoardAgentAccess(board: Pick<BoardDoc, "allowedAgentIds">): BoardAgentAccess {
+  const seen = new Set<string>();
+  const allowedAgentIds: string[] = [];
+
+  for (const agentId of board.allowedAgentIds ?? []) {
+    const normalized = normalizeAgentId(agentId);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    allowedAgentIds.push(normalized);
+  }
+
+  return {
+    allowedAgentIds,
+    restricted: allowedAgentIds.length > 0,
+  };
+}
+
+export function isAgentAllowedForBoard(board: Pick<BoardDoc, "allowedAgentIds">, agentId?: string | null) {
+  const normalizedAgentId = normalizeAgentId(agentId);
+
+  if (!normalizedAgentId) {
+    return true;
+  }
+
+  const access = getBoardAgentAccess(board);
+  if (!access.restricted) {
+    return true;
+  }
+
+  return access.allowedAgentIds.includes(normalizedAgentId);
+}
+
+export function assertAgentsAllowedForBoard(
+  board: Pick<BoardDoc, "allowedAgentIds">,
+  values: { agentId?: string | null; reviewerId?: string | null },
+) {
+  if (!isAgentAllowedForBoard(board, values.agentId)) {
+    throw new Error("Assigned agent is not allowed for this board");
+  }
+
+  if (!isAgentAllowedForBoard(board, values.reviewerId)) {
+    throw new Error("Reviewer is not allowed for this board");
+  }
 }
 
 function isSuperuserEmail(email?: string | null) {
@@ -23,19 +90,78 @@ function isSuperuserEmail(email?: string | null) {
   return Boolean(SUPERUSER_EMAIL && normalized && normalized === SUPERUSER_EMAIL);
 }
 
-async function isInvitedEmail(ctx: Ctx, email?: string | null) {
+async function findInvitedUserByEmail(ctx: Ctx, email?: string | null) {
   const normalized = normalizeEmail(email);
 
   if (!normalized) {
-    return false;
+    return null;
   }
 
-  const invitedUser = await ctx.db
+  return await ctx.db
     .query("managedUsers")
     .withIndex("by_email", (q) => q.eq("email", normalized))
     .first();
+}
 
-  return Boolean(invitedUser);
+async function getSuperuserProfileName(ctx: Ctx, email?: string | null) {
+  const normalized = normalizeEmail(email);
+
+  if (!normalized || !isSuperuserEmail(normalized)) {
+    return null;
+  }
+
+  const profile = await ctx.db
+    .query("superuserProfiles")
+    .withIndex("by_email", (q) => q.eq("email", normalized))
+    .unique();
+
+  return profile?.name?.trim() || null;
+}
+
+async function isInvitedEmail(ctx: Ctx, email?: string | null) {
+  return Boolean(await findInvitedUserByEmail(ctx, email));
+}
+
+export async function resolveHumanDisplayName(ctx: Ctx, human: HumanIdentity) {
+  const normalizedEmail = normalizeEmail(human.email);
+
+  if (normalizedEmail) {
+    const superuserProfileName = await getSuperuserProfileName(ctx, normalizedEmail);
+    if (superuserProfileName) {
+      return superuserProfileName;
+    }
+
+    const invitedUser = await findInvitedUserByEmail(ctx, normalizedEmail);
+    if (invitedUser?.name?.trim()) {
+      return invitedUser.name.trim();
+    }
+  }
+
+  const explicitName = human.name?.trim();
+  if (explicitName) {
+    return explicitName;
+  }
+
+  if (normalizedEmail) {
+    return normalizedEmail;
+  }
+
+  return human.userId?.trim() || "Human";
+}
+
+export async function resolveCommentAuthorLabel(
+  ctx: Ctx,
+  comment: Pick<Doc<"comments">, "authorType" | "authorId" | "authorLabel" | "authorEmail">,
+) {
+  if (comment.authorType === "human") {
+    return await resolveHumanDisplayName(ctx, {
+      email: comment.authorEmail,
+      name: comment.authorLabel,
+      userId: comment.authorId,
+    });
+  }
+
+  return comment.authorLabel ?? comment.authorId ?? (comment.authorType === "system" ? "System" : null);
 }
 
 export async function getUser(ctx: Ctx) {

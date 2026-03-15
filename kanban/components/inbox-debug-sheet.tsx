@@ -78,7 +78,15 @@ function Section({ label, items }: { label: string; items: InboxTask[] }) {
   );
 }
 
-export function InboxDebugSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function InboxDebugSheet({
+  open,
+  boardId,
+  onClose,
+}: {
+  open: boolean;
+  boardId?: string | null;
+  onClose: () => void;
+}) {
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("main");
   const [showRaw, setShowRaw] = useState(false);
@@ -91,7 +99,8 @@ export function InboxDebugSheet({ open, onClose }: { open: boolean; onClose: () 
 
     async function loadAgents() {
       try {
-        const response = await fetch("/api/agents");
+        const query = boardId ? `?boardId=${encodeURIComponent(boardId)}` : "";
+        const response = await fetch(`/api/agents${query}`, { cache: "no-store" });
         if (!response.ok) return;
 
         const data = (await response.json()) as { agents?: AgentOption[] };
@@ -116,7 +125,7 @@ export function InboxDebugSheet({ open, onClose }: { open: boolean; onClose: () 
     return () => {
       cancelled = true;
     };
-  }, [open, selectedAgentId]);
+  }, [boardId, open, selectedAgentId]);
 
   const inbox = useQuery(
     api.agent_automation.debugAgentInbox,

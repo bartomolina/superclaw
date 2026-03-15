@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
-import { isAuthorized } from "@/lib/server/api-auth";
+import type { Id } from "@/convex/_generated/dataModel";
+import { getAuthorizedBoardAgentAccess } from "@/lib/server/api-auth";
 import { gatewayCall } from "@/lib/server/openclaw/cli";
 
 export const runtime = "nodejs";
@@ -43,16 +44,26 @@ async function startManualWorker(agentId: string) {
 }
 
 export async function POST(request: Request) {
-  if (!(await isAuthorized())) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  }
-
   try {
-    const body = (await request.json()) as { agentId?: string };
+    const body = (await request.json()) as { agentId?: string; boardId?: string };
     const agentId = body.agentId?.trim();
+    const boardId = body.boardId?.trim();
 
     if (!agentId) {
       return NextResponse.json({ ok: false, error: "agentId is required" }, { status: 400 });
+    }
+
+    if (!boardId) {
+      return NextResponse.json({ ok: false, error: "boardId is required" }, { status: 400 });
+    }
+
+    const access = await getAuthorizedBoardAgentAccess(boardId as Id<"boards">);
+    if (!access) {
+      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
+
+    if (access.restricted && !access.allowedAgentIds.includes(agentId)) {
+      return NextResponse.json({ ok: false, error: "agent is not allowed for this board" }, { status: 403 });
     }
 
     const run = await startManualWorker(agentId);
@@ -60,6 +71,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       agentId,
+      boardId,
       sessionId: run.sessionId,
       sessionKey: run.sessionKey,
       runId: run.runId,

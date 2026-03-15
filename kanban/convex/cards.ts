@@ -2,7 +2,13 @@ import { v } from "convex/values";
 
 import { mutation } from "./_generated/server";
 import { getNextOrder, normalizeText, optionalText, touchBoard } from "./helpers";
-import { requireAccessibleBoard, requireAccessibleCard, requireOwnedBoard, requireOwnedCard } from "./access";
+import {
+  assertAgentsAllowedForBoard,
+  requireAccessibleBoard,
+  requireAccessibleCard,
+  requireOwnedBoard,
+  requireOwnedCard,
+} from "./access";
 
 function normalizeSkills(skills?: string[]) {
   if (!skills || skills.length === 0) return [];
@@ -42,7 +48,7 @@ export const create = mutation({
       throw new Error("Column not found");
     }
 
-    await requireAccessibleBoard(ctx, column.boardId);
+    const { board } = await requireAccessibleBoard(ctx, column.boardId);
 
     const cards = await ctx.db
       .query("cards")
@@ -59,6 +65,8 @@ export const create = mutation({
     const type = optionalText(args.type);
     const acp = optionalText(args.acp);
     const skills = normalizeSkills(args.skills);
+
+    assertAgentsAllowedForBoard(board, { agentId, reviewerId });
 
     const cardId = await ctx.db.insert("cards", {
       boardId: column.boardId,
@@ -95,6 +103,11 @@ export const update = mutation({
   },
   handler: async (ctx, args) => {
     const card = await requireAccessibleCard(ctx, args.cardId);
+    const board = await ctx.db.get(card.boardId);
+
+    if (!board) {
+      throw new Error("Board not found");
+    }
 
     const description = optionalText(args.description);
     const agentId = optionalText(args.agentId);
@@ -104,6 +117,8 @@ export const update = mutation({
     const type = optionalText(args.type);
     const acp = optionalText(args.acp);
     const skills = normalizeSkills(args.skills);
+
+    assertAgentsAllowedForBoard(board, { agentId, reviewerId });
 
     await ctx.db.replace(args.cardId, {
       boardId: card.boardId,
@@ -238,6 +253,8 @@ export const moveToBoard = mutation({
       boardId: args.targetBoardId,
       columnId: targetColumn._id,
       order: getNextOrder(targetCards),
+      agentId: undefined,
+      reviewerId: undefined,
     });
 
     const now = Date.now();

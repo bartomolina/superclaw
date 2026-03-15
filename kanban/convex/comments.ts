@@ -2,7 +2,7 @@ import { v } from "convex/values";
 
 import { mutation, query } from "./_generated/server";
 import { optionalText, touchBoard } from "./helpers";
-import { requireAccessibleCard, requireUser } from "./access";
+import { requireAccessibleCard, requireUser, resolveCommentAuthorLabel, resolveHumanDisplayName } from "./access";
 
 export const listByCard = query({
   args: {
@@ -11,11 +11,18 @@ export const listByCard = query({
   handler: async (ctx, args) => {
     await requireAccessibleCard(ctx, args.cardId);
 
-    return await ctx.db
+    const comments = await ctx.db
       .query("comments")
       .withIndex("by_card_created", (q) => q.eq("cardId", args.cardId))
       .order("asc")
       .collect();
+
+    return await Promise.all(
+      comments.map(async (comment) => ({
+        ...comment,
+        authorLabel: (await resolveCommentAuthorLabel(ctx, comment)) ?? undefined,
+      })),
+    );
   },
 });
 
@@ -35,7 +42,7 @@ export const add = mutation({
     }
 
     const createdAt = Date.now();
-    const authorLabel = user.name ?? user.email ?? user.userId;
+    const authorLabel = await resolveHumanDisplayName(ctx, user);
 
     const commentId = await ctx.db.insert("comments", {
       boardId: card.boardId,
@@ -44,6 +51,7 @@ export const add = mutation({
       createdAt,
       authorType: "human",
       authorId: user.userId,
+      authorEmail: user.email ?? undefined,
       authorLabel,
     });
 
