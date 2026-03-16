@@ -24,7 +24,7 @@ import {
 import { json, parseBody } from "@/lib/server/openclaw/http";
 import { aliasToFullModel, detectFallbacks, inferAvailableModels } from "@/lib/server/openclaw/models";
 import { getInstalledOpenClawVersion } from "@/lib/server/openclaw/status";
-import { AgentsListResponse, DashboardAgent } from "@/lib/server/openclaw/types";
+import { AgentsListResponse, DashboardAgent, SandboxKanbanConfig } from "@/lib/server/openclaw/types";
 
 function normalizeAgentsList(parsed: any): { agents: any[]; defaultId: string | null } {
   if (Array.isArray(parsed)) {
@@ -50,6 +50,50 @@ function normalizeAgentsList(parsed: any): { agents: any[]; defaultId: string | 
 
 function addWarning(warnings: string[], label: string, error: unknown) {
   warnings.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+}
+
+function getSandboxKanbanConfig(agentConfig: any): SandboxKanbanConfig {
+  const env = agentConfig?.sandbox?.docker?.env;
+  const baseUrl = typeof env?.KANBAN_BASE_URL === "string" && env.KANBAN_BASE_URL.trim() ? env.KANBAN_BASE_URL.trim() : null;
+  const hasAgentToken =
+    typeof env?.KANBAN_AGENT_TOKEN === "string" ? env.KANBAN_AGENT_TOKEN.trim().length > 0 : env?.KANBAN_AGENT_TOKEN != null;
+
+  return {
+    configured: baseUrl !== null || hasAgentToken,
+    active: !!agentConfig?.sandbox?.mode && agentConfig.sandbox.mode !== "off" && (baseUrl !== null || hasAgentToken),
+    baseUrl,
+    hasAgentToken,
+  };
+}
+
+function ensureAgentSandbox(agent: any) {
+  if (!agent.sandbox || typeof agent.sandbox !== "object") {
+    agent.sandbox = {
+      mode: "off",
+      scope: "agent",
+    };
+    return agent.sandbox;
+  }
+
+  if (!agent.sandbox.mode) {
+    agent.sandbox.mode = "off";
+  }
+
+  if (!agent.sandbox.scope) {
+    agent.sandbox.scope = "agent";
+  }
+
+  return agent.sandbox;
+}
+
+function cleanupSandboxDockerEnv(sandbox: any) {
+  if (!sandbox?.docker || typeof sandbox.docker !== "object") return;
+  if (sandbox.docker.env && typeof sandbox.docker.env === "object" && Object.keys(sandbox.docker.env).length === 0) {
+    delete sandbox.docker.env;
+  }
+  if (Object.keys(sandbox.docker).length === 0) {
+    delete sandbox.docker;
+  }
 }
 
 async function buildAgentResponse(): Promise<AgentsListResponse> {
@@ -100,6 +144,7 @@ async function buildAgentResponse(): Promise<AgentsListResponse> {
         toolsProfile: agentConfig.tools?.profile ?? defaults.tools?.profile ?? null,
         sandboxed: !!agentConfig.sandbox?.mode && agentConfig.sandbox.mode !== "off",
         workspaceAccess: agentConfig.sandbox?.workspaceAccess ?? null,
+        sandboxKanban: getSandboxKanbanConfig(agentConfig),
         isDefault: id === (defaultId || defaults.id || null),
       };
     });
@@ -143,6 +188,7 @@ async function buildAgentResponse(): Promise<AgentsListResponse> {
       toolsProfile: agentConfig.tools?.profile ?? defaults.tools?.profile ?? null,
       sandboxed: !!agentConfig.sandbox?.mode && agentConfig.sandbox.mode !== "off",
       workspaceAccess: agentConfig.sandbox?.workspaceAccess ?? null,
+      sandboxKanban: getSandboxKanbanConfig(agentConfig),
       channels: [],
       skills: [],
       models: models.length > 0 ? models : availableModels,
@@ -399,16 +445,91 @@ export async function handleAgentSandbox(req: NextRequest, agentIdRaw: string) {
   const agent = raw.agents?.list?.find((entry: any) => entry.id === agentId);
   if (!agent) return json({ error: "agent not found" }, 404);
 
+  const sandbox = ensureAgentSandbox(agent);
+
   if (sandboxed) {
-    agent.sandbox = {
-      mode: "all",
-      scope: "agent",
-      workspaceAccess,
-    };
+    sandbox.mode = "all";
+    sandbox.scope = sandbox.scope || "agent";
+    sandbox.workspaceAccess = workspaceAccess;
   } else {
-    delete agent.sandbox;
+    sandbox.mode = "off";
+    sandbox.scope = sandbox.scope || "agent";
+    if (sandbox.workspaceAccess !== workspaceAccess) {
+      sandbox.workspaceAccess = workspaceAccess;
+    }
   }
 
   await applyConfig(JSON.stringify(raw, null, 2), config.hash);
   return json({ ok: true, sandboxed, workspaceAccess: sandboxed ? workspaceAccess : null });
+}
+
+export async function handleAgentSandboxKanban(req: NextRequest, agentIdRaw: string) {
+  const agentId = optionalAgentId(agentIdRaw);
+  if (!agentId) throw new ApiError("invalid agent id", 400);
+
+  const body = await parseBody(req);
+  const clear = body.clear === true;
+  const hasBaseUrl = Object.prototype.hasOwnProperty.call(body, "baseUrl");
+  const hasToken = Object.prototype.hasOwnProperty.call(body, "token");
+  const baseUrl = clear ? undefined : optionalString(body.baseUrl, 2_000);
+  const token = clear ? undefined : optionalString(body.token, 4_000);
+
+  if (!clear && !hasBaseUrl && !hasToken) {
+    return json({ error: "baseUrl, token, or clear=true is required" }, 400);
+  }
+
+  const config = await getConfigDocument();
+  const raw = parseConfigRaw(config.raw, {} as any);
+  const agent = raw.agents?.list?.find((entry: any) => entry.id === agentId);
+  if (!agent) return json({ error: "agent not found" }, 404);
+
+  if (clear) {
+    const sandbox = agent.sandbox;
+    if (!sandbox || typeof sandbox !== "object" || !sandbox.docker || typeof sandbox.docker !== "object") {
+      return json({ ok: true, sandboxed: false, sandboxKanban: getSandboxKanbanConfig(agent) });
+    }
+
+    if (!sandbox.docker.env || typeof sandbox.docker.env !== "object") {
+      return json({ ok: true, sandboxed: sandbox.mode !== "off", sandboxKanban: getSandboxKanbanConfig(agent) });
+    }
+
+    delete sandbox.docker.env.KANBAN_BASE_URL;
+    delete sandbox.docker.env.KANBAN_AGENT_TOKEN;
+    cleanupSandboxDockerEnv(sandbox);
+  } else {
+    const sandbox = ensureAgentSandbox(agent);
+    if (!sandbox.docker || typeof sandbox.docker !== "object") {
+      sandbox.docker = {};
+    }
+    if (!sandbox.docker.env || typeof sandbox.docker.env !== "object") {
+      sandbox.docker.env = {};
+    }
+
+    if (hasBaseUrl) {
+      if (baseUrl) {
+        sandbox.docker.env.KANBAN_BASE_URL = baseUrl;
+      } else {
+        delete sandbox.docker.env.KANBAN_BASE_URL;
+      }
+    }
+
+    if (hasToken) {
+      if (token) {
+        sandbox.docker.env.KANBAN_AGENT_TOKEN = token;
+      } else {
+        delete sandbox.docker.env.KANBAN_AGENT_TOKEN;
+      }
+    }
+
+    cleanupSandboxDockerEnv(sandbox);
+  }
+
+  await applyConfig(JSON.stringify(raw, null, 2), config.hash);
+
+  const sandboxKanban = getSandboxKanbanConfig(agent);
+  return json({
+    ok: true,
+    sandboxed: !!agent.sandbox?.mode && agent.sandbox.mode !== "off",
+    sandboxKanban,
+  });
 }

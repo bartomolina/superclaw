@@ -33,6 +33,12 @@ export type Cron = {
   nextRunAtMs: number | null;
 };
 export type Heartbeat = { every: string | null; model: string | null; active: boolean };
+export type SandboxKanbanConfig = {
+  configured: boolean;
+  active: boolean;
+  baseUrl: string | null;
+  hasAgentToken: boolean;
+};
 export type Agent = {
   id: string;
   name: string;
@@ -46,6 +52,7 @@ export type Agent = {
   toolsProfile: string | null;
   sandboxed: boolean;
   workspaceAccess: "none" | "ro" | "rw" | null;
+  sandboxKanban: SandboxKanbanConfig;
   isDefault: boolean;
   channels: Channel[];
   skills: Skill[];

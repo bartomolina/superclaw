@@ -28,6 +28,7 @@ type BaseTask = {
   assigneeId: string | undefined;
   reviewerId: string | undefined;
   acp: string | undefined;
+  model: string | undefined;
   executionHint: string | undefined;
   roles: AgentRole[];
   order: number;
@@ -74,7 +75,18 @@ function normalizeColumnName(value: string | null | undefined) {
     .replace(/[^a-z]/g, "");
 }
 
-function buildExecutionHint(acp: string | null | undefined) {
+function buildExecutionHint({
+  acp,
+  model,
+}: {
+  acp: string | null | undefined;
+  model: string | null | undefined;
+}) {
+  const normalizedModel = (model ?? "").trim();
+  if (normalizedModel) {
+    return `run this with model ${normalizedModel}`;
+  }
+
   const normalizedAcp = (acp ?? "").trim().toLowerCase();
   if (!normalizedAcp) return undefined;
   return `run this with acp ${normalizedAcp}`;
@@ -212,7 +224,8 @@ async function buildBaseTasks(
         assigneeId: card.agentId,
         reviewerId: card.reviewerId,
         acp: card.acp,
-        executionHint: buildExecutionHint(card.acp),
+        model: card.model,
+        executionHint: buildExecutionHint({ acp: card.acp, model: card.model }),
         roles,
         order: card.order,
       } satisfies BaseTask;

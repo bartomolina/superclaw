@@ -97,6 +97,22 @@ pnpm dev
 
 ## Agent automation API (v1)
 
+### Runtime config modes for agents
+
+There are now two supported runtime-config patterns for Kanban workers:
+
+1. **Local autodiscovery** (good for non-sandboxed/local agents)
+   - read `NEXT_PUBLIC_CONVEX_SITE_URL` from the Kanban app's `.env.local`
+   - read `KANBAN_AGENT_SHARED_TOKEN` via `pnpm exec convex env get ...`
+
+2. **Explicit runtime config** (good for sandboxed/isolated agents)
+   - inject these env vars into the agent runtime:
+     - `KANBAN_BASE_URL`
+     - `KANBAN_AGENT_TOKEN`
+   - the kanban skill should use those directly instead of trying to read the local repo / Convex config
+
+This keeps the skill portable: local agents can autodiscover, while sandboxed agents can work with explicitly injected runtime config.
+
 Convex HTTP endpoints:
 
 - `GET <NEXT_PUBLIC_CONVEX_SITE_URL>/agent/kanban/tasks?includeDone=1`
