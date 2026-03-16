@@ -39,6 +39,7 @@ export const create = mutation({
     size: v.optional(v.string()),
     type: v.optional(v.string()),
     acp: v.optional(v.string()),
+    model: v.optional(v.string()),
     skills: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
@@ -64,7 +65,12 @@ export const create = mutation({
     const size = optionalText(args.size);
     const type = optionalText(args.type);
     const acp = optionalText(args.acp);
+    const model = optionalText(args.model);
     const skills = normalizeSkills(args.skills);
+
+    if (acp && model) {
+      throw new Error("Choose either ACP or model");
+    }
 
     assertAgentsAllowedForBoard(board, { agentId, reviewerId });
 
@@ -79,6 +85,7 @@ export const create = mutation({
       ...(size ? { size } : {}),
       ...(type ? { type } : {}),
       ...(acp ? { acp } : {}),
+      ...(model ? { model } : {}),
       ...(skills.length > 0 ? { skills } : {}),
       order: getNextOrder(cards),
     });
@@ -99,6 +106,7 @@ export const update = mutation({
     size: v.optional(v.string()),
     type: v.optional(v.string()),
     acp: v.optional(v.string()),
+    model: v.optional(v.string()),
     skills: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
@@ -116,7 +124,12 @@ export const update = mutation({
     const size = optionalText(args.size);
     const type = optionalText(args.type);
     const acp = optionalText(args.acp);
+    const model = optionalText(args.model);
     const skills = normalizeSkills(args.skills);
+
+    if (acp && model) {
+      throw new Error("Choose either ACP or model");
+    }
 
     assertAgentsAllowedForBoard(board, { agentId, reviewerId });
 
@@ -131,6 +144,7 @@ export const update = mutation({
       ...(size ? { size } : {}),
       ...(type ? { type } : {}),
       ...(acp ? { acp } : {}),
+      ...(model ? { model } : {}),
       ...(skills.length > 0 ? { skills } : {}),
       order: card.order,
     });

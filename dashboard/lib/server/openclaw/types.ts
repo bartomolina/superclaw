@@ -4,6 +4,13 @@ export type DashboardModel = {
   provider: string;
 };
 
+export type SandboxKanbanConfig = {
+  configured: boolean;
+  active: boolean;
+  baseUrl: string | null;
+  hasAgentToken: boolean;
+};
+
 export type DashboardAgent = {
   id: string;
   name: string;
@@ -18,6 +25,7 @@ export type DashboardAgent = {
   toolsProfile: string | null;
   sandboxed: boolean;
   workspaceAccess: "none" | "ro" | "rw" | null;
+  sandboxKanban: SandboxKanbanConfig;
   isDefault: boolean;
   channels: unknown[];
   skills: unknown[];

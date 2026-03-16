@@ -48,6 +48,7 @@ export default defineSchema({
     size: v.optional(v.string()),
     type: v.optional(v.string()),
     acp: v.optional(v.string()),
+    model: v.optional(v.string()),
     skills: v.optional(v.array(v.string())),
     order: v.number(),
   })

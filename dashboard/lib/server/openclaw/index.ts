@@ -15,7 +15,8 @@ export {
   handleAgentModel,
   handleAgentsList,
   handleAgentSandbox,
+  handleAgentSandboxKanban,
   handleCreateAgent,
   handleDeleteAgent,
 } from "@/lib/server/openclaw/agents";
-export type { AgentsListResponse, DashboardAgent, DashboardModel } from "@/lib/server/openclaw/types";
+export type { AgentsListResponse, DashboardAgent, DashboardModel, SandboxKanbanConfig } from "@/lib/server/openclaw/types";

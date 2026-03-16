@@ -74,6 +74,7 @@ type CardModel = {
   size?: string;
   type?: string;
   acp?: string;
+  model?: string;
   skills?: string[];
   order: number;
 };
@@ -139,6 +140,12 @@ type SkillOption = {
   eligible?: boolean;
 };
 
+type ModelOption = {
+  id: string;
+  label: string;
+  isPrimary?: boolean;
+};
+
 type ChoiceOption = string | { value: string; label: string; title?: string };
 
 const cardTypeOptions: ChoiceOption[] = [
@@ -178,6 +185,16 @@ function summarize(text?: string) {
   const normalized = text?.trim();
   if (!normalized) return "";
   return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
+}
+
+function formatModelChipLabel(model?: string) {
+  const normalized = model?.trim();
+  if (!normalized) return "";
+
+  const [provider, name] = normalized.split("/");
+  if (!name) return normalized;
+  if (provider === "openrouter" && name === "auto") return "auto";
+  return name;
 }
 
 function formatRelativeActivityTime(timestamp: number) {
@@ -390,6 +407,38 @@ function AgentSelect({
   );
 }
 
+function ModelSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: ModelOption[];
+  onChange: (value: string) => void;
+}) {
+  const normalizedOptions = useMemo(
+    () =>
+      Array.from(new Map(options.map((option) => [option.id, option] as const)).values()).sort((a, b) => {
+        if (a.isPrimary && !b.isPrimary) return -1;
+        if (!a.isPrimary && b.isPrimary) return 1;
+        return a.label.localeCompare(b.label);
+      }),
+    [options],
+  );
+
+  return (
+    <select className={`${inputClass} h-9`} value={value} onChange={(event) => onChange(event.target.value)}>
+      <option value="">Default model</option>
+      {normalizedOptions.map((option) => (
+        <option key={option.id} value={option.id}>
+          {option.label}
+          {option.isPrimary ? " (default)" : ""}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function ChoiceChips({
   value,
   options,
@@ -490,6 +539,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [sidebarAgentOptions, setSidebarAgentOptions] = useState<AgentOption[]>([]);
   const [isSidebarAgentsLoading, setIsSidebarAgentsLoading] = useState(false);
   const [sidebarSkillOptions, setSidebarSkillOptions] = useState<SkillOption[]>([]);
+  const [sidebarModelOptions, setSidebarModelOptions] = useState<ModelOption[]>([]);
   const [runningAgentId, setRunningAgentId] = useState<string | null>(null);
   const [activeCardId, setActiveCardId] = useState<Id<"cards"> | null>(null);
   const [activeBoardId, setActiveBoardId] = useState<Id<"boards"> | null>(null);
@@ -609,6 +659,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     if (!isConvexAuthenticated || !effectiveSelectedBoardId) {
       setIsSidebarAgentsLoading(false);
       setSidebarAgentOptions([]);
+      setSidebarModelOptions([]);
       return;
     }
 
@@ -618,14 +669,16 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
     async function loadSidebarOptions() {
       try {
-        const [agentsResponse, skillsResponse] = await Promise.all([
+        const [agentsResponse, skillsResponse, modelsResponse] = await Promise.all([
           fetch(`/api/agents?boardId=${encodeURIComponent(String(effectiveSelectedBoardId))}`, { cache: "no-store" }).catch(() => null),
           fetch("/api/skills", { cache: "no-store" }).catch(() => null),
+          fetch("/api/models", { cache: "no-store" }).catch(() => null),
         ]);
         if (cancelled) return;
 
         const agentsData = agentsResponse && agentsResponse.ok ? ((await agentsResponse.json()) as { agents?: AgentOption[] }) : null;
         const skillsData = skillsResponse && skillsResponse.ok ? ((await skillsResponse.json()) as { skills?: SkillOption[] }) : null;
+        const modelsData = modelsResponse && modelsResponse.ok ? ((await modelsResponse.json()) as { models?: ModelOption[] }) : null;
         if (cancelled) return;
 
         const normalizedAgents = (agentsData?.agents ?? [])
@@ -642,8 +695,22 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           .map((skill) => ({ name: String(skill.name), eligible: true }))
           .sort((a, b) => a.name.localeCompare(b.name));
 
+        const normalizedModels = (modelsData?.models ?? [])
+          .filter((model) => model?.id && model?.label)
+          .map((model) => ({
+            id: String(model.id),
+            label: String(model.label),
+            isPrimary: model.isPrimary === true,
+          }))
+          .sort((a, b) => {
+            if (a.isPrimary && !b.isPrimary) return -1;
+            if (!a.isPrimary && b.isPrimary) return 1;
+            return a.label.localeCompare(b.label);
+          });
+
         setSidebarAgentOptions(normalizedAgents);
         setSidebarSkillOptions(normalizedSkills);
+        setSidebarModelOptions(normalizedModels);
       } catch {
         // Ignore sidebar option loading failures.
       } finally {
@@ -1469,6 +1536,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           activeSessions={activeCardSessionsById[String(activeCard._id)] ?? []}
           agentOptions={filterBoardAgentOptions(sidebarAgentOptions, boardView.board.allowedAgentIds)}
           skillOptions={sidebarSkillOptions}
+          modelOptions={sidebarModelOptions}
           onClose={() => setActiveCardId(null)}
         />
       ) : null}
@@ -2176,6 +2244,7 @@ function CardModal({
   activeSessions,
   agentOptions,
   skillOptions,
+  modelOptions,
   onClose,
 }: {
   card: CardModel;
@@ -2184,6 +2253,7 @@ function CardModal({
   activeSessions: ActiveCardSession[];
   agentOptions: AgentOption[];
   skillOptions: SkillOption[];
+  modelOptions: ModelOption[];
   onClose: () => void;
 }) {
   const updateCard = useMutation(api.cards.update);
@@ -2213,6 +2283,7 @@ function CardModal({
     card.type === "feature" || card.type === "bug" || card.type === "cosmetic" ? card.type : "",
   );
   const [acpDraft, setAcpDraft] = useState(card.acp === "codex" || card.acp === "cursor" ? card.acp : "");
+  const [modelDraft, setModelDraft] = useState(card.model?.trim() ?? "");
   const [skillsDraft, setSkillsDraft] = useState<string[]>(card.skills ?? []);
   const [commentDraft, setCommentDraft] = useState("");
   const [isSavingComment, setIsSavingComment] = useState(false);
@@ -2287,6 +2358,20 @@ function CardModal({
 
       return [...current, skillName];
     });
+  }
+
+  function handleModelChange(value: string) {
+    setModelDraft(value);
+    if (value) {
+      setAcpDraft("");
+    }
+  }
+
+  function handleAcpChange(value: string) {
+    setAcpDraft(value);
+    if (value) {
+      setModelDraft("");
+    }
   }
 
   async function submitComment() {
@@ -2376,6 +2461,7 @@ function CardModal({
       size: sizeDraft,
       type: typeDraft,
       acp: acpDraft,
+      model: modelDraft,
       skills: parsedSkills,
     });
 
@@ -2568,8 +2654,19 @@ function CardModal({
               </div>
 
               <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Model</label>
+                <ModelSelect value={modelDraft} options={modelOptions} onChange={handleModelChange} />
+                {modelDraft ? (
+                  <div className="mt-1 break-all text-[11px] text-zinc-500 dark:text-zinc-400">{modelDraft}</div>
+                ) : null}
+              </div>
+
+              <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">ACP</label>
-                <ChoiceChips value={acpDraft} options={["codex", "cursor"]} onChange={setAcpDraft} />
+                <ChoiceChips value={acpDraft} options={["codex", "cursor"]} onChange={handleAcpChange} />
+                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                  Model and ACP are mutually exclusive — choosing one clears the other.
+                </div>
               </div>
 
               <div>

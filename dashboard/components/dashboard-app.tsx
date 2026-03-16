@@ -181,6 +181,12 @@ export default function App() {
         toolsProfile: a.toolsProfile || null,
         sandboxed: a.sandboxed ?? false,
         workspaceAccess: a.workspaceAccess ?? null,
+        sandboxKanban: {
+          configured: a.sandboxKanban?.configured ?? false,
+          active: a.sandboxKanban?.active ?? false,
+          baseUrl: a.sandboxKanban?.baseUrl ?? null,
+          hasAgentToken: a.sandboxKanban?.hasAgentToken ?? false,
+        },
         isDefault: a.isDefault ?? false,
         channels: [],
         skills: [],
