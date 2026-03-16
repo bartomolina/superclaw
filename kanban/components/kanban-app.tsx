@@ -76,6 +76,11 @@ type CardModel = {
   acp?: string;
   model?: string;
   skills?: string[];
+  isRunning?: boolean;
+  lastSessionId?: string;
+  lastSessionAgentId?: string;
+  lastSessionUpdatedAt?: number;
+  lastRunStatus?: "running" | "done" | "failed" | "aborted";
   order: number;
 };
 
@@ -119,15 +124,6 @@ type BoardView = {
   columns: ColumnModel[];
 } | null;
 
-type ActiveCardSession = {
-  sessionId: string;
-  sessionKey: string;
-  agentId: string;
-  updatedAt: number;
-};
-
-type ActiveCardSessionsById = Record<string, ActiveCardSession[]>;
-
 type AgentOption = {
   id: string;
   name: string;
@@ -147,6 +143,7 @@ type ModelOption = {
 };
 
 type ChoiceOption = string | { value: string; label: string; title?: string };
+type CardRunStatus = NonNullable<CardModel["lastRunStatus"]>;
 
 const cardTypeOptions: ChoiceOption[] = [
   { value: "feature", label: "🧩", title: "Feature" },
@@ -187,16 +184,6 @@ function summarize(text?: string) {
   return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
 }
 
-function formatModelChipLabel(model?: string) {
-  const normalized = model?.trim();
-  if (!normalized) return "";
-
-  const [provider, name] = normalized.split("/");
-  if (!name) return normalized;
-  if (provider === "openrouter" && name === "auto") return "auto";
-  return name;
-}
-
 function formatRelativeActivityTime(timestamp: number) {
   const elapsedMs = Math.max(0, Date.now() - timestamp);
 
@@ -213,6 +200,55 @@ function formatRelativeActivityTime(timestamp: number) {
   }
 
   return `${Math.max(1, Math.floor(elapsedMs / 86_400_000))}d ago`;
+}
+
+function formatRunStatusLabel(status?: CardRunStatus) {
+  if (status === "running") return "Running";
+  if (status === "done") return "Done";
+  if (status === "failed") return "Failed";
+  if (status === "aborted") return "Aborted";
+  return "Idle";
+}
+
+function getRunStatusClass(status?: CardRunStatus) {
+  if (status === "running") {
+    return "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-200";
+  }
+
+  if (status === "done") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-200";
+  }
+
+  if (status === "failed") {
+    return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/70 dark:bg-rose-950/40 dark:text-rose-200";
+  }
+
+  if (status === "aborted") {
+    return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200";
+  }
+
+  return "border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-300";
+}
+
+function describeCardRunState(card: CardModel) {
+  const status = card.isRunning ? "running" : card.lastRunStatus;
+
+  if (!status || !card.lastSessionId) {
+    return "";
+  }
+
+  const details = [formatRunStatusLabel(status)];
+
+  if (card.lastSessionAgentId) {
+    details.push(card.lastSessionAgentId);
+  }
+
+  if (typeof card.lastSessionUpdatedAt === "number") {
+    details.push(formatRelativeActivityTime(card.lastSessionUpdatedAt));
+  }
+
+  details.push(card.lastSessionId);
+  return details.join(" · ");
 }
 
 function resolveAgentName(agentId?: string) {
@@ -546,7 +582,6 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [activeDragCardId, setActiveDragCardId] = useState<Id<"cards"> | null>(null);
   const [dragColumns, setDragColumns] = useState<ColumnModel[] | null>(null);
   const [editingBoard, setEditingBoard] = useState<BoardModel | null>(null);
-  const [activeCardSessionsById, setActiveCardSessionsById] = useState<ActiveCardSessionsById>({});
 
   const router = useRouter();
   const pathname = usePathname();
@@ -598,12 +633,6 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     api.activity.listByBoard,
     effectiveSelectedBoardId ? { boardId: effectiveSelectedBoardId, limit: 14 } : "skip",
   ) as ActivityEventModel[] | undefined;
-
-  const boardCardIds = useMemo(
-    () => boardView?.columns.flatMap((column) => column.cards.map((card) => String(card._id))) ?? [],
-    [boardView],
-  );
-  const boardCardIdsSignature = useMemo(() => boardCardIds.join(","), [boardCardIds]);
 
   const selectedBoard = useMemo(() => {
     if (!boards || boards.length === 0) return null;
@@ -728,53 +757,16 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   }, [effectiveSelectedBoardId, isConvexAuthenticated, selectedBoardAgentPolicyKey]);
 
   useEffect(() => {
-    if (!isConvexAuthenticated || !effectiveSelectedBoardId || boardCardIds.length === 0) {
-      setActiveCardSessionsById({});
-      return;
-    }
+    if (activeCardId && boardView) {
+      const cardStillExists = boardView.columns.some((column) =>
+        column.cards.some((candidate) => candidate._id === activeCardId),
+      );
 
-    let cancelled = false;
-    let intervalId: number | null = null;
-
-    async function refreshActiveSessions() {
-      try {
-        const response = await fetch("/api/agent-workers/active", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ cardIds: boardCardIds }),
-        });
-
-        const data = (await response.json()) as {
-          ok?: boolean;
-          activeByCardId?: ActiveCardSessionsById;
-        };
-
-        if (!response.ok || !data.ok || cancelled) {
-          return;
-        }
-
-        setActiveCardSessionsById(data.activeByCardId ?? {});
-      } catch {
-        if (!cancelled) {
-          setActiveCardSessionsById({});
-        }
+      if (!cardStillExists) {
+        setActiveCardId(null);
       }
     }
-
-    void refreshActiveSessions();
-    intervalId = window.setInterval(() => {
-      void refreshActiveSessions();
-    }, 15_000);
-
-    return () => {
-      cancelled = true;
-      if (intervalId) {
-        window.clearInterval(intervalId);
-      }
-    };
-  }, [boardCardIds, boardCardIdsSignature, effectiveSelectedBoardId, isConvexAuthenticated]);
+  }, [activeCardId, boardView]);
 
   useEffect(() => {
     if (!isConvexAuthenticated || !isSuperuser) return;
@@ -826,6 +818,14 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
   const boardColumnsSig = useMemo(() => columnsSignature(boardView?.columns ?? []), [boardView]);
   const dragColumnsSig = useMemo(() => columnsSignature(dragColumns ?? []), [dragColumns]);
+  const runningAgentIdsForBoard = useMemo(() => {
+    return new Set(
+      boardView?.columns
+        .flatMap((column) => column.cards)
+        .filter((card) => card.isRunning && card.lastSessionAgentId)
+        .map((card) => card.lastSessionAgentId as string) ?? [],
+    );
+  }, [boardView]);
 
   const activeDragCard = useMemo(() => {
     if (!activeDragCardId) return null;
@@ -1356,9 +1356,9 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                 {isSidebarAgentsLoading ? (
                   <div className="px-1 text-sm text-zinc-500 dark:text-zinc-400">Loading agents...</div>
                 ) : sidebarAgentOptions.length > 0 ? (
-                  <div className="space-y-2 px-1">
+                    <div className="space-y-2 px-1">
                     {sidebarAgentOptions.map((agent) => {
-                      const isRunning = runningAgentId === agent.id;
+                      const isRunning = runningAgentId === agent.id || runningAgentIdsForBoard.has(agent.id);
 
                       return (
                         <button
@@ -1447,7 +1447,6 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                         key={column._id}
                         column={column}
                         accentClass={getColumnTone(column.name)}
-                        activeSessionsByCardId={activeCardSessionsById}
                         onOpenCard={(cardId) => setActiveCardId(cardId)}
                       />
                     ))}
@@ -1533,7 +1532,6 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           card={activeCard}
           columns={boardView.columns}
           boards={boards ?? []}
-          activeSessions={activeCardSessionsById[String(activeCard._id)] ?? []}
           agentOptions={filterBoardAgentOptions(sidebarAgentOptions, boardView.board.allowedAgentIds)}
           skillOptions={sidebarSkillOptions}
           modelOptions={sidebarModelOptions}
@@ -1898,12 +1896,10 @@ function BoardSidebarItem({
 function KanbanColumn({
   column,
   accentClass,
-  activeSessionsByCardId,
   onOpenCard,
 }: {
   column: ColumnModel;
   accentClass: string;
-  activeSessionsByCardId: ActiveCardSessionsById;
   onOpenCard: (cardId: Id<"cards">) => void;
 }) {
   const createCard = useMutation(api.cards.create);
@@ -1963,7 +1959,6 @@ function KanbanColumn({
               key={card._id}
               card={card}
               columnId={column._id}
-              activeSessions={activeSessionsByCardId[String(card._id)] ?? []}
               onOpenCard={onOpenCard}
             />
           ))}
@@ -2017,12 +2012,10 @@ function KanbanColumn({
 function KanbanCard({
   card,
   columnId,
-  activeSessions,
   onOpenCard,
 }: {
   card: CardModel;
   columnId: Id<"columns">;
-  activeSessions: ActiveCardSession[];
   onOpenCard: (cardId: Id<"cards">) => void;
 }) {
   const deleteCard = useMutation(api.cards.remove);
@@ -2034,10 +2027,8 @@ function KanbanCard({
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
 
   const summary = summarize(card.description);
-  const isActive = activeSessions.length > 0;
-  const activeSessionSummary = activeSessions
-    .map((session) => `${session.sessionId} · ${session.agentId} · ${formatRelativeActivityTime(session.updatedAt)}`)
-    .join("\n");
+  const isActive = card.isRunning === true;
+  const activeSessionSummary = describeCardRunState(card);
   const assigneeName = resolveAgentName(card.agentId);
   const reviewerName = resolveAgentName(card.reviewerId);
   const assigneeAvatarUrl = resolveAgentAvatarUrl(card.agentId);
@@ -2048,7 +2039,7 @@ function KanbanCard({
     isActive
       ? {
           key: "active",
-          label: activeSessions.length > 1 ? `Active · ${activeSessions.length}` : "Active",
+          label: "Running",
           title: activeSessionSummary,
           className:
             "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-200",
@@ -2166,7 +2157,7 @@ function KanbanCard({
       <button
         ref={setNodeRef}
         type="button"
-        title={isActive ? activeSessionSummary : undefined}
+        title={activeSessionSummary || undefined}
         {...attributes}
         {...listeners}
         onClick={() => onOpenCard(card._id)}
@@ -2241,7 +2232,6 @@ function CardModal({
   card,
   columns,
   boards,
-  activeSessions,
   agentOptions,
   skillOptions,
   modelOptions,
@@ -2250,7 +2240,6 @@ function CardModal({
   card: CardModel;
   columns: ColumnModel[];
   boards: BoardModel[];
-  activeSessions: ActiveCardSession[];
   agentOptions: AgentOption[];
   skillOptions: SkillOption[];
   modelOptions: ModelOption[];
@@ -2605,25 +2594,31 @@ function CardModal({
 
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Runtime</label>
-                {activeSessions.length > 0 ? (
+                {card.lastSessionId ? (
                   <div className="space-y-2">
-                    <div className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] font-medium text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-200">
-                      <Radio className="h-3 w-3" />
-                      {activeSessions.length > 1 ? `Active (${activeSessions.length})` : "Active"}
+                    <div
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium ${getRunStatusClass(
+                        card.isRunning ? "running" : card.lastRunStatus,
+                      )}`}
+                    >
+                      {card.isRunning ? <Radio className="h-3 w-3" /> : null}
+                      {formatRunStatusLabel(card.isRunning ? "running" : card.lastRunStatus)}
                     </div>
-                    {activeSessions.map((session) => (
-                      <div key={session.sessionId} className="space-y-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-2 dark:border-zinc-800 dark:bg-zinc-900">
-                        <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                          <span>{session.agentId}</span>
-                          <span>{formatRelativeActivityTime(session.updatedAt)}</span>
-                        </div>
-                        <code className="block break-all text-[11px] text-zinc-700 dark:text-zinc-200">{session.sessionId}</code>
+                    <div className="space-y-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-2 dark:border-zinc-800 dark:bg-zinc-900">
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                        <span>{card.lastSessionAgentId ?? "Unknown agent"}</span>
+                        <span>
+                          {typeof card.lastSessionUpdatedAt === "number"
+                            ? formatRelativeActivityTime(card.lastSessionUpdatedAt)
+                            : "unknown"}
+                        </span>
                       </div>
-                    ))}
+                      <code className="block break-all text-[11px] text-zinc-700 dark:text-zinc-200">{card.lastSessionId}</code>
+                    </div>
                   </div>
                 ) : (
                   <div className="rounded-lg border border-dashed border-zinc-200 px-2.5 py-2 text-[11px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                    No live worker activity detected for this card.
+                    No worker run recorded for this card yet.
                   </div>
                 )}
               </div>

@@ -4,7 +4,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery, query } from "./_generated/server";
-import { requireMember, resolveCommentAuthorLabel } from "./access";
+import { isAgentAllowedForBoard, requireAccessibleBoard, requireMember, resolveCommentAuthorLabel } from "./access";
 import { getNextOrder, optionalText, touchBoard } from "./helpers";
 
 type AgentRole = "assignee" | "reviewer";
@@ -187,7 +187,10 @@ async function buildBaseTasks(
   ctx: QueryCtx,
   agent: AgentIdentity,
   includeDone: boolean,
-  ownerId?: string,
+  filters?: {
+    ownerId?: string;
+    boardId?: Id<"boards">;
+  },
 ): Promise<BaseTask[]> {
   const [allBoards, columns, cards] = await Promise.all([
     ctx.db.query("boards").withIndex("by_order").order("asc").collect(),
@@ -195,7 +198,14 @@ async function buildBaseTasks(
     ctx.db.query("cards").collect(),
   ]);
 
-  const boards = ownerId ? allBoards.filter((board) => board.ownerId === ownerId) : allBoards;
+  let boards = filters?.ownerId
+    ? allBoards.filter((board) => board.ownerId === filters.ownerId)
+    : allBoards;
+
+  if (filters?.boardId) {
+    boards = boards.filter((board) => board._id === filters.boardId);
+  }
+
   const boardById = new Map(boards.map((board) => [board._id, board]));
   const columnById = new Map(columns.map((column) => [column._id, column]));
 
@@ -272,9 +282,12 @@ async function listTasksWithCommentState(
   ctx: QueryCtx,
   agent: AgentIdentity,
   includeDone: boolean,
-  ownerId?: string,
+  filters?: {
+    ownerId?: string;
+    boardId?: Id<"boards">;
+  },
 ): Promise<EnrichedTask[]> {
-  const baseTasks = await buildBaseTasks(ctx, agent, includeDone, ownerId);
+  const baseTasks = await buildBaseTasks(ctx, agent, includeDone, filters);
   const tasks = await Promise.all(baseTasks.map((task) => enrichTask(ctx, task, agent)));
 
   return tasks.sort((a, b) => {
@@ -392,6 +405,73 @@ export const listAgentInbox = internalQuery({
   },
 });
 
+export const verifyAgentAccess = internalQuery({
+  args: {
+    agentId: v.string(),
+    agentToken: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const agent = authenticateAgent(args.agentId, args.agentToken);
+
+    return {
+      ok: true,
+      agentId: agent.id,
+    };
+  },
+});
+
+export const listBoardRunTargets = query({
+  args: {
+    boardId: v.id("boards"),
+    agentId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { board } = await requireAccessibleBoard(ctx, args.boardId);
+    const agentId = args.agentId.trim();
+
+    if (!agentId) {
+      throw new Error("Agent id is required");
+    }
+
+    if (!isAgentAllowedForBoard(board, agentId)) {
+      throw new Error("Agent is not allowed for this board");
+    }
+
+    const agent = {
+      id: agentId,
+      normalizedId: normalize(agentId),
+    } satisfies AgentIdentity;
+
+    const tasks = await listTasksWithCommentState(ctx, agent, false, { boardId: args.boardId });
+    const boardInbox = buildInbox(tasks, agent).boards.find((entry) => entry.boardId === args.boardId);
+    const targets = boardInbox ? [...boardInbox.ideas, ...boardInbox.todos, ...boardInbox.review] : [];
+    const seen = new Set<string>();
+
+    return {
+      boardId: args.boardId,
+      boardName: board.name,
+      agentId: agent.id,
+      cardIds: targets
+        .map((task) => task.cardId)
+        .filter((cardId) => {
+          const key = String(cardId);
+          if (seen.has(key)) {
+            return false;
+          }
+
+          seen.add(key);
+          return true;
+        }),
+      targets: targets.map((task) => ({
+        cardId: task.cardId,
+        title: task.title,
+        columnName: task.columnName,
+        inboxReason: task.inboxReason,
+      })),
+    };
+  },
+});
+
 export const debugAgentInbox = query({
   args: {
     agentId: v.string(),
@@ -410,7 +490,7 @@ export const debugAgentInbox = query({
       normalizedId: normalize(agentId),
     } satisfies AgentIdentity;
 
-    const tasks = await listTasksWithCommentState(ctx, agent, false, user.userId);
+    const tasks = await listTasksWithCommentState(ctx, agent, false, { ownerId: user.userId });
     const inbox = buildInbox(tasks, agent);
 
     return {
@@ -426,6 +506,7 @@ export const addAgentComment = internalMutation({
     agentToken: v.string(),
     cardId: v.id("cards"),
     body: v.string(),
+    sessionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const agent = authenticateAgent(args.agentId, args.agentToken);
@@ -472,6 +553,15 @@ export const addAgentComment = internalMutation({
       details: body,
     });
 
+    const sessionId = args.sessionId?.trim();
+    if (sessionId) {
+      await ctx.runMutation(internal.card_runs.touchSessionCard, {
+        sessionId,
+        agentId: agent.id,
+        cardId: card._id,
+      });
+    }
+
     return {
       ok: true,
       commentId,
@@ -485,6 +575,7 @@ export const transitionAgentCard = internalMutation({
     agentToken: v.string(),
     cardId: v.id("cards"),
     toColumn: v.string(),
+    sessionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const agent = authenticateAgent(args.agentId, args.agentToken);
@@ -525,6 +616,15 @@ export const transitionAgentCard = internalMutation({
     }
 
     if (targetColumn._id === card.columnId) {
+      const sessionId = args.sessionId?.trim();
+      if (sessionId) {
+        await ctx.runMutation(internal.card_runs.touchSessionCard, {
+          sessionId,
+          agentId: agent.id,
+          cardId: card._id,
+        });
+      }
+
       return {
         ok: true,
         cardId: card._id,
@@ -555,6 +655,15 @@ export const transitionAgentCard = internalMutation({
       details: `${currentColumn.name} -> ${targetColumn.name}`,
     });
 
+    const sessionId = args.sessionId?.trim();
+    if (sessionId) {
+      await ctx.runMutation(internal.card_runs.touchSessionCard, {
+        sessionId,
+        agentId: agent.id,
+        cardId: card._id,
+      });
+    }
+
     return {
       ok: true,
       cardId: card._id,
@@ -564,3 +673,4 @@ export const transitionAgentCard = internalMutation({
     };
   },
 });
+

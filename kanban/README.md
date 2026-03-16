@@ -119,6 +119,7 @@ Convex HTTP endpoints:
 - `GET <NEXT_PUBLIC_CONVEX_SITE_URL>/agent/kanban/inbox`
 - `POST <NEXT_PUBLIC_CONVEX_SITE_URL>/agent/kanban/comment`
 - `POST <NEXT_PUBLIC_CONVEX_SITE_URL>/agent/kanban/transition`
+- `POST <NEXT_PUBLIC_CONVEX_SITE_URL>/agent/kanban/session/finish`
 
 `/agent/kanban/inbox` returns grouped actionable items for the current agent and now includes each card's full discussion comment history in `comments` so workers can act with full context.
 
@@ -126,6 +127,23 @@ Required headers:
 
 - `X-Agent-Id: <agent-id>`
 - `X-Agent-Token: <agent-token>`
+- `X-Kanban-Session-Id: <session-id>` on `comment` and `transition` when the worker pass is tracking explicit card run state
+
+Manual board-scoped runs from the Kanban UI now pre-mark the board's current actionable cards with explicit run state on the card itself:
+
+- `isRunning`
+- `lastSessionId`
+- `lastSessionAgentId`
+- `lastSessionUpdatedAt`
+- `lastRunStatus`
+
+Worker contract for explicit run state:
+
+- Manual run prompts now include the `sessionId` and the exact board/card scope for that pass.
+- Every worker write to Kanban should send `X-Kanban-Session-Id` so touched cards stay associated with the active session.
+- When the pass finishes, call `POST /agent/kanban/session/finish` with JSON like `{"sessionId":"...","status":"done"}`.
+- Use `status: "failed"` or `status: "aborted"` when the pass does not complete normally.
+- The card keeps `lastSessionId` after completion for debugging; only `isRunning` is cleared.
 
 Example:
 

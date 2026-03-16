@@ -87,6 +87,7 @@ export const create = mutation({
       ...(acp ? { acp } : {}),
       ...(model ? { model } : {}),
       ...(skills.length > 0 ? { skills } : {}),
+      isRunning: false,
       order: getNextOrder(cards),
     });
 
@@ -146,6 +147,13 @@ export const update = mutation({
       ...(acp ? { acp } : {}),
       ...(model ? { model } : {}),
       ...(skills.length > 0 ? { skills } : {}),
+      isRunning: card.isRunning ?? false,
+      ...(card.lastSessionId ? { lastSessionId: card.lastSessionId } : {}),
+      ...(card.lastSessionAgentId ? { lastSessionAgentId: card.lastSessionAgentId } : {}),
+      ...(typeof card.lastSessionUpdatedAt === "number"
+        ? { lastSessionUpdatedAt: card.lastSessionUpdatedAt }
+        : {}),
+      ...(card.lastRunStatus ? { lastRunStatus: card.lastRunStatus } : {}),
       order: card.order,
     });
 

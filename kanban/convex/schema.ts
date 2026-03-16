@@ -50,10 +50,29 @@ export default defineSchema({
     acp: v.optional(v.string()),
     model: v.optional(v.string()),
     skills: v.optional(v.array(v.string())),
+    isRunning: v.optional(v.boolean()),
+    lastSessionId: v.optional(v.string()),
+    lastSessionAgentId: v.optional(v.string()),
+    lastSessionUpdatedAt: v.optional(v.number()),
+    lastRunStatus: v.optional(
+      v.union(v.literal("running"), v.literal("done"), v.literal("failed"), v.literal("aborted")),
+    ),
     order: v.number(),
   })
     .index("by_board", ["boardId"])
     .index("by_column_order", ["columnId", "order"]),
+
+  cardRunSessions: defineTable({
+    sessionId: v.string(),
+    agentId: v.string(),
+    boardId: v.id("boards"),
+    cardId: v.id("cards"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_session", ["sessionId"])
+    .index("by_session_card", ["sessionId", "cardId"])
+    .index("by_card_session", ["cardId", "sessionId"]),
 
   comments: defineTable({
     boardId: v.id("boards"),
