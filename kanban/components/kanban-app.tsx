@@ -2155,17 +2155,17 @@ function KanbanCard({
         onClick={() => onOpenCard(card._id)}
         onContextMenu={handleContextMenu}
         style={{ transform: CSS.Transform.toString(transform), transition }}
-        className={`relative w-full touch-none cursor-grab active:cursor-grabbing overflow-hidden rounded-xl border bg-white px-3 py-2 text-left transition hover:shadow-sm dark:bg-zinc-900 ${
+        className={`relative w-full touch-none cursor-grab active:cursor-grabbing overflow-hidden rounded-xl border bg-white px-3 py-2 text-left transition dark:bg-zinc-900 ${
           isActive
-            ? "border-transparent shadow-[0_10px_30px_-18px_rgba(56,189,248,0.75)]"
-            : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
+            ? "border-transparent shadow-none"
+            : "border-zinc-200 hover:border-zinc-300 hover:shadow-sm dark:border-zinc-800 dark:hover:border-zinc-700"
         } ${isDragging ? "opacity-0" : ""}`}
       >
         {isActive ? (
           <>
             <span className="pointer-events-none absolute inset-[-140%] animate-[spin_3.2s_linear_infinite] bg-[conic-gradient(from_0deg,rgba(56,189,248,0)_0deg,rgba(56,189,248,0)_255deg,rgba(56,189,248,0.98)_300deg,rgba(110,231,255,1)_326deg,rgba(16,185,129,0.88)_344deg,rgba(56,189,248,0)_360deg)]" />
             <span className="pointer-events-none absolute inset-[1px] rounded-[calc(theme(borderRadius.xl)-1px)] bg-white dark:bg-zinc-900" />
-            <span className="pointer-events-none absolute inset-0 rounded-[inherit] shadow-[0_0_0_1px_rgba(56,189,248,0.22),0_16px_32px_-22px_rgba(56,189,248,0.95)]" />
+            <span className="pointer-events-none absolute inset-0 rounded-[inherit] shadow-[0_0_0_1px_rgba(56,189,248,0.2)]" />
           </>
         ) : null}
         <div className="relative">
