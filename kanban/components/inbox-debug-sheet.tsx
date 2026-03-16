@@ -91,9 +91,8 @@ export function InboxDebugSheet({
   onClose: () => void;
 }) {
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState(initialAgentId ?? "main");
+  const selectedAgentId = initialAgentId ?? "main";
   const [showRaw, setShowRaw] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!open) return;
@@ -114,10 +113,6 @@ export function InboxDebugSheet({
           .sort((a, b) => a.name.localeCompare(b.name));
 
         setAgentOptions(normalized);
-
-        if (normalized.length > 0 && !normalized.some((agent) => agent.id === selectedAgentId)) {
-          setSelectedAgentId(normalized[0].id);
-        }
       } catch {
         // Ignore failures in debug UI.
       }
@@ -128,16 +123,18 @@ export function InboxDebugSheet({
     return () => {
       cancelled = true;
     };
-  }, [boardId, open, selectedAgentId]);
+  }, [boardId, open]);
 
   const inbox = useQuery(
     api.agent_automation.debugAgentInbox,
     open && selectedAgentId
-      ? { agentId: selectedAgentId, ...(boardId ? { boardId: boardId as Id<"boards"> } : {}), refreshKey }
+      ? { agentId: selectedAgentId, ...(boardId ? { boardId: boardId as Id<"boards"> } : {}) }
       : "skip",
   ) as InboxData | undefined;
 
   const prettyJson = useMemo(() => JSON.stringify(inbox ?? null, null, 2), [inbox]);
+  const selectedAgentName =
+    agentOptions.find((agent) => agent.id === selectedAgentId)?.name ?? selectedAgentId;
 
   if (!open) return null;
 
@@ -148,7 +145,10 @@ export function InboxDebugSheet({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between gap-3 border-b border-zinc-200 pb-3 dark:border-zinc-800">
-          <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Agent tasks</div>
+          <div>
+            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Agent tasks</div>
+            <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{selectedAgentName}</div>
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -158,28 +158,7 @@ export function InboxDebugSheet({
           </button>
         </div>
 
-        <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
-          <select
-            className="h-9 rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm text-zinc-900 outline-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100"
-            value={selectedAgentId}
-            onChange={(event) => setSelectedAgentId(event.target.value)}
-          >
-            {agentOptions.length === 0 ? <option value="main">main</option> : null}
-            {agentOptions.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
-
-          <button
-            type="button"
-            onClick={() => setRefreshKey((current) => current + 1)}
-            className="text-zinc-600 transition hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
-          >
-            Refresh
-          </button>
-
+        <div className="mb-4 flex items-center gap-2 text-sm">
           <button
             type="button"
             onClick={() => setShowRaw((current) => !current)}
