@@ -2319,7 +2319,7 @@ function CardModal({
   );
   const canMoveAcrossBoards = currentBoard?.isOwner === true;
   const runStatus = card.isRunning ? "running" : card.lastRunStatus;
-  const cardIdTitle = `Card ID\n${String(card._id)}`;
+  const cardIdTitle = String(card._id);
   const sessionTitle = card.lastSessionId ? card.lastSessionId : "No worker run recorded yet";
 
   async function copyValue(value: string, label: string) {
