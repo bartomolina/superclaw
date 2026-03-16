@@ -29,10 +29,6 @@ function normalizeSkills(skills?: string[]) {
   return normalized;
 }
 
-function normalizeColumnName(value?: string | null) {
-  return value?.trim().toLowerCase().replace(/\s+/g, "") || "";
-}
-
 export const create = mutation({
   args: {
     columnId: v.id("columns"),
@@ -250,10 +246,8 @@ export const claimTodoCards = mutation({
       .order("asc")
       .collect();
 
-    const todoColumn = columns.find((column) => normalizeColumnName(column.name) === "todo");
-    const inProgressColumn = columns.find(
-      (column) => normalizeColumnName(column.name) === "inprogress",
-    );
+    const todoColumn = columns.find((column) => column.name.trim() === "TODO");
+    const inProgressColumn = columns.find((column) => column.name.trim() === "In Progress");
 
     if (!todoColumn || !inProgressColumn) {
       throw new Error("Board must have TODO and In Progress columns");
