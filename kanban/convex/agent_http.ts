@@ -15,6 +15,10 @@ function agentHeaders(request: Request) {
   return { agentId, agentToken };
 }
 
+function sessionIdHeader(request: Request) {
+  return request.headers.get("x-kanban-session-id")?.trim() ?? "";
+}
+
 function errorResponse(error: unknown) {
   if (error instanceof ConvexError && typeof error.data === "object" && error.data) {
     const data = error.data as { code?: string; message?: string };
@@ -79,6 +83,7 @@ export const listInbox = httpAction(async (ctx, request) => {
 export const commentOnCard = httpAction(async (ctx, request) => {
   try {
     const { agentId, agentToken } = agentHeaders(request);
+    const sessionId = sessionIdHeader(request);
     const body = (await request.json()) as { cardId?: string; body?: string };
 
     if (!body?.cardId || !body?.body) {
@@ -93,6 +98,7 @@ export const commentOnCard = httpAction(async (ctx, request) => {
       agentToken,
       cardId: body.cardId as Id<"cards">,
       body: body.body,
+      ...(sessionId ? { sessionId } : {}),
     });
 
     return Response.json(result);
@@ -104,6 +110,7 @@ export const commentOnCard = httpAction(async (ctx, request) => {
 export const transitionCard = httpAction(async (ctx, request) => {
   try {
     const { agentId, agentToken } = agentHeaders(request);
+    const sessionId = sessionIdHeader(request);
     const body = (await request.json()) as { cardId?: string; toColumn?: string };
 
     if (!body?.cardId || !body?.toColumn) {
@@ -118,6 +125,38 @@ export const transitionCard = httpAction(async (ctx, request) => {
       agentToken,
       cardId: body.cardId as Id<"cards">,
       toColumn: body.toColumn,
+      ...(sessionId ? { sessionId } : {}),
+    });
+
+    return Response.json(result);
+  } catch (error) {
+    return errorResponse(error);
+  }
+});
+
+export const finishSession = httpAction(async (ctx, request) => {
+  try {
+    const { agentId, agentToken } = agentHeaders(request);
+    const body = (await request.json()) as { sessionId?: string; status?: string };
+    const sessionId = body.sessionId?.trim() ?? "";
+    const status = body.status?.trim() ?? "";
+
+    if (!sessionId || !["done", "failed", "aborted"].includes(status)) {
+      return Response.json(
+        { ok: false, code: "INVALID_INPUT", error: "sessionId and valid status are required" },
+        { status: 400 },
+      );
+    }
+
+    const auth = await ctx.runQuery(internal.agent_automation.verifyAgentAccess, {
+      agentId,
+      agentToken,
+    });
+
+    const result = await ctx.runMutation(internal.card_runs.finishSession, {
+      agentId: auth.agentId,
+      sessionId,
+      status: status as "done" | "failed" | "aborted",
     });
 
     return Response.json(result);

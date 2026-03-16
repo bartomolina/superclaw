@@ -1,7 +1,7 @@
 import { httpRouter } from "convex/server";
 
 import { authComponent, createAuth } from "./auth";
-import { commentOnCard, listInbox, listTasks, transitionCard } from "./agent_http";
+import { commentOnCard, finishSession, listInbox, listTasks, transitionCard } from "./agent_http";
 
 const http = httpRouter();
 
@@ -29,6 +29,12 @@ http.route({
   path: "/agent/kanban/transition",
   method: "POST",
   handler: transitionCard,
+});
+
+http.route({
+  path: "/agent/kanban/session/finish",
+  method: "POST",
+  handler: finishSession,
 });
 
 export default http;

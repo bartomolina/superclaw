@@ -1,15 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
+import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth-server";
 import { getAuthorizedBoardAgentAccess } from "@/lib/server/api-auth";
 import { gatewayCall } from "@/lib/server/openclaw/cli";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const KANBAN_WORKER_MESSAGE =
-  "Read the kanban skill first. Run one cron-safe SuperClaw Kanban worker pass for the current agent. Follow the skill and its reference exactly. If nothing actionable exists, reply NO_REPLY.";
 
 type GatewayAgentResponse = {
   runId?: string;
@@ -18,19 +17,86 @@ type GatewayAgentResponse = {
   sessionId?: string;
 };
 
-async function startManualWorker(agentId: string) {
+type ManualRunSession = {
+  sessionKey: string;
+  sessionId: string;
+  idempotencyKey: string;
+};
+
+type RunTarget = {
+  cardId: string;
+  title: string;
+  columnName: string;
+  inboxReason: string;
+};
+
+function createManualRunSession(agentId: string): ManualRunSession {
   const runUuid = randomUUID();
-  const sessionKey = `agent:${agentId}:kanban-manual:${runUuid}`;
-  const sessionId = `kanban-manual-${agentId}-${runUuid}`;
-  const idempotencyKey = `kanban-manual-${agentId}-${runUuid}`;
+  return {
+    sessionKey: `agent:${agentId}:kanban-manual:${runUuid}`,
+    sessionId: `kanban-manual-${agentId}-${runUuid}`,
+    idempotencyKey: `kanban-manual-${agentId}-${runUuid}`,
+  };
+}
+
+function buildWorkerMessage({
+  boardId,
+  boardName,
+  sessionId,
+  targets,
+}: {
+  boardId: string;
+  boardName: string;
+  sessionId: string;
+  targets: RunTarget[];
+}) {
+  const targetSummary =
+    targets.length > 0
+      ? targets
+          .map((target) => `- ${target.cardId} | ${target.columnName} | ${target.inboxReason} | ${target.title}`)
+          .join("\n")
+      : "- none";
+
+  return [
+    "Read the kanban skill first.",
+    `Run one cron-safe SuperClaw Kanban worker pass for the current agent, scoped only to board "${boardName}" (${boardId}).`,
+    `Use this Kanban session id for explicit run tracking: ${sessionId}.`,
+    `Include header X-Kanban-Session-Id: ${sessionId} on every POST /agent/kanban/comment and POST /agent/kanban/transition request.`,
+    `When the pass finishes, call POST /agent/kanban/session/finish with JSON {\"sessionId\":\"${sessionId}\",\"status\":\"done\"}. Use status \"failed\" or \"aborted\" when appropriate.`,
+    "Current actionable cards for this board:",
+    targetSummary,
+    'If nothing actionable exists, still finish the session with status "done" and reply NO_REPLY.',
+    "Follow the skill and its reference exactly.",
+  ].join("\n");
+}
+
+function completionStatusForGatewayStatus(status?: string | null) {
+  const normalized = status?.trim().toLowerCase();
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized === "aborted") {
+    return "aborted" as const;
+  }
+
+  if (["failed", "error", "rejected"].includes(normalized)) {
+    return "failed" as const;
+  }
+
+  return null;
+}
+
+async function startManualWorker(agentId: string, session: ManualRunSession, message: string) {
   const params = {
     agentId,
-    sessionKey,
-    sessionId,
+    sessionKey: session.sessionKey,
+    sessionId: session.sessionId,
     label: `Kanban manual run (${agentId})`,
-    message: KANBAN_WORKER_MESSAGE,
+    message,
     deliver: false,
-    idempotencyKey,
+    idempotencyKey: session.idempotencyKey,
   };
 
   const parsed = await gatewayCall<GatewayAgentResponse>("agent", params);
@@ -38,8 +104,8 @@ async function startManualWorker(agentId: string) {
   return {
     runId: parsed.runId ?? null,
     status: parsed.status ?? null,
-    sessionKey,
-    sessionId,
+    sessionKey: session.sessionKey,
+    sessionId: session.sessionId,
   };
 }
 
@@ -66,7 +132,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "agent is not allowed for this board" }, { status: 403 });
     }
 
-    const run = await startManualWorker(agentId);
+    const targets = await fetchAuthQuery(api.agent_automation.listBoardRunTargets, {
+      boardId: boardId as Id<"boards">,
+      agentId,
+    });
+    const session = createManualRunSession(agentId);
+
+    await fetchAuthMutation(api.card_runs.startManualSession, {
+      boardId: boardId as Id<"boards">,
+      agentId,
+      sessionId: session.sessionId,
+      cardIds: targets.cardIds,
+    });
+
+    let run: Awaited<ReturnType<typeof startManualWorker>>;
+
+    try {
+      run = await startManualWorker(
+        agentId,
+        session,
+        buildWorkerMessage({
+          boardId,
+          boardName: targets.boardName,
+          sessionId: session.sessionId,
+          targets: targets.targets,
+        }),
+      );
+    } catch (error) {
+      await fetchAuthMutation(api.card_runs.finishManualSession, {
+        sessionId: session.sessionId,
+        status: "failed",
+      });
+      throw error;
+    }
+
+    const completionStatus = completionStatusForGatewayStatus(run.status);
+    if (completionStatus) {
+      await fetchAuthMutation(api.card_runs.finishManualSession, {
+        sessionId: session.sessionId,
+        status: completionStatus,
+      });
+    }
 
     return NextResponse.json({
       ok: true,
@@ -76,6 +182,7 @@ export async function POST(request: Request) {
       sessionKey: run.sessionKey,
       runId: run.runId,
       status: run.status,
+      targetCardIds: targets.cardIds,
       mode: "manual-agent-run",
     });
   } catch (error) {
