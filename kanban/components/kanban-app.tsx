@@ -2644,9 +2644,6 @@ function CardModal({
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">ACP</label>
                 <ChoiceChips value={acpDraft} options={["codex", "cursor"]} onChange={handleAcpChange} />
-                <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
-                  Model and ACP are mutually exclusive — choosing one clears the other.
-                </div>
               </div>
 
               <div>
