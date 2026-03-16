@@ -22,7 +22,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useConvexAuth, useMutation, useQueries, useQuery } from "convex/react";
-import { Clock3, ExternalLink, Hash, ListTodo, Menu, Moon, MoveRight, Play, Settings, Sun, UserRound, X } from "lucide-react";
+import { Clock3, ExternalLink, Hash, Menu, Moon, MoveRight, Play, Settings, Sun, UserRound, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -1173,7 +1173,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
         <div className="flex h-full w-full">
           <div
             className={`hidden shrink-0 items-center border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 lg:flex ${
-              isSidebarCollapsed ? "w-12 justify-center px-2" : "w-56 justify-between px-3"
+              isSidebarCollapsed ? "w-12 justify-center px-2" : "w-48 justify-between px-3"
             }`}
           >
             {!isSidebarCollapsed ? (
@@ -1394,7 +1394,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                     return (
                       <div
                         key={agent.id}
-                        className="flex items-center gap-1.5 rounded-lg px-1 py-1.5 transition hover:bg-zinc-100/80 dark:hover:bg-zinc-800/60"
+                        className="flex items-center gap-2 rounded-lg px-1.5 py-1.5 transition hover:bg-zinc-100/80 dark:hover:bg-zinc-800/60"
                       >
                         <div className="relative shrink-0">
                           <AgentAvatar
@@ -1410,34 +1410,31 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                           />
                         </div>
                         <div className="min-w-0 flex-1 pr-1">
-                          <div className="truncate text-[13px] font-medium text-zinc-800 dark:text-zinc-100" title={agent.name}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDebugAgentId(agent.id);
+                              setIsInboxDebugOpen(true);
+                            }}
+                            className="block max-w-full truncate text-left text-sm font-medium text-zinc-800 transition hover:text-zinc-950 dark:text-zinc-100 dark:hover:text-white"
+                            title={pendingCount > 0 ? `${agent.name} · ${pendingCount} pending task${pendingCount === 1 ? "" : "s"}` : agent.name}
+                          >
                             {agent.name}
-                          </div>
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDebugAgentId(agent.id);
-                            setIsInboxDebugOpen(true);
-                          }}
-                          title={pendingCount > 0 ? `${pendingCount} pending task${pendingCount === 1 ? "" : "s"}` : `Inspect ${agent.name} tasks`}
-                          className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
-                        >
-                          <ListTodo className="h-3 w-3" />
-                          {pendingCount > 0 ? (
-                            <span className="absolute -right-1 -top-1 inline-flex min-w-[0.9rem] items-center justify-center rounded-full bg-zinc-900 px-1 text-[8px] font-semibold leading-3.5 text-white dark:bg-zinc-100 dark:text-zinc-900">
-                              {pendingCount}
-                            </span>
-                          ) : null}
-                        </button>
                         <button
                           type="button"
                           onClick={() => void handleRunAgentNow(agent.id)}
                           disabled={Boolean(runningAgentId)}
                           title={isRunning ? `${agent.name} is running` : `Run ${agent.name} now`}
-                          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
+                          className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
                         >
-                          <Play className="h-3 w-3" />
+                          <Play className="h-3.5 w-3.5" />
+                          {pendingCount > 0 ? (
+                            <span className="absolute -right-1 -top-1 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-zinc-900 px-1 text-[9px] font-semibold leading-4 text-white dark:bg-zinc-100 dark:text-zinc-900">
+                              {pendingCount}
+                            </span>
+                          ) : null}
                         </button>
                       </div>
                     );
