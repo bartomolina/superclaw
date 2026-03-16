@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 
+import type { Id } from "./_generated/dataModel";
 import { mutation } from "./_generated/server";
 import { getNextOrder, normalizeText, optionalText, touchBoard } from "./helpers";
 import {
@@ -223,6 +224,70 @@ export const moveToColumn = mutation({
     });
 
     await touchBoard(ctx, card.boardId, Date.now());
+  },
+});
+
+export const claimTodoCards = mutation({
+  args: {
+    boardId: v.id("boards"),
+    cardIds: v.array(v.id("cards")),
+  },
+  handler: async (ctx, args) => {
+    await requireAccessibleBoard(ctx, args.boardId);
+
+    const cardIds = Array.from(new Set(args.cardIds.map((cardId) => String(cardId))));
+    if (cardIds.length === 0) {
+      return { ok: true, movedCardIds: [] as Id<"cards">[] };
+    }
+
+    const columns = await ctx.db
+      .query("columns")
+      .withIndex("by_board_order", (q) => q.eq("boardId", args.boardId))
+      .order("asc")
+      .collect();
+
+    const todoColumn = columns.find((column) => column.name.trim().toLowerCase() === "todo");
+    const inProgressColumn = columns.find(
+      (column) => column.name.trim().toLowerCase() === "in progress",
+    );
+
+    if (!todoColumn || !inProgressColumn) {
+      throw new Error("Board must have TODO and In Progress columns");
+    }
+
+    const cards = await Promise.all(args.cardIds.map((cardId) => ctx.db.get(cardId)));
+    const targetCards = await ctx.db
+      .query("cards")
+      .withIndex("by_column_order", (q) => q.eq("columnId", inProgressColumn._id))
+      .order("asc")
+      .collect();
+
+    let nextOrder = getNextOrder(targetCards);
+    const movedCardIds: Id<"cards">[] = [];
+
+    for (const card of cards) {
+      if (!card || card.boardId !== args.boardId) {
+        continue;
+      }
+
+      if (card.columnId !== todoColumn._id) {
+        continue;
+      }
+
+      await ctx.db.patch(card._id, {
+        columnId: inProgressColumn._id,
+        order: nextOrder,
+      });
+
+      movedCardIds.push(card._id);
+      nextOrder += 1000;
+    }
+
+    if (movedCardIds.length > 0) {
+      await touchBoard(ctx, args.boardId, Date.now());
+    }
+
+    return { ok: true, movedCardIds };
   },
 });
 

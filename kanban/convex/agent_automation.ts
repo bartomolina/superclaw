@@ -447,21 +447,29 @@ export const listBoardRunTargets = query({
     const targets = boardInbox ? [...boardInbox.ideas, ...boardInbox.todos, ...boardInbox.review] : [];
     const seen = new Set<string>();
 
+    const cardIds = targets
+      .map((task) => task.cardId)
+      .filter((cardId) => {
+        const key = String(cardId);
+        if (seen.has(key)) {
+          return false;
+        }
+
+        seen.add(key);
+        return true;
+      });
+
+    const todoCardIds = targets
+      .filter((task) => task.inboxReason === "todo")
+      .map((task) => task.cardId)
+      .filter((cardId, index, array) => array.findIndex((value) => String(value) === String(cardId)) === index);
+
     return {
       boardId: args.boardId,
       boardName: board.name,
       agentId: agent.id,
-      cardIds: targets
-        .map((task) => task.cardId)
-        .filter((cardId) => {
-          const key = String(cardId);
-          if (seen.has(key)) {
-            return false;
-          }
-
-          seen.add(key);
-          return true;
-        }),
+      cardIds,
+      todoCardIds,
       targets: targets.map((task) => ({
         cardId: task.cardId,
         title: task.title,

@@ -62,6 +62,7 @@ function buildWorkerMessage({
     `Run one cron-safe SuperClaw Kanban worker pass for the current agent, scoped only to board "${boardName}" (${boardId}).`,
     `Use this Kanban session id for explicit run tracking: ${sessionId}.`,
     `Include header X-Kanban-Session-Id: ${sessionId} on every POST /agent/kanban/comment and POST /agent/kanban/transition request.`,
+    "TODO cards selected for this manual run have already been claimed into In Progress by the backend before your work starts. Do not re-claim them.",
     `When the pass finishes, call POST /agent/kanban/session/finish with JSON {\"sessionId\":\"${sessionId}\",\"status\":\"done\"}. Use status \"failed\" or \"aborted\" when appropriate.`,
     "Current actionable cards for this board:",
     targetSummary,
@@ -144,6 +145,13 @@ export async function POST(request: Request) {
       sessionId: session.sessionId,
       cardIds: targets.cardIds,
     });
+
+    if (targets.todoCardIds.length > 0) {
+      await fetchAuthMutation(api.cards.claimTodoCards, {
+        boardId: boardId as Id<"boards">,
+        cardIds: targets.todoCardIds,
+      });
+    }
 
     let run: Awaited<ReturnType<typeof startManualWorker>>;
 
