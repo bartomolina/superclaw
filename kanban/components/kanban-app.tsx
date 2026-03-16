@@ -2165,7 +2165,7 @@ function KanbanCard({
           <>
             <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(115deg,rgba(56,189,248,0.85),rgba(125,211,252,0.35),rgba(16,185,129,0.5),rgba(56,189,248,0.85))] opacity-90" />
             <span className="pointer-events-none absolute inset-[1px] rounded-[calc(theme(borderRadius.xl)-1px)] bg-white dark:bg-zinc-900" />
-            <span className="pointer-events-none absolute inset-y-0 left-[-30%] w-[32%] skew-x-[-18deg] bg-white/30 blur-xl animate-[pulse_2.8s_ease-in-out_infinite] dark:bg-sky-200/10" />
+            <span className="pointer-events-none absolute inset-y-[-18%] left-[-35%] w-[28%] rounded-full bg-white/55 blur-xl animate-[kanban-shine-sweep_2.8s_linear_infinite] dark:bg-sky-100/20" />
           </>
         ) : null}
         <div className="relative">
@@ -2319,10 +2319,8 @@ function CardModal({
   );
   const canMoveAcrossBoards = currentBoard?.isOwner === true;
   const runStatus = card.isRunning ? "running" : card.lastRunStatus;
-  const cardIdTitle = `Card ID\n${String(card._id)}\nClick to copy`;
-  const sessionTitle = card.lastSessionId
-    ? [card.lastSessionId, "Click to copy session ID"].join("\n")
-    : "No worker run recorded yet";
+  const cardIdTitle = `Card ID\n${String(card._id)}`;
+  const sessionTitle = card.lastSessionId ? card.lastSessionId : "No worker run recorded yet";
 
   async function copyValue(value: string, label: string) {
     try {
