@@ -22,7 +22,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { Clock3, ExternalLink, Hash, Menu, Moon, MoveRight, Settings, Sun, UserRound, X } from "lucide-react";
+import { Clock3, ExternalLink, Hash, Menu, Moon, MoveRight, Play, Settings, Sun, UserRound, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -1269,7 +1269,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           </div>
 
           <div className={`${isSidebarCollapsed ? "lg:hidden" : ""} flex h-full min-h-0 flex-col`}>
-            <div className="space-y-1">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               {boards === undefined ? (
                 <div className="px-1 py-1 text-xs text-zinc-500 dark:text-zinc-400">Loading boards...</div>
               ) : null}
@@ -1352,55 +1352,55 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
               )
             ) : null}
 
-            <div className="mt-auto space-y-3">
-              <div>
+            <div className="border-t border-zinc-200 pt-3 dark:border-zinc-800">
+              <div className="max-h-[220px] space-y-2 overflow-y-auto px-1 pr-2">
                 {isSidebarAgentsLoading ? (
-                  <div className="px-1 text-sm text-zinc-500 dark:text-zinc-400">Loading agents...</div>
+                  <div className="text-sm text-zinc-500 dark:text-zinc-400">Loading agents...</div>
                 ) : sidebarAgentOptions.length > 0 ? (
-                    <div className="space-y-2 px-1">
-                    {sidebarAgentOptions.map((agent) => {
-                      const isRunning = runningAgentId === agent.id || runningAgentIdsForBoard.has(agent.id);
+                  sidebarAgentOptions.map((agent) => {
+                    const isRunning = runningAgentId === agent.id || runningAgentIdsForBoard.has(agent.id);
 
-                      return (
+                    return (
+                      <div
+                        key={agent.id}
+                        className="flex items-center gap-2 rounded-lg px-1.5 py-1.5 transition hover:bg-zinc-100/80 dark:hover:bg-zinc-800/60"
+                      >
+                        <div className="relative shrink-0">
+                          <AgentAvatar
+                            agentName={agent.name}
+                            avatarUrl={agent.avatarUrl ?? null}
+                            emoji={agent.emoji}
+                            size="sm"
+                          />
+                          <span
+                            className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-white dark:border-zinc-900 ${
+                              isRunning ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-600"
+                            }`}
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">
+                            {agent.name}
+                          </div>
+                        </div>
                         <button
-                          key={agent.id}
                           type="button"
                           onClick={() => void handleRunAgentNow(agent.id)}
                           disabled={Boolean(runningAgentId)}
-                          title={`Run ${agent.name} now`}
-                          className="flex w-full items-center gap-3 rounded-xl border border-zinc-200/80 bg-white/80 px-2.5 py-2 text-left transition hover:border-zinc-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900/80 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
+                          title={isRunning ? `${agent.name} is running` : `Run ${agent.name} now`}
+                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
                         >
-                          <div className="relative shrink-0">
-                            <AgentAvatar
-                              agentName={agent.name}
-                              avatarUrl={agent.avatarUrl ?? null}
-                              emoji={agent.emoji}
-                              size="lg"
-                            />
-                            <span
-                              className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white dark:border-zinc-900 ${
-                                isRunning ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-600"
-                              }`}
-                            />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                              {agent.name}
-                            </div>
-                            <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                              {isRunning ? "Running worker…" : "Run worker now"}
-                            </div>
-                          </div>
+                          <Play className="h-3.5 w-3.5" />
                         </button>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })
                 ) : (
-                  <div className="px-1 text-sm text-zinc-500 dark:text-zinc-400">No agents.</div>
+                  <div className="text-sm text-zinc-500 dark:text-zinc-400">No agents.</div>
                 )}
               </div>
 
-              <div className="space-y-1 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+              <div className="mt-3 space-y-1 border-t border-zinc-200 pt-3 dark:border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setIsInboxDebugOpen(true)}
