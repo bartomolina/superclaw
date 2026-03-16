@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 
 type AgentOption = {
   id: string;
@@ -81,14 +82,16 @@ function Section({ label, items }: { label: string; items: InboxTask[] }) {
 export function InboxDebugSheet({
   open,
   boardId,
+  initialAgentId,
   onClose,
 }: {
   open: boolean;
   boardId?: string | null;
+  initialAgentId?: string | null;
   onClose: () => void;
 }) {
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState("main");
+  const [selectedAgentId, setSelectedAgentId] = useState(initialAgentId ?? "main");
   const [showRaw, setShowRaw] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -129,7 +132,9 @@ export function InboxDebugSheet({
 
   const inbox = useQuery(
     api.agent_automation.debugAgentInbox,
-    open && selectedAgentId ? { agentId: selectedAgentId, refreshKey } : "skip",
+    open && selectedAgentId
+      ? { agentId: selectedAgentId, ...(boardId ? { boardId: boardId as Id<"boards"> } : {}), refreshKey }
+      : "skip",
   ) as InboxData | undefined;
 
   const prettyJson = useMemo(() => JSON.stringify(inbox ?? null, null, 2), [inbox]);
@@ -143,7 +148,7 @@ export function InboxDebugSheet({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between gap-3 border-b border-zinc-200 pb-3 dark:border-zinc-800">
-          <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Debug</div>
+          <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Agent tasks</div>
           <button
             type="button"
             onClick={onClose}

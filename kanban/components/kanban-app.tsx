@@ -21,8 +21,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { Clock3, ExternalLink, Hash, Menu, Moon, MoveRight, Play, Settings, Sun, UserRound, X } from "lucide-react";
+import { useConvexAuth, useMutation, useQueries, useQuery } from "convex/react";
+import { Clock3, ExternalLink, Hash, ListTodo, Menu, Moon, MoveRight, Play, Settings, Sun, UserRound, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -570,6 +570,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isInboxDebugOpen, setIsInboxDebugOpen] = useState(false);
+  const [debugAgentId, setDebugAgentId] = useState<string | null>(null);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [allAgentOptions, setAllAgentOptions] = useState<AgentOption[]>([]);
@@ -827,6 +828,35 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
         .map((card) => card.lastSessionAgentId as string) ?? [],
     );
   }, [boardView]);
+
+  const sidebarInboxResults = useQueries(
+    useMemo(() => {
+      if (!isConvexAuthenticated || !effectiveSelectedBoardId || sidebarAgentOptions.length === 0) {
+        return {};
+      }
+
+      return Object.fromEntries(
+        sidebarAgentOptions.map((agent) => [
+          agent.id,
+          {
+            query: api.agent_automation.debugAgentInbox,
+            args: { agentId: agent.id, boardId: effectiveSelectedBoardId, refreshKey: 0 },
+          },
+        ]),
+      );
+    }, [effectiveSelectedBoardId, isConvexAuthenticated, sidebarAgentOptions]),
+  );
+
+  const pendingCountByAgent = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const agent of sidebarAgentOptions) {
+      const result = sidebarInboxResults[agent.id] as { totalCount?: number } | undefined;
+      counts.set(agent.id, typeof result?.totalCount === "number" ? result.totalCount : 0);
+    }
+
+    return counts;
+  }, [sidebarAgentOptions, sidebarInboxResults]);
 
   const activeDragCard = useMemo(() => {
     if (!activeDragCardId) return null;
@@ -1359,6 +1389,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                 ) : sidebarAgentOptions.length > 0 ? (
                   sidebarAgentOptions.map((agent) => {
                     const isRunning = runningAgentId === agent.id || runningAgentIdsForBoard.has(agent.id);
+                    const pendingCount = pendingCountByAgent.get(agent.id) ?? 0;
 
                     return (
                       <div
@@ -1385,6 +1416,22 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                         </div>
                         <button
                           type="button"
+                          onClick={() => {
+                            setDebugAgentId(agent.id);
+                            setIsInboxDebugOpen(true);
+                          }}
+                          title={pendingCount > 0 ? `${pendingCount} pending task${pendingCount === 1 ? "" : "s"}` : `Inspect ${agent.name} tasks`}
+                          className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
+                        >
+                          <ListTodo className="h-3.5 w-3.5" />
+                          {pendingCount > 0 ? (
+                            <span className="absolute -right-1 -top-1 inline-flex min-w-[1.05rem] items-center justify-center rounded-full bg-zinc-900 px-1 text-[10px] font-semibold leading-4 text-white dark:bg-zinc-100 dark:text-zinc-900">
+                              {pendingCount}
+                            </span>
+                          ) : null}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => void handleRunAgentNow(agent.id)}
                           disabled={Boolean(runningAgentId)}
                           title={isRunning ? `${agent.name} is running` : `Run ${agent.name} now`}
@@ -1398,16 +1445,6 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                 ) : (
                   <div className="text-sm text-zinc-500 dark:text-zinc-400">No agents.</div>
                 )}
-              </div>
-
-              <div className="mt-3 space-y-1 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => setIsInboxDebugOpen(true)}
-                  className="block w-full px-1 py-1 text-left text-sm text-zinc-500 transition hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-                >
-                  Debug
-                </button>
               </div>
             </div>
           </div>
@@ -1493,9 +1530,14 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
       />
 
       <InboxDebugSheet
+        key={`${effectiveSelectedBoardId ?? "board"}:${debugAgentId ?? "agent"}:${isInboxDebugOpen ? "open" : "closed"}`}
         open={isInboxDebugOpen}
         boardId={effectiveSelectedBoardId}
-        onClose={() => setIsInboxDebugOpen(false)}
+        initialAgentId={debugAgentId}
+        onClose={() => {
+          setIsInboxDebugOpen(false);
+          setDebugAgentId(null);
+        }}
       />
 
       <UserManagementSheet
