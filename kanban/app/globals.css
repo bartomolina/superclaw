@@ -114,26 +114,3 @@ body {
   background: transparent !important;
 }
 
-@keyframes kanban-shine-sweep {
-  0% {
-    transform: translateX(-160%) skewX(-18deg);
-    opacity: 0;
-  }
-
-  12% {
-    opacity: 0.18;
-  }
-
-  45% {
-    opacity: 0.42;
-  }
-
-  72% {
-    opacity: 0.14;
-  }
-
-  100% {
-    transform: translateX(320%) skewX(-18deg);
-    opacity: 0;
-  }
-}

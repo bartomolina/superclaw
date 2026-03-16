@@ -2163,9 +2163,9 @@ function KanbanCard({
       >
         {isActive ? (
           <>
-            <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(115deg,rgba(56,189,248,0.85),rgba(125,211,252,0.35),rgba(16,185,129,0.5),rgba(56,189,248,0.85))] opacity-90" />
+            <span className="pointer-events-none absolute inset-[-140%] animate-[spin_3.2s_linear_infinite] bg-[conic-gradient(from_0deg,rgba(56,189,248,0)_0deg,rgba(56,189,248,0)_255deg,rgba(56,189,248,0.98)_300deg,rgba(110,231,255,1)_326deg,rgba(16,185,129,0.88)_344deg,rgba(56,189,248,0)_360deg)]" />
             <span className="pointer-events-none absolute inset-[1px] rounded-[calc(theme(borderRadius.xl)-1px)] bg-white dark:bg-zinc-900" />
-            <span className="pointer-events-none absolute inset-y-[-18%] left-[-35%] w-[28%] rounded-full bg-white/55 blur-xl animate-[kanban-shine-sweep_2.8s_linear_infinite] dark:bg-sky-100/20" />
+            <span className="pointer-events-none absolute inset-0 rounded-[inherit] shadow-[0_0_0_1px_rgba(56,189,248,0.22),0_16px_32px_-22px_rgba(56,189,248,0.95)]" />
           </>
         ) : null}
         <div className="relative">
