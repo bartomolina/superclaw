@@ -483,6 +483,7 @@ export const listBoardRunTargets = query({
 export const debugAgentInbox = query({
   args: {
     agentId: v.string(),
+    boardId: v.optional(v.id("boards")),
     refreshKey: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -498,7 +499,10 @@ export const debugAgentInbox = query({
       normalizedId: normalize(agentId),
     } satisfies AgentIdentity;
 
-    const tasks = await listTasksWithCommentState(ctx, agent, false, { ownerId: user.userId });
+    const tasks = await listTasksWithCommentState(ctx, agent, false, {
+      ownerId: user.userId,
+      ...(args.boardId ? { boardId: args.boardId } : {}),
+    });
     const inbox = buildInbox(tasks, agent);
 
     return {
