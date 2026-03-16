@@ -22,7 +22,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { Copy, ExternalLink, Menu, Moon, MoveRight, Radio, Settings, Sun, UserRound, X } from "lucide-react";
+import { Clock3, ExternalLink, Hash, Menu, Moon, MoveRight, Settings, Sun, UserRound, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -210,24 +210,24 @@ function formatRunStatusLabel(status?: CardRunStatus) {
   return "Idle";
 }
 
-function getRunStatusClass(status?: CardRunStatus) {
+function getRunTone(status?: CardRunStatus) {
   if (status === "running") {
-    return "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-200";
+    return "text-sky-600 dark:text-sky-300";
   }
 
   if (status === "done") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-200";
+    return "text-emerald-600 dark:text-emerald-300";
   }
 
   if (status === "failed") {
-    return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/70 dark:bg-rose-950/40 dark:text-rose-200";
+    return "text-rose-600 dark:text-rose-300";
   }
 
   if (status === "aborted") {
-    return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200";
+    return "text-amber-600 dark:text-amber-300";
   }
 
-  return "border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900/80 dark:text-zinc-300";
+  return "text-zinc-500 dark:text-zinc-400";
 }
 
 function describeCardRunState(card: CardModel) {
@@ -250,6 +250,7 @@ function describeCardRunState(card: CardModel) {
   details.push(card.lastSessionId);
   return details.join(" · ");
 }
+
 
 function resolveAgentName(agentId?: string) {
   const normalizedId = agentId?.trim();
@@ -2036,15 +2037,6 @@ function KanbanCard({
   const hasAssignee = Boolean(card.agentId);
   const hasReviewer = Boolean(card.reviewerId);
   const cardMetaTags = [
-    isActive
-      ? {
-          key: "active",
-          label: "Running",
-          title: activeSessionSummary,
-          className:
-            "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-200",
-        }
-      : null,
     card.priority
       ? {
           key: `priority-${card.priority}`,
@@ -2163,15 +2155,22 @@ function KanbanCard({
         onClick={() => onOpenCard(card._id)}
         onContextMenu={handleContextMenu}
         style={{ transform: CSS.Transform.toString(transform), transition }}
-        className={`w-full touch-none cursor-grab active:cursor-grabbing rounded-lg border bg-white px-3 py-2 text-left transition hover:shadow-sm dark:bg-zinc-900 ${
+        className={`relative w-full touch-none cursor-grab active:cursor-grabbing overflow-hidden rounded-xl border bg-white px-3 py-2 text-left transition hover:shadow-sm dark:bg-zinc-900 ${
           isActive
-            ? "border-sky-300 shadow-[0_0_0_1px_rgba(56,189,248,0.18)] hover:border-sky-400 dark:border-sky-800 dark:hover:border-sky-700"
+            ? "border-transparent shadow-[0_10px_30px_-18px_rgba(56,189,248,0.75)]"
             : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
         } ${isDragging ? "opacity-0" : ""}`}
       >
+        {isActive ? (
+          <>
+            <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(115deg,rgba(56,189,248,0.85),rgba(125,211,252,0.35),rgba(16,185,129,0.5),rgba(56,189,248,0.85))] opacity-90" />
+            <span className="pointer-events-none absolute inset-[1px] rounded-[calc(theme(borderRadius.xl)-1px)] bg-white dark:bg-zinc-900" />
+            <span className="pointer-events-none absolute inset-y-0 left-[-30%] w-[32%] skew-x-[-18deg] bg-white/30 blur-xl animate-[pulse_2.8s_ease-in-out_infinite] dark:bg-sky-200/10" />
+          </>
+        ) : null}
+        <div className="relative">
         <div className="flex items-start justify-between gap-2">
           <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{card.title}</div>
-          {isActive ? <Radio className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-500" aria-hidden="true" /> : null}
         </div>
         {summary ? <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{summary}</div> : null}
         {cardMetaTags.length > 0 || hasAssignee || hasReviewer ? (
@@ -2207,6 +2206,7 @@ function KanbanCard({
             ) : null}
           </div>
         ) : null}
+        </div>
       </button>
 
       {menuPosition ? (
@@ -2318,6 +2318,11 @@ function CardModal({
     [boards, card.boardId],
   );
   const canMoveAcrossBoards = currentBoard?.isOwner === true;
+  const runStatus = card.isRunning ? "running" : card.lastRunStatus;
+  const cardIdTitle = `Card ID\n${String(card._id)}\nClick to copy`;
+  const sessionTitle = card.lastSessionId
+    ? [card.lastSessionId, "Click to copy session ID"].join("\n")
+    : "No worker run recorded yet";
 
   async function copyValue(value: string, label: string) {
     try {
@@ -2493,7 +2498,34 @@ function CardModal({
         <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
           <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[1fr_240px]">
             <div className="min-h-0 space-y-5 overflow-y-auto p-5 lg:border-r lg:border-zinc-200 dark:border-zinc-800">
-              <div className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Edit card</div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Edit card</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
+                    onClick={() => void copyValue(String(card._id), "Card ID")}
+                    title={cardIdTitle}
+                    aria-label="Copy card ID"
+                  >
+                    <Hash className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!card.lastSessionId}
+                    className={`inline-flex h-9 w-9 items-center justify-center rounded-full border bg-white transition dark:bg-zinc-900 ${
+                      card.lastSessionId
+                        ? `border-zinc-200 ${getRunTone(runStatus)} hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600`
+                        : "cursor-not-allowed border-zinc-200 text-zinc-300 dark:border-zinc-800 dark:text-zinc-700"
+                    }`}
+                    onClick={() => (card.lastSessionId ? void copyValue(card.lastSessionId, "Session ID") : undefined)}
+                    title={sessionTitle}
+                    aria-label="Copy session ID"
+                  >
+                    <Clock3 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
 
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Title</label>
@@ -2577,51 +2609,6 @@ function CardModal({
             </div>
 
             <aside className="min-h-0 space-y-3 overflow-y-auto border-t border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-950/60 lg:border-t-0">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Card ID</label>
-                <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 py-2 dark:border-zinc-800 dark:bg-zinc-900">
-                  <code className="min-w-0 flex-1 break-all text-[11px] text-zinc-700 dark:text-zinc-200">{card._id}</code>
-                  <button
-                    type="button"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
-                    onClick={() => void copyValue(String(card._id), "Card ID")}
-                    aria-label="Copy card ID"
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Runtime</label>
-                {card.lastSessionId ? (
-                  <div className="space-y-2">
-                    <div
-                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium ${getRunStatusClass(
-                        card.isRunning ? "running" : card.lastRunStatus,
-                      )}`}
-                    >
-                      {card.isRunning ? <Radio className="h-3 w-3" /> : null}
-                      {formatRunStatusLabel(card.isRunning ? "running" : card.lastRunStatus)}
-                    </div>
-                    <div className="space-y-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-2 dark:border-zinc-800 dark:bg-zinc-900">
-                      <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                        <span>{card.lastSessionAgentId ?? "Unknown agent"}</span>
-                        <span>
-                          {typeof card.lastSessionUpdatedAt === "number"
-                            ? formatRelativeActivityTime(card.lastSessionUpdatedAt)
-                            : "unknown"}
-                        </span>
-                      </div>
-                      <code className="block break-all text-[11px] text-zinc-700 dark:text-zinc-200">{card.lastSessionId}</code>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-dashed border-zinc-200 px-2.5 py-2 text-[11px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                    No worker run recorded for this card yet.
-                  </div>
-                )}
-              </div>
 
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Agent</label>
