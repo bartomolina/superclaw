@@ -2157,7 +2157,7 @@ function KanbanCard({
         style={{ transform: CSS.Transform.toString(transform), transition }}
         className={`relative w-full touch-none cursor-grab active:cursor-grabbing overflow-hidden rounded-xl border bg-white px-3 py-2 text-left transition dark:bg-zinc-900 ${
           isActive
-            ? "border-transparent shadow-none"
+            ? "border-transparent shadow-none hover:brightness-[1.03] hover:saturate-125"
             : "border-zinc-200 hover:border-zinc-300 hover:shadow-sm dark:border-zinc-800 dark:hover:border-zinc-700"
         } ${isDragging ? "opacity-0" : ""}`}
       >
