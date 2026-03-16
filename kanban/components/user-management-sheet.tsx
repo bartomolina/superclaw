@@ -1,6 +1,6 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { Eye, EyeOff, Trash2 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -39,6 +39,20 @@ function formatTimestamp(timestamp: number) {
   });
 }
 
+function maskEmail(email: string) {
+  const [localPart = "", domainPart = ""] = email.split("@");
+  const [domainName = "", ...domainTail] = domainPart.split(".");
+
+  const maskSegment = (value: string) => {
+    if (!value) return "•••";
+    if (value.length <= 1) return "•";
+    return `${value[0]}${"•".repeat(Math.max(2, value.length - 1))}`;
+  };
+
+  const maskedDomainTail = domainTail.length > 0 ? `.${domainTail.join(".")}` : "";
+  return `${maskSegment(localPart)}@${maskSegment(domainName)}${maskedDomainTail}`;
+}
+
 export function UserManagementSheet({
   open,
   onClose,
@@ -56,6 +70,7 @@ export function UserManagementSheet({
   const [superuserName, setSuperuserName] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [showEmails, setShowEmails] = useState(false);
   const [isSavingSuperuser, setIsSavingSuperuser] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -143,13 +158,26 @@ export function UserManagementSheet({
               Manage member access.
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-sm text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-          >
-            Close
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowEmails((current) => !current)}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-zinc-200 px-3 text-sm text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-700 dark:hover:text-zinc-100"
+              aria-pressed={showEmails}
+            >
+              {showEmails ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showEmails ? "Hide emails" : "Show emails"}
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-sm text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         <form
@@ -183,7 +211,11 @@ export function UserManagementSheet({
               </div>
               <input
                 className={inputClass}
-                value={superuserProfile?.email ?? ""}
+                value={
+                  showEmails
+                    ? (superuserProfile?.email ?? "")
+                    : maskEmail(superuserProfile?.email ?? "")
+                }
                 readOnly
                 disabled
               />
@@ -278,7 +310,7 @@ export function UserManagementSheet({
                         {user.name}
                       </div>
                       <div className="truncate text-sm text-zinc-600 dark:text-zinc-300">
-                        {user.email}
+                        {showEmails ? user.email : maskEmail(user.email)}
                       </div>
                       <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
                         Updated {formatTimestamp(user.updatedAt)}
