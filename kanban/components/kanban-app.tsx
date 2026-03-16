@@ -2155,9 +2155,9 @@ function KanbanCard({
         onClick={() => onOpenCard(card._id)}
         onContextMenu={handleContextMenu}
         style={{ transform: CSS.Transform.toString(transform), transition }}
-        className={`group relative w-full touch-none cursor-grab active:cursor-grabbing overflow-hidden rounded-xl border bg-white px-3 py-2 text-left transition dark:bg-zinc-900 ${
+        className={`group relative w-full touch-none cursor-grab active:cursor-grabbing overflow-hidden rounded-xl border bg-white px-3 py-2 text-left transition duration-200 transform-gpu dark:bg-zinc-900 ${
           isActive
-            ? "border-transparent shadow-none"
+            ? "border-transparent shadow-none hover:-translate-y-0.5 hover:scale-[1.01]"
             : "border-zinc-200 hover:border-zinc-300 hover:shadow-sm dark:border-zinc-800 dark:hover:border-zinc-700"
         } ${isDragging ? "opacity-0" : ""}`}
       >
@@ -2165,7 +2165,7 @@ function KanbanCard({
           <>
             <span className="pointer-events-none absolute inset-[-140%] animate-[spin_3.2s_linear_infinite] opacity-85 transition-opacity duration-200 group-hover:opacity-100 bg-[conic-gradient(from_0deg,rgba(56,189,248,0)_0deg,rgba(56,189,248,0)_255deg,rgba(56,189,248,0.98)_300deg,rgba(110,231,255,1)_326deg,rgba(16,185,129,0.88)_344deg,rgba(56,189,248,0)_360deg)]" />
             <span className="pointer-events-none absolute inset-[1px] rounded-[calc(theme(borderRadius.xl)-1px)] bg-white dark:bg-zinc-900" />
-            <span className="pointer-events-none absolute inset-0 rounded-[inherit] transition-shadow duration-200 shadow-[0_0_0_1px_rgba(56,189,248,0.2)] group-hover:shadow-[0_0_0_1px_rgba(56,189,248,0.38)]" />
+            <span className="pointer-events-none absolute inset-0 rounded-[inherit] transition-shadow duration-200 shadow-[0_0_0_1px_rgba(56,189,248,0.2)] group-hover:shadow-[0_0_0_1px_rgba(56,189,248,0.44),0_0_24px_-16px_rgba(56,189,248,0.85)]" />
           </>
         ) : null}
         <div className="relative">
