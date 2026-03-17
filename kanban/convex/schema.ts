@@ -125,4 +125,17 @@ export default defineSchema({
     lastTriggeredAt: v.number(),
     updatedAt: v.number(),
   }).index("by_scope_key", ["scope", "key"]),
+
+  extensionCredentials: defineTable({
+    ownerId: v.string(),
+    ownerEmail: v.string(),
+    ownerName: v.optional(v.string()),
+    tokenHash: v.string(),
+    tokenPreview: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastVerifiedAt: v.optional(v.number()),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_token_hash", ["tokenHash"]),
 });

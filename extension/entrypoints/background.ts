@@ -1,5 +1,5 @@
 import type { ExtensionMessage } from "@/utils/messaging";
-import { apiUrl, apiToken, selectedBoard } from "@/utils/storage";
+import { extensionCredential, kanbanBaseUrl, selectedBoard } from "@/utils/storage";
 
 export default defineBackground({
   main() {
@@ -59,22 +59,22 @@ export default defineBackground({
 });
 
 // ---------------------------------------------------------------------------
-// API helpers (stubbed for Phase 1 — will wire to real backend in Phase 2)
+// API helpers (stubbed for Phase 1 - will wire to real backend in Phase 2)
 // ---------------------------------------------------------------------------
 
 async function submitAnnotations(
   payload: Record<string, unknown>,
 ): Promise<{ ok: boolean; error?: string }> {
-  const url = await apiUrl.getValue();
-  const token = await apiToken.getValue();
+  const url = await kanbanBaseUrl.getValue();
+  const token = await extensionCredential.getValue();
   const board = await selectedBoard.getValue();
 
-  console.log("[SuperClaw] Would submit annotations to:", url, {
+  console.log("[SuperClaw] Would submit annotations to Kanban:", url, {
     ...payload,
     boardId: (payload.boardId as string) || board || undefined,
   });
 
-  // Stubbed — return success without actually calling the backend
+  // Stubbed - return success without actually calling the backend
   void token; // will be used in Phase 2
   return { ok: true };
 }
