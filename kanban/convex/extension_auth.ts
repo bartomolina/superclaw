@@ -1,10 +1,13 @@
 import { v } from "convex/values";
 
+import type { Doc } from "./_generated/dataModel";
 import { getSuperuserEmail, requireMember } from "./access";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 
-function normalizeCredential(value: string) {
+type ExtensionCredentialDoc = Doc<"extensionCredentials">;
+
+export function normalizeCredential(value: string) {
   const normalized = value.trim();
 
   if (!normalized) {
@@ -22,7 +25,7 @@ function getCredentialPreview(token: string) {
   return `${token.slice(0, 4)}...${token.slice(-6)}`;
 }
 
-async function hashCredential(token: string) {
+export async function hashCredential(token: string) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
 
   return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
@@ -42,6 +45,28 @@ async function canEmailUseKanban(ctx: QueryCtx | MutationCtx, email: string) {
     .first();
 
   return Boolean(invitedUser);
+}
+
+export async function requireActiveExtensionCredential(
+  ctx: QueryCtx | MutationCtx,
+  token: string,
+): Promise<ExtensionCredentialDoc> {
+  const normalizedToken = normalizeCredential(token);
+  const tokenHash = await hashCredential(normalizedToken);
+  const existing = await ctx.db
+    .query("extensionCredentials")
+    .withIndex("by_token_hash", (q) => q.eq("tokenHash", tokenHash))
+    .unique();
+
+  if (!existing) {
+    throw new Error("Invalid extension credential");
+  }
+
+  if (!(await canEmailUseKanban(ctx, existing.ownerEmail))) {
+    throw new Error("Extension credential is no longer active");
+  }
+
+  return existing;
 }
 
 export const status = query({
@@ -128,20 +153,7 @@ export const verifyCredential = mutation({
     token: v.string(),
   },
   handler: async (ctx, args) => {
-    const token = normalizeCredential(args.token);
-    const tokenHash = await hashCredential(token);
-    const existing = await ctx.db
-      .query("extensionCredentials")
-      .withIndex("by_token_hash", (q) => q.eq("tokenHash", tokenHash))
-      .unique();
-
-    if (!existing) {
-      throw new Error("Invalid extension credential");
-    }
-
-    if (!(await canEmailUseKanban(ctx, existing.ownerEmail))) {
-      throw new Error("Extension credential is no longer active");
-    }
+    const existing = await requireActiveExtensionCredential(ctx, args.token);
 
     const verifiedAt = Date.now();
 
