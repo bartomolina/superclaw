@@ -1,12 +1,15 @@
 import { storage } from "wxt/utils/storage";
 
-export const apiUrl = storage.defineItem<string>("local:apiUrl", {
-  fallback: "http://localhost:4101",
+export const kanbanBaseUrl = storage.defineItem<string>("local:kanbanBaseUrl", {
+  fallback: "http://localhost:3000",
 });
 
-export const apiToken = storage.defineItem<string>("local:apiToken", {
+export const extensionCredential = storage.defineItem<string>("local:extensionCredential", {
   fallback: "",
 });
+
+export const apiUrl = kanbanBaseUrl;
+export const apiToken = extensionCredential;
 
 export const selectedBoard = storage.defineItem<string>(
   "local:selectedBoard",

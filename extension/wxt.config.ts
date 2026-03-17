@@ -8,6 +8,7 @@ export default defineConfig({
       "Annotate UI elements and push them as cards to your Kanban board",
     version: "0.1.0",
     permissions: ["storage", "activeTab", "contextMenus"],
+    host_permissions: ["http://*/*", "https://*/*"],
     action: {
       default_icon: {
         "16": "icon/16.png",

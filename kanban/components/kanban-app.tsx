@@ -22,12 +22,13 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useConvexAuth, useMutation, useQueries, useQuery } from "convex/react";
-import { Clock3, ExternalLink, Hash, Menu, Moon, MoveRight, Play, Settings, Sun, UserRound, X } from "lucide-react";
+import { Clock3, ExternalLink, Hash, Menu, Moon, MoveRight, Play, PlugZap, Settings, Sun, UserRound, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { ActivitySheet } from "@/components/activity-sheet";
+import { ExtensionAccessSheet } from "@/components/extension-access-sheet";
 import { InboxDebugSheet } from "@/components/inbox-debug-sheet";
 import { UserManagementSheet } from "@/components/user-management-sheet";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
@@ -572,6 +573,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [isInboxDebugOpen, setIsInboxDebugOpen] = useState(false);
   const [debugAgentId, setDebugAgentId] = useState<string | null>(null);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const [isExtensionAccessOpen, setIsExtensionAccessOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [allAgentOptions, setAllAgentOptions] = useState<AgentOption[]>([]);
   const [sidebarAgentOptions, setSidebarAgentOptions] = useState<AgentOption[]>([]);
@@ -1226,6 +1228,17 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
             </div>
 
             <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setIsExtensionAccessOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-sm text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:border-zinc-700 dark:hover:text-zinc-100"
+                title="Connect extension"
+                aria-label="Connect extension"
+              >
+                <PlugZap className="h-4 w-4" />
+                <span className="hidden sm:inline">Connect Extension</span>
+              </button>
+
               {isSuperuser ? (
                 <button
                   type="button"
@@ -1540,6 +1553,11 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
       <UserManagementSheet
         open={isUserManagementOpen}
         onClose={() => setIsUserManagementOpen(false)}
+      />
+
+      <ExtensionAccessSheet
+        open={isExtensionAccessOpen}
+        onClose={() => setIsExtensionAccessOpen(false)}
       />
 
       {editingBoard ? (
