@@ -268,7 +268,7 @@ export function Toolbar() {
     setPushLoading(false);
     if (errors === 0) {
       showToast(
-        created === 1 ? "Card created!" : `${created} cards created`,
+        created === 1 ? "1 card created" : `${created} cards created`,
       );
       setAnnotations([]);
     } else {
@@ -323,7 +323,11 @@ export function Toolbar() {
       payload,
     });
     if (res.ok) {
-      showToast("Card created!");
+      const destination =
+        res.board?.name && res.column?.name
+          ? ` in ${res.board.name} / ${res.column.name}`
+          : "";
+      showToast(`Card created${destination}`);
       setAnnotatingMeta(null);
       setMode("picking");
     } else {

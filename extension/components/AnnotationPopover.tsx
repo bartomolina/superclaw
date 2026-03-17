@@ -63,7 +63,9 @@ export function AnnotationPopover({
       if (boardsRes.ok) {
         const b = boardsRes.boards || [];
         setBoards(b);
-        if (b.length) setBoardId(b[0].id);
+        if (b.length) {
+          setBoardId(boardsRes.defaultBoardId || b[0].id);
+        }
       }
       if (agentsRes.ok) {
         setAgents(agentsRes.agents || []);
@@ -80,11 +82,11 @@ export function AnnotationPopover({
         if (res.ok) {
           const cols = res.columns || [];
           setColumns(cols);
-          const todo = cols.find(
-            (c: Column) => c.name.toLowerCase() === "todo",
-          );
-          if (todo) setColumnId(todo.id);
-          else if (cols.length) setColumnId(cols[0].id);
+          if (cols.length) {
+            setColumnId(res.defaultColumnId || cols[0].id);
+          } else {
+            setColumnId("");
+          }
         }
       });
   }, [boardId]);
@@ -176,6 +178,9 @@ export function AnnotationPopover({
             onChange={(e) => setBoardId(e.target.value)}
             style={selectStyle}
           >
+            {!boards.length ? (
+              <option value="">No boards available</option>
+            ) : null}
             {boards.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -188,6 +193,9 @@ export function AnnotationPopover({
             onChange={(e) => setColumnId(e.target.value)}
             style={selectStyle}
           >
+            {!columns.length ? (
+              <option value="">TODO / first column</option>
+            ) : null}
             {columns.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -232,8 +240,8 @@ export function AnnotationPopover({
           colors={colors}
           accent
           onClick={handleSend}
-          disabled={sendLoading}
-          style={{ opacity: sendLoading ? 0.7 : 1 }}
+          disabled={sendLoading || !boardId}
+          style={{ opacity: sendLoading || !boardId ? 0.7 : 1 }}
         >
           {sendLoading ? "..." : "Send"}
         </PopoverButton>
