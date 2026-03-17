@@ -1276,11 +1276,11 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                 type="button"
                 onClick={() => setIsExtensionAccessOpen(true)}
                 className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-sm text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:border-zinc-700 dark:hover:text-zinc-100"
-                title="Add extension"
-                aria-label="Add extension"
+                title="Connect extension"
+                aria-label="Connect extension"
               >
                 <PlugZap className="h-4 w-4" />
-                <span className="hidden sm:inline">Add Extension</span>
+                <span className="hidden sm:inline">Connect Extension</span>
               </button>
 
               {isSuperuser ? (
