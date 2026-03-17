@@ -22,7 +22,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useConvexAuth, useMutation, useQueries, useQuery } from "convex/react";
-import { Clock3, ExternalLink, Hash, Menu, Moon, Play, PlugZap, Send, Settings, Sun, UserRound, X } from "lucide-react";
+import { Clock3, ExternalLink, Eye, EyeOff, Hash, Menu, Moon, Play, PlugZap, Send, Settings, Sun, UserRound, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -183,6 +183,20 @@ function summarize(text?: string) {
   const normalized = text?.replace(/\r\n?/g, "\n").trim();
   if (!normalized) return "";
   return normalized.length > 120 ? `${normalized.slice(0, 117).trimEnd()}...` : normalized;
+}
+
+function maskEmail(email: string) {
+  const [localPart = "", domainPart = ""] = email.split("@");
+  const [domainName = "", ...domainTail] = domainPart.split(".");
+
+  const maskSegment = (value: string) => {
+    if (!value) return "•••";
+    if (value.length <= 1) return "•";
+    return `${value[0]}${"•".repeat(Math.max(2, value.length - 1))}`;
+  };
+
+  const maskedDomainTail = domainTail.length > 0 ? `.${domainTail.join(".")}` : "";
+  return `${maskSegment(localPart)}@${maskSegment(domainName)}${maskedDomainTail}`;
 }
 
 function buildSessionKey(sessionId?: string, agentId?: string) {
@@ -1655,6 +1669,7 @@ function BoardEditModal({
     board.sharedUserIds ?? [],
   );
   const [allowedAgentIdsDraft, setAllowedAgentIdsDraft] = useState<string[]>(board.allowedAgentIds ?? []);
+  const [showBoardAccessEmails, setShowBoardAccessEmails] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -1785,11 +1800,25 @@ function BoardEditModal({
             </div>
 
             <div className="space-y-3">
-              <div>
-                <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Board access</div>
-                <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                  Select saved users who should be able to open and work inside this board.
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Board access</div>
+                  <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                    Select saved users who should be able to open and work inside this board.
+                  </div>
                 </div>
+
+                {sortedManagedUsers.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowBoardAccessEmails((current) => !current)}
+                    className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-zinc-200 px-2.5 text-xs text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-700 dark:hover:text-zinc-100"
+                    aria-pressed={showBoardAccessEmails}
+                  >
+                    {showBoardAccessEmails ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    {showBoardAccessEmails ? "Hide emails" : "Show emails"}
+                  </button>
+                ) : null}
               </div>
 
               {managedUsers === undefined ? (
@@ -1801,8 +1830,8 @@ function BoardEditModal({
                   Add users from the gear menu first, then assign board access here.
                 </div>
               ) : (
-                <div className="space-y-2 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800">
-                  {sortedManagedUsers.map((user) => {
+                <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
+                  {sortedManagedUsers.map((user, index) => {
                     const checked = sharedUserIdsDraft.some(
                       (value) => String(value) === String(user._id),
                     );
@@ -1810,11 +1839,13 @@ function BoardEditModal({
                     return (
                       <label
                         key={user._id}
-                        className="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/70"
+                        className={`flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/70 ${
+                          index > 0 ? "border-t border-zinc-200 dark:border-zinc-800" : ""
+                        }`}
                       >
                         <input
                           type="checkbox"
-                          className="mt-1 h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                          className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
                           checked={checked}
                           onChange={() => toggleSharedUser(user._id)}
                         />
@@ -1823,7 +1854,7 @@ function BoardEditModal({
                             {user.name}
                           </div>
                           <div className="truncate text-sm text-zinc-500 dark:text-zinc-400">
-                            {user.email}
+                            {showBoardAccessEmails ? user.email : maskEmail(user.email)}
                           </div>
                         </div>
                       </label>
@@ -1846,29 +1877,34 @@ function BoardEditModal({
                   No agents available.
                 </div>
               ) : (
-                <div className="space-y-2 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800">
-                  {sortedAgentOptions.map((agent) => {
+                <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
+                  {sortedAgentOptions.map((agent, index) => {
                     const checked = allowedAgentIdsDraft.some((value) => value.trim() === agent.id);
 
                     return (
                       <label
                         key={agent.id}
-                        className="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/70"
+                        className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/70 ${
+                          index > 0 ? "border-t border-zinc-200 dark:border-zinc-800" : ""
+                        }`}
                       >
-                        <input
-                          type="checkbox"
-                          className="mt-1 h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                          checked={checked}
-                          onChange={() => toggleAllowedAgent(agent.id)}
+                        <AgentAvatar
+                          agentName={agent.name}
+                          avatarUrl={agent.avatarUrl ?? null}
+                          emoji={agent.emoji}
+                          size="sm"
                         />
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
                             {agent.name}
                           </div>
-                          <div className="truncate text-sm text-zinc-500 dark:text-zinc-400">
-                            {agent.id}
-                          </div>
                         </div>
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                          checked={checked}
+                          onChange={() => toggleAllowedAgent(agent.id)}
+                        />
                       </label>
                     );
                   })}
