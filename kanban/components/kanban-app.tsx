@@ -22,7 +22,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useConvexAuth, useMutation, useQueries, useQuery } from "convex/react";
-import { Clock3, ExternalLink, Hash, Menu, Moon, MoveRight, Play, PlugZap, Settings, Sun, UserRound, X } from "lucide-react";
+import { Clock3, ExternalLink, Hash, Menu, Moon, Play, PlugZap, Send, Settings, Sun, UserRound, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -180,9 +180,39 @@ function formatColumnName(columnName: string) {
 }
 
 function summarize(text?: string) {
-  const normalized = text?.trim();
+  const normalized = text?.replace(/\r\n?/g, "\n").trim();
   if (!normalized) return "";
-  return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
+  return normalized.length > 120 ? `${normalized.slice(0, 117).trimEnd()}...` : normalized;
+}
+
+function buildSessionKey(sessionId?: string, agentId?: string) {
+  const normalizedSessionId = sessionId?.trim();
+  const normalizedAgentId = agentId?.trim();
+
+  if (!normalizedSessionId || !normalizedAgentId) {
+    return null;
+  }
+
+  const expectedPrefix = `kanban-manual-${normalizedAgentId}-`;
+  if (!normalizedSessionId.startsWith(expectedPrefix)) {
+    return null;
+  }
+
+  const runUuid = normalizedSessionId.slice(expectedPrefix.length).trim();
+  if (!runUuid) {
+    return null;
+  }
+
+  return `agent:${normalizedAgentId}:kanban-manual:${runUuid}`;
+}
+
+function buildSessionChatUrl(sessionId?: string, agentId?: string) {
+  const sessionKey = buildSessionKey(sessionId, agentId);
+  if (!sessionKey) {
+    return null;
+  }
+
+  return `http://localhost:18789/chat?session=${encodeURIComponent(sessionKey)}`;
 }
 
 function formatRelativeActivityTime(timestamp: number) {
@@ -1505,7 +1535,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                       <div className="w-[220px] rounded-lg border border-zinc-200 bg-white px-3 py-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
                         <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{activeDragCard.title}</div>
                         {summarize(activeDragCard.description) ? (
-                          <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                          <div className="mt-1 whitespace-pre-line text-xs text-zinc-500 dark:text-zinc-400">
                             {summarize(activeDragCard.description)}
                           </div>
                         ) : null}
@@ -2229,7 +2259,7 @@ function KanbanCard({
         <div className="flex items-start justify-between gap-2">
           <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{card.title}</div>
         </div>
-        {summary ? <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{summary}</div> : null}
+        {summary ? <div className="mt-1 whitespace-pre-line text-xs text-zinc-500 dark:text-zinc-400">{summary}</div> : null}
         {cardMetaTags.length > 0 || hasAssignee || hasReviewer ? (
           <div className="mt-2 flex items-start justify-between gap-2">
             {cardMetaTags.length > 0 ? (
@@ -2378,6 +2408,7 @@ function CardModal({
   const runStatus = card.isRunning ? "running" : card.lastRunStatus;
   const cardIdTitle = String(card._id);
   const sessionTitle = card.lastSessionId ? card.lastSessionId : "No worker run recorded yet";
+  const sessionChatUrl = buildSessionChatUrl(card.lastSessionId, card.lastSessionAgentId ?? card.agentId);
 
   async function copyValue(value: string, label: string) {
     try {
@@ -2565,20 +2596,33 @@ function CardModal({
                   >
                     <Hash className="h-4 w-4" />
                   </button>
-                  <button
-                    type="button"
-                    disabled={!card.lastSessionId}
-                    className={`inline-flex h-9 w-9 items-center justify-center rounded-full border bg-white transition dark:bg-zinc-900 ${
-                      card.lastSessionId
-                        ? `border-zinc-200 ${getRunTone(runStatus)} hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600`
-                        : "cursor-not-allowed border-zinc-200 text-zinc-300 dark:border-zinc-800 dark:text-zinc-700"
-                    }`}
-                    onClick={() => (card.lastSessionId ? void copyValue(card.lastSessionId, "Session ID") : undefined)}
-                    title={sessionTitle}
-                    aria-label="Copy session ID"
-                  >
-                    <Clock3 className="h-4 w-4" />
-                  </button>
+                  {sessionChatUrl ? (
+                    <a
+                      href={sessionChatUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-full border bg-white transition dark:bg-zinc-900 border-zinc-200 ${getRunTone(runStatus)} hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600`}
+                      title={sessionTitle}
+                      aria-label="Open worker session chat"
+                    >
+                      <Clock3 className="h-4 w-4" />
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!card.lastSessionId}
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-full border bg-white transition dark:bg-zinc-900 ${
+                        card.lastSessionId
+                          ? `border-zinc-200 ${getRunTone(runStatus)} hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600`
+                          : "cursor-not-allowed border-zinc-200 text-zinc-300 dark:border-zinc-800 dark:text-zinc-700"
+                      }`}
+                      onClick={() => (card.lastSessionId ? void copyValue(card.lastSessionId, "Session ID") : undefined)}
+                      title={sessionTitle}
+                      aria-label="Copy session ID"
+                    >
+                      <Clock3 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -2656,7 +2700,7 @@ function CardModal({
                       disabled={!commentDraft.trim() || isSavingComment}
                       aria-label="Send comment"
                     >
-                      <MoveRight className="h-4 w-4" />
+                      <Send className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
