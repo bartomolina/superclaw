@@ -101,7 +101,7 @@ export default function App() {
             Kanban connection
           </div>
           <p className="mt-1 text-xs text-zinc-500">
-            Generate a credential from the Kanban app's Add Extension panel,
+            Generate a credential from the Kanban app's Connect Extension panel,
             then paste it here and verify the connection.
           </p>
 

@@ -138,7 +138,7 @@ export function ExtensionAccessSheet({
       >
         <div className="mb-4 flex items-center justify-between gap-3 border-b border-zinc-200 pb-3 dark:border-zinc-800">
           <div>
-            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Add Extension</div>
+            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Connect Extension</div>
             <div className="text-xs text-zinc-500 dark:text-zinc-400">
               Generate a per-user credential for the browser extension.
             </div>
