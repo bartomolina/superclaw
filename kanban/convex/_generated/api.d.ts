@@ -19,6 +19,7 @@ import type * as card_runs from "../card_runs.js";
 import type * as cards from "../cards.js";
 import type * as columns from "../columns.js";
 import type * as comments from "../comments.js";
+import type * as extension_api from "../extension_api.js";
 import type * as extension_auth from "../extension_auth.js";
 import type * as helpers from "../helpers.js";
 import type * as http from "../http.js";
@@ -42,6 +43,7 @@ declare const fullApi: ApiFromModules<{
   cards: typeof cards;
   columns: typeof columns;
   comments: typeof comments;
+  extension_api: typeof extension_api;
   extension_auth: typeof extension_auth;
   helpers: typeof helpers;
   http: typeof http;

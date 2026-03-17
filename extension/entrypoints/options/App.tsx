@@ -5,7 +5,11 @@ import {
   selectedBoard,
   theme,
 } from "@/utils/storage";
-import { verifyExtensionConnection } from "@/utils/kanban";
+import {
+  listExtensionBoards,
+  type ExtensionBoard,
+  verifyExtensionConnection,
+} from "@/utils/kanban";
 
 type Theme = "light" | "dark" | "system";
 type ConnectionState =
@@ -28,18 +32,61 @@ export default function App() {
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
   const [board, setBoard] = useState("");
+  const [boards, setBoards] = useState<ExtensionBoard[]>([]);
+  const [boardsLoading, setBoardsLoading] = useState(false);
+  const [boardsError, setBoardsError] = useState<string | null>(null);
   const [currentTheme, setCurrentTheme] = useState<Theme>("system");
   const [saved, setSaved] = useState(false);
   const [connection, setConnection] = useState<ConnectionState>({ status: "idle" });
 
   useEffect(() => {
     (async () => {
-      setUrl(await kanbanBaseUrl.getValue());
-      setToken(await extensionCredential.getValue());
-      setBoard(await selectedBoard.getValue());
-      setCurrentTheme(await theme.getValue());
+      const [savedUrl, savedToken, savedBoard, savedTheme] = await Promise.all([
+        kanbanBaseUrl.getValue(),
+        extensionCredential.getValue(),
+        selectedBoard.getValue(),
+        theme.getValue(),
+      ]);
+
+      setUrl(savedUrl);
+      setToken(savedToken);
+      setBoard(savedBoard);
+      setCurrentTheme(savedTheme);
+
+      if (savedUrl.trim() && savedToken.trim()) {
+        await loadBoards(savedUrl, savedToken, savedBoard);
+      }
     })();
   }, []);
+
+  async function loadBoards(nextUrl: string, nextToken: string, preferredBoard: string) {
+    if (!nextUrl.trim() || !nextToken.trim()) {
+      setBoards([]);
+      setBoardsError(null);
+      return preferredBoard;
+    }
+
+    try {
+      setBoardsLoading(true);
+      setBoardsError(null);
+      const result = await listExtensionBoards(nextUrl, nextToken);
+      setBoards(result.boards);
+
+      const resolvedBoard =
+        preferredBoard && result.boards.some((candidate) => candidate.id === preferredBoard)
+          ? preferredBoard
+          : result.defaultBoardId || "";
+
+      setBoard(resolvedBoard);
+      return resolvedBoard;
+    } catch (error) {
+      setBoards([]);
+      setBoardsError(error instanceof Error ? error.message : "Could not load boards");
+      return preferredBoard;
+    } finally {
+      setBoardsLoading(false);
+    }
+  }
 
   async function persistSettings(nextValues?: {
     url?: string;
@@ -63,11 +110,13 @@ export default function App() {
     try {
       setConnection({ status: "verifying" });
       const result = await verifyExtensionConnection(url, token);
+      const resolvedBoard = await loadBoards(result.baseUrl, result.credential, board);
       setUrl(result.baseUrl);
       setToken(result.credential);
       await persistSettings({
         url: result.baseUrl,
         token: result.credential,
+        board: resolvedBoard,
       });
       setConnection({
         status: "success",
@@ -113,6 +162,8 @@ export default function App() {
                 value={url}
                 onChange={(e) => {
                   setUrl(e.target.value);
+                  setBoards([]);
+                  setBoardsError(null);
                   if (connection.status !== "idle") {
                     setConnection({ status: "idle" });
                   }
@@ -129,6 +180,8 @@ export default function App() {
                 value={token}
                 onChange={(e) => {
                   setToken(e.target.value);
+                  setBoards([]);
+                  setBoardsError(null);
                   if (connection.status !== "idle") {
                     setConnection({ status: "idle" });
                   }
@@ -170,16 +223,36 @@ export default function App() {
         </div>
 
         <div className="space-y-4">
-          <Field label="Board ID" id="board-id">
-            <input
+          <Field label="Default Board" id="board-id">
+            <select
               id="board-id"
-              type="text"
               value={board}
               onChange={(e) => setBoard(e.target.value)}
-              placeholder="Will be populated from backend in Phase 2"
-              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            />
+              disabled={boardsLoading || boards.length === 0}
+              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-zinc-100"
+            >
+              <option value="">
+                {boardsLoading
+                  ? "Loading boards..."
+                  : boards.length > 0
+                    ? "Use first accessible board"
+                    : "Verify connection to load boards"}
+              </option>
+              {boards.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                </option>
+              ))}
+            </select>
           </Field>
+          <p className="text-xs text-zinc-500">
+            New cards go to this board&apos;s TODO column by default. If left unset, the extension uses your first accessible board.
+          </p>
+          {boardsError ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {boardsError}
+            </p>
+          ) : null}
 
           <Field label="Theme" id="theme">
             <select
@@ -210,8 +283,7 @@ export default function App() {
         </div>
 
         <p className="text-xs text-zinc-400">
-          Phase 1 only verifies and stores the Kanban connection. Card
-          submission and board syncing will be added later.
+          Cards are only marked created after the Kanban app confirms the card was written.
         </p>
       </div>
     </div>
