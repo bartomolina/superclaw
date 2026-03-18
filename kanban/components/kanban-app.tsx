@@ -1439,7 +1439,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
               )
             ) : null}
 
-            <div className="border-t border-zinc-200 pt-3 dark:border-zinc-800">
+            <div className="pt-3">
               <div className="max-h-[220px] space-y-2 overflow-y-auto px-1 pr-2">
                 {isSidebarAgentsLoading ? (
                   <div className="text-sm text-zinc-500 dark:text-zinc-400">Loading agents...</div>
