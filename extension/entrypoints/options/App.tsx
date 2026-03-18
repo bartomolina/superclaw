@@ -33,6 +33,7 @@ export default function App() {
   const [token, setToken] = useState("");
   const [board, setBoard] = useState("");
   const [boards, setBoards] = useState<ExtensionBoard[]>([]);
+  const [fallbackBoardId, setFallbackBoardId] = useState<string | null>(null);
   const [boardsLoading, setBoardsLoading] = useState(false);
   const [boardsError, setBoardsError] = useState<string | null>(null);
   const [currentTheme, setCurrentTheme] = useState<Theme>("system");
@@ -62,6 +63,7 @@ export default function App() {
   async function loadBoards(nextUrl: string, nextToken: string, preferredBoard: string) {
     if (!nextUrl.trim() || !nextToken.trim()) {
       setBoards([]);
+      setFallbackBoardId(null);
       setBoardsError(null);
       return preferredBoard;
     }
@@ -71,16 +73,18 @@ export default function App() {
       setBoardsError(null);
       const result = await listExtensionBoards(nextUrl, nextToken);
       setBoards(result.boards);
+      setFallbackBoardId(result.defaultBoardId);
 
       const resolvedBoard =
         preferredBoard && result.boards.some((candidate) => candidate.id === preferredBoard)
           ? preferredBoard
-          : result.defaultBoardId || "";
+          : "";
 
       setBoard(resolvedBoard);
       return resolvedBoard;
     } catch (error) {
       setBoards([]);
+      setFallbackBoardId(null);
       setBoardsError(error instanceof Error ? error.message : "Could not load boards");
       return preferredBoard;
     } finally {
@@ -132,6 +136,10 @@ export default function App() {
       });
     }
   };
+
+  const selectedBoardName = boards.find((candidate) => candidate.id === board)?.name ?? null;
+  const fallbackBoardName =
+    boards.find((candidate) => candidate.id === fallbackBoardId)?.name ?? null;
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 flex items-start justify-center pt-16 px-4">
@@ -235,7 +243,9 @@ export default function App() {
                 {boardsLoading
                   ? "Loading boards..."
                   : boards.length > 0
-                    ? "Use first accessible board"
+                    ? fallbackBoardName
+                      ? `Automatic (${fallbackBoardName})`
+                      : "Automatic (first accessible board)"
                     : "Verify connection to load boards"}
               </option>
               {boards.map((candidate) => (
@@ -246,8 +256,17 @@ export default function App() {
             </select>
           </Field>
           <p className="text-xs text-zinc-500">
-            New cards go to this board&apos;s TODO column by default. If left unset, the extension uses your first accessible board.
+            Cards go to the selected board&apos;s TODO column by default, or its first column if there is no TODO column.
           </p>
+          {boards.length > 0 ? (
+            <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+              {board && selectedBoardName
+                ? `Current default destination: ${selectedBoardName}.`
+                : fallbackBoardName
+                  ? `Current default destination: Automatic, which resolves to ${fallbackBoardName}.`
+                  : "Current default destination: Automatic, using your first accessible board."}
+            </p>
+          ) : null}
           {boardsError ? (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
               {boardsError}
