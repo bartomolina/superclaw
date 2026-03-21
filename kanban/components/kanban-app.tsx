@@ -69,6 +69,7 @@ type CardModel = {
   columnId: Id<"columns">;
   title: string;
   description?: string;
+  source?: string;
   agentId?: string;
   reviewerId?: string;
   priority?: string;
@@ -153,7 +154,7 @@ const cardTypeOptions: ChoiceOption[] = [
 ];
 
 const inputClass =
-  "w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 transition focus:ring-2 focus:ring-zinc-300 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:placeholder:text-zinc-600 dark:focus:ring-zinc-700";
+  "w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-[16px] text-zinc-900 outline-none placeholder:text-zinc-400 transition focus:ring-2 focus:ring-zinc-300 sm:text-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:placeholder:text-zinc-600 dark:focus:ring-zinc-700";
 const textareaClass = `${inputClass} min-h-32 resize-y`;
 const primaryButtonClass =
   "inline-flex items-center justify-center rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200";
@@ -1682,6 +1683,22 @@ function BoardEditModal({
     return () => window.removeEventListener("keydown", onEscape);
   }, [onClose]);
 
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyOverscroll = document.body.style.overscrollBehavior;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "contain";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.overscrollBehavior = previousBodyOverscroll;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, []);
+
   function handleEditorSubmitShortcut(
     event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
@@ -1756,13 +1773,13 @@ function BoardEditModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-[1px]" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-0 backdrop-blur-[1px] sm:items-center sm:p-4" onMouseDown={onClose}>
       <div
-        className="w-[min(96vw,560px)] overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900"
+        className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl dark:bg-zinc-900 sm:h-auto sm:w-[min(96vw,560px)] sm:rounded-2xl sm:border sm:border-zinc-200 dark:sm:border-zinc-800"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <form onSubmit={handleSave} className="flex max-h-[min(90vh,760px)] flex-col">
-          <div className="space-y-5 overflow-y-auto p-6">
+        <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)] sm:max-h-[min(90vh,760px)] sm:pt-0">
+          <div className="flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 sm:p-6">
             <div className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Edit board</div>
 
             <div>
@@ -1914,7 +1931,7 @@ function BoardEditModal({
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-2 border-t border-zinc-200 px-6 py-3 dark:border-zinc-800">
+          <div className="flex items-center justify-end gap-2 border-t border-zinc-200 bg-white/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 sm:px-6 sm:pb-3">
             <button
               type="button"
               className="px-3 py-2 text-sm text-zinc-500 transition-colors hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
@@ -2199,6 +2216,15 @@ function KanbanCard({
                 : "border-pink-200 bg-pink-50 text-pink-700 dark:border-pink-900/70 dark:bg-pink-950/40 dark:text-pink-200",
         }
       : null,
+    card.source === "extension"
+      ? {
+          key: "source-extension",
+          label: "Extension",
+          title: "Created from extension",
+          className:
+            "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/70 dark:bg-indigo-950/40 dark:text-indigo-200",
+        }
+      : null,
     card.acp
       ? {
           key: `acp-${card.acp}`,
@@ -2410,6 +2436,22 @@ function CardModal({
     return () => window.removeEventListener("keydown", onEscape);
   }, [onClose]);
 
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyOverscroll = document.body.style.overscrollBehavior;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "contain";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.overscrollBehavior = previousBodyOverscroll;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, []);
+
   function handleEditorSubmitShortcut(
     event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
@@ -2613,16 +2655,23 @@ function CardModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-[1px]" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-0 backdrop-blur-[1px] sm:items-center sm:p-4" onMouseDown={onClose}>
       <div
-        className="flex h-[min(92vh,760px)] w-[min(96vw,920px)] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900"
+        className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl dark:bg-zinc-900 sm:h-[min(92vh,760px)] sm:w-[min(96vw,920px)] sm:rounded-2xl sm:border sm:border-zinc-200 dark:sm:border-zinc-800"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
-          <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[1fr_240px]">
-            <div className="min-h-0 space-y-5 overflow-y-auto p-5 lg:border-r lg:border-zinc-200 dark:border-zinc-800">
+        <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)] sm:pt-0">
+          <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto overscroll-contain lg:grid-cols-[1fr_240px] lg:overflow-hidden">
+            <div className="min-h-0 space-y-5 p-4 pb-6 sm:p-5 lg:overflow-y-auto lg:border-r lg:border-zinc-200 dark:border-zinc-800">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Edit card</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Edit card</div>
+                  {card.source === "extension" ? (
+                    <span className="inline-flex h-6 items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 text-[10px] font-medium text-indigo-700 dark:border-indigo-900/70 dark:bg-indigo-950/40 dark:text-indigo-200">
+                      Extension
+                    </span>
+                  ) : null}
+                </div>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -2744,7 +2793,7 @@ function CardModal({
               </div>
             </div>
 
-            <aside className="min-h-0 space-y-3 overflow-y-auto border-t border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-950/60 lg:border-t-0">
+            <aside className="min-h-0 space-y-3 border-t border-zinc-200 bg-zinc-50/60 p-4 pb-6 dark:border-zinc-800 dark:bg-zinc-950/60 lg:overflow-y-auto lg:border-t-0">
 
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Agent</label>
@@ -2859,7 +2908,7 @@ function CardModal({
             </aside>
           </div>
 
-          <div className="flex items-center justify-between border-t border-zinc-200 px-6 py-3 dark:border-zinc-800">
+          <div className="flex items-center justify-between border-t border-zinc-200 bg-white/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 sm:px-6 sm:pb-3">
             <button type="button" className="text-sm text-zinc-500 transition hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400" onClick={handleDelete}>
               Delete card
             </button>
