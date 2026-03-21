@@ -443,7 +443,7 @@ function AgentSelect({
       </div>
 
       {open ? (
-        <div className="absolute left-0 right-0 z-30 mt-1 max-h-56 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+        <div className="hide-scrollbar absolute left-0 right-0 z-30 mt-1 max-h-56 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
           <button
             type="button"
             className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
@@ -1338,7 +1338,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
         ) : null}
 
         <aside
-          className={`fixed inset-y-12 left-0 z-30 min-h-0 w-[min(18rem,100vw)] overflow-y-auto overscroll-contain border-r border-zinc-200 bg-white py-3 shadow-xl transition-transform dark:border-zinc-800 dark:bg-zinc-950 lg:static lg:inset-auto lg:z-auto lg:flex lg:translate-x-0 lg:flex-col lg:shrink-0 lg:border-b-0 lg:shadow-none ${
+          className={`hide-scrollbar fixed inset-y-12 left-0 z-30 min-h-0 w-[min(18rem,100vw)] overflow-y-auto overscroll-contain border-r border-zinc-200 bg-white py-3 shadow-xl transition-transform dark:border-zinc-800 dark:bg-zinc-950 lg:static lg:inset-auto lg:z-auto lg:flex lg:translate-x-0 lg:flex-col lg:shrink-0 lg:border-b-0 lg:shadow-none ${
             isMobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
           } ${isSidebarCollapsed ? "px-3 lg:w-12 lg:px-2" : "px-3 lg:w-48"}`}
         >
@@ -1358,7 +1358,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           </div>
 
           <div className={`${isSidebarCollapsed ? "lg:hidden" : ""} flex h-full min-h-0 flex-col`}>
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+            <div className="hide-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               {boards === undefined ? (
                 <div className="px-1 py-1 text-xs text-zinc-500 dark:text-zinc-400">Loading boards...</div>
               ) : null}
@@ -1442,7 +1442,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
             ) : null}
 
             <div className="pt-3">
-              <div className="max-h-[220px] space-y-2 overflow-y-auto px-1 pr-2">
+              <div className="hide-scrollbar max-h-[220px] space-y-2 overflow-y-auto px-1 pr-2">
                 {isSidebarAgentsLoading ? (
                   <div className="text-sm text-zinc-500 dark:text-zinc-400">Loading agents...</div>
                 ) : sidebarAgentOptions.length > 0 ? (
@@ -2661,8 +2661,8 @@ function CardModal({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)] sm:pt-0">
-          <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto overscroll-contain lg:grid-cols-[1fr_240px] lg:overflow-hidden">
-            <div className="min-h-0 space-y-5 p-4 pb-6 sm:p-5 lg:overflow-y-auto lg:border-r lg:border-zinc-200 dark:border-zinc-800">
+          <div className="hide-scrollbar grid min-h-0 flex-1 grid-cols-1 overflow-y-auto overscroll-contain lg:grid-cols-[1fr_240px] lg:overflow-hidden">
+            <div className="hide-scrollbar min-h-0 space-y-5 p-4 pb-6 sm:p-5 lg:overflow-y-auto lg:border-r lg:border-zinc-200 dark:border-zinc-800">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <div className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Edit card</div>
@@ -2743,7 +2743,7 @@ function CardModal({
                   {comments === undefined ? (
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Loading comments...</p>
                   ) : comments.length > 0 ? (
-                    <div className="max-h-48 space-y-3 overflow-y-auto pr-1">
+                    <div className="hide-scrollbar max-h-48 space-y-3 overflow-y-auto pr-1">
                       {comments.map((comment) => {
                         const author = resolveCommentAuthor(comment);
 
@@ -2793,7 +2793,7 @@ function CardModal({
               </div>
             </div>
 
-            <aside className="min-h-0 space-y-3 border-t border-zinc-200 bg-zinc-50/60 p-4 pb-6 dark:border-zinc-800 dark:bg-zinc-950/60 lg:overflow-y-auto lg:border-t-0">
+            <aside className="hide-scrollbar min-h-0 space-y-3 border-t border-zinc-200 bg-zinc-50/60 p-4 pb-6 dark:border-zinc-800 dark:bg-zinc-950/60 lg:overflow-y-auto lg:border-t-0">
 
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Agent</label>
