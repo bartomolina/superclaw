@@ -6,7 +6,7 @@ export default defineConfig({
     name: "SuperClaw - Tagger",
     description:
       "Annotate UI elements and push them as cards to your Kanban board",
-    version: "0.1.0",
+    version: "0.1.1",
     permissions: ["storage", "activeTab", "contextMenus"],
     host_permissions: ["http://*/*", "https://*/*"],
     action: {

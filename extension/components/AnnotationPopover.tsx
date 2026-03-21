@@ -56,10 +56,7 @@ export function AnnotationPopover({
   }, []);
 
   useEffect(() => {
-    Promise.all([
-      browser.runtime.sendMessage({ type: "FETCH_BOARDS" }),
-      browser.runtime.sendMessage({ type: "FETCH_AGENTS" }),
-    ]).then(([boardsRes, agentsRes]) => {
+    browser.runtime.sendMessage({ type: "FETCH_BOARDS" }).then((boardsRes) => {
       if (boardsRes.ok) {
         const b = boardsRes.boards || [];
         setBoards(b);
@@ -67,28 +64,40 @@ export function AnnotationPopover({
           setBoardId(boardsRes.defaultBoardId || b[0].id);
         }
       }
-      if (agentsRes.ok) {
-        setAgents(agentsRes.agents || []);
-      }
       setLoading(false);
     });
   }, []);
 
   useEffect(() => {
-    if (!boardId) return;
-    browser.runtime
-      .sendMessage({ type: "FETCH_COLUMNS", boardId })
-      .then((res) => {
-        if (res.ok) {
-          const cols = res.columns || [];
-          setColumns(cols);
-          if (cols.length) {
-            setColumnId(res.defaultColumnId || cols[0].id);
-          } else {
-            setColumnId("");
-          }
+    if (!boardId) {
+      setColumns([]);
+      setColumnId("");
+      setAgents([]);
+      setAgentId("");
+      return;
+    }
+
+    browser.runtime.sendMessage({ type: "FETCH_COLUMNS", boardId }).then((res) => {
+      if (res.ok) {
+        const cols = res.columns || [];
+        setColumns(cols);
+        if (cols.length) {
+          setColumnId(res.defaultColumnId || cols[0].id);
+        } else {
+          setColumnId("");
         }
-      });
+      }
+    });
+
+    browser.runtime.sendMessage({ type: "FETCH_AGENTS", boardId }).then((res) => {
+      if (res.ok) {
+        const nextAgents = res.agents || [];
+        setAgents(nextAgents);
+        setAgentId((current) =>
+          current && nextAgents.some((agent: Agent) => agent.id === current) ? current : "",
+        );
+      }
+    });
   }, [boardId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

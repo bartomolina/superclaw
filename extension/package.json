@@ -1,6 +1,6 @@
 {
   "name": "kanban-tagger",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Annotate UI elements and push them as cards to your Kanban board",
   "type": "module",

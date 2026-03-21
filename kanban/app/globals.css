@@ -33,7 +33,6 @@ body {
 
 html {
   -webkit-text-size-adjust: 100%;
-  overscroll-behavior-x: none;
 }
 
 body {
@@ -41,7 +40,6 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overscroll-behavior-x: none;
 }
 
 * {

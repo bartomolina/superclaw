@@ -2,6 +2,11 @@
 
 Internal Kanban app built with Next.js App Router + Convex + Better Auth (magic-link).
 
+For the suite-level install flow, see:
+- `../README.md`
+- `../INSTALL.md`
+- `../AGENT_INSTALL.md`
+
 ## Stack
 
 - Next.js 16

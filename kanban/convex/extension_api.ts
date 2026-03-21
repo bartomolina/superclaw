@@ -259,6 +259,25 @@ export const listColumns = query({
   },
 });
 
+export const getBoardAgentAccess = query({
+  args: {
+    token: v.string(),
+    boardId: v.id("boards"),
+  },
+  handler: async (ctx, args) => {
+    const credential = await requireActiveExtensionCredential(ctx, args.token);
+    const board = await requireAccessibleBoardForCredential(ctx, credential, args.boardId);
+    const allowedAgentIds = Array.from(
+      new Set((board.allowedAgentIds ?? []).map((agentId) => agentId.trim()).filter(Boolean)),
+    );
+
+    return {
+      allowedAgentIds,
+      restricted: allowedAgentIds.length > 0,
+    };
+  },
+});
+
 export const createCard = mutation({
   args: {
     token: v.string(),
@@ -318,6 +337,7 @@ export const createCard = mutation({
       title,
       ...(description ? { description } : {}),
       ...(agentId ? { agentId } : {}),
+      source: "extension",
       isRunning: false,
       order: getNextOrder(cards),
     });

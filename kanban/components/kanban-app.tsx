@@ -1338,7 +1338,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
         ) : null}
 
         <aside
-          className={`hide-scrollbar fixed inset-y-12 left-0 z-30 min-h-0 w-[min(18rem,100vw)] overflow-y-auto overscroll-contain border-r border-zinc-200 bg-white py-3 shadow-xl transition-transform dark:border-zinc-800 dark:bg-zinc-950 lg:static lg:inset-auto lg:z-auto lg:flex lg:translate-x-0 lg:flex-col lg:shrink-0 lg:border-b-0 lg:shadow-none ${
+          className={`hide-scrollbar fixed bottom-0 left-0 top-[calc(3rem+env(safe-area-inset-top))] z-30 min-h-0 w-[min(18rem,100vw)] overflow-y-auto overscroll-contain border-r border-zinc-200 bg-white py-3 shadow-xl transition-transform dark:border-zinc-800 dark:bg-zinc-950 lg:static lg:inset-auto lg:z-auto lg:flex lg:translate-x-0 lg:flex-col lg:shrink-0 lg:border-b-0 lg:shadow-none ${
             isMobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
           } ${isSidebarCollapsed ? "px-3 lg:w-12 lg:px-2" : "px-3 lg:w-48"}`}
         >
