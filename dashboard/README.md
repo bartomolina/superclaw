@@ -2,6 +2,11 @@
 
 Operations dashboard for OpenClaw.
 
+For the suite-level install flow, see:
+- `../README.md`
+- `../INSTALL.md`
+- `../AGENT_INSTALL.md`
+
 It provides a web UI to inspect and manage agents, models, skills, config files, cron jobs, and gateway status through a server-side API proxy.
 
 ## Stack

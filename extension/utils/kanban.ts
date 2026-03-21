@@ -23,6 +23,13 @@ export type ExtensionColumn = {
   name: string;
 };
 
+export type ExtensionAgent = {
+  id: string;
+  name: string;
+  emoji?: string;
+  avatarUrl?: string | null;
+};
+
 type ListBoardsResponse = {
   ok: true;
   boards: ExtensionBoard[];
@@ -33,6 +40,11 @@ type ListColumnsResponse = {
   ok: true;
   columns: ExtensionColumn[];
   defaultColumnId: string | null;
+};
+
+type ListAgentsResponse = {
+  ok: true;
+  agents: ExtensionAgent[];
 };
 
 type CreateCardResponse = {
@@ -197,6 +209,21 @@ export async function listExtensionColumns(baseUrl: string, credential: string, 
     baseUrl,
     credential,
     `/api/extension/boards/${encodeURIComponent(boardId)}/columns`,
+    { method: "GET" },
+  );
+
+  return payload;
+}
+
+export async function listExtensionAgents(baseUrl: string, credential: string, boardId: string) {
+  if (!boardId.trim()) {
+    throw new Error("Board is required");
+  }
+
+  const payload = await fetchExtensionApi<ListAgentsResponse>(
+    baseUrl,
+    credential,
+    `/api/extension/boards/${encodeURIComponent(boardId)}/agents`,
     { method: "GET" },
   );
 

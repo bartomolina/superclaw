@@ -37,6 +37,7 @@ export interface FetchColumnsMessage {
 
 export interface FetchAgentsMessage {
   type: "FETCH_AGENTS";
+  boardId: string;
 }
 
 export interface OpenSettingsMessage {

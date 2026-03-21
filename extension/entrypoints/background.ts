@@ -1,6 +1,11 @@
 import type { ExtensionMessage } from "@/utils/messaging";
 import { extensionCredential, kanbanBaseUrl, selectedBoard } from "@/utils/storage";
-import { createExtensionCard, listExtensionBoards, listExtensionColumns } from "@/utils/kanban";
+import {
+  createExtensionCard,
+  listExtensionAgents,
+  listExtensionBoards,
+  listExtensionColumns,
+} from "@/utils/kanban";
 
 export default defineBackground({
   main() {
@@ -46,7 +51,7 @@ export default defineBackground({
         }
 
         if (message.type === "FETCH_AGENTS") {
-          fetchAgents().then((result) => sendResponse(result));
+          fetchAgents(message.boardId).then((result) => sendResponse(result));
           return true;
         }
 
@@ -182,11 +187,29 @@ async function fetchColumns(
   }
 }
 
-async function fetchAgents(): Promise<{
+async function fetchAgents(
+  boardId: string,
+): Promise<{
   ok: boolean;
-  agents?: unknown[];
+  agents?: Array<{ id: string; name: string; emoji?: string; avatarUrl?: string | null }>;
   error?: string;
 }> {
-  console.log("[SuperClaw] fetchAgents stubbed");
-  return { ok: true, agents: [] };
+  try {
+    if (!boardId.trim()) {
+      return { ok: true, agents: [] };
+    }
+
+    const { url, token } = await getConnectionSettings();
+    const result = await listExtensionAgents(url, token, boardId);
+
+    return {
+      ok: true,
+      agents: result.agents,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Failed to load agents",
+    };
+  }
 }
