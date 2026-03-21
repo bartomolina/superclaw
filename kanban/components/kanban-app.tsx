@@ -2661,8 +2661,8 @@ function CardModal({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)] sm:pt-0">
-          <div className="hide-scrollbar grid min-h-0 flex-1 grid-cols-1 overflow-y-auto overscroll-contain lg:grid-cols-[1fr_240px] lg:overflow-hidden">
-            <div className="hide-scrollbar min-h-0 space-y-5 p-4 pb-6 sm:p-5 lg:overflow-y-auto lg:border-r lg:border-zinc-200 dark:border-zinc-800">
+          <div className="hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain lg:grid lg:grid-cols-[minmax(0,1fr)_240px] lg:overflow-hidden">
+            <div className="hide-scrollbar shrink-0 space-y-5 p-4 pb-6 sm:p-5 lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-zinc-200 dark:border-zinc-800">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <div className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Edit card</div>
@@ -2793,7 +2793,7 @@ function CardModal({
               </div>
             </div>
 
-            <aside className="hide-scrollbar min-h-0 space-y-3 border-t border-zinc-200 bg-zinc-50/60 p-4 pb-6 dark:border-zinc-800 dark:bg-zinc-950/60 lg:overflow-y-auto lg:border-t-0">
+            <aside className="hide-scrollbar shrink-0 space-y-3 border-t border-zinc-200 bg-zinc-50/60 p-4 pb-6 dark:border-zinc-800 dark:bg-zinc-950/60 lg:min-h-0 lg:overflow-y-auto lg:border-t-0">
 
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Agent</label>
