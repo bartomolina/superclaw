@@ -31,6 +31,10 @@ body {
   min-height: 100vh;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
