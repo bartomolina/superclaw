@@ -22,7 +22,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useConvexAuth, useMutation, useQueries, useQuery } from "convex/react";
-import { Clock3, ExternalLink, Eye, EyeOff, Hash, Menu, Moon, Play, PlugZap, Send, Settings, Sun, UserRound, X } from "lucide-react";
+import { Clock3, ExternalLink, Eye, EyeOff, Hash, Menu, Moon, Play, PlugZap, Send, Sun, UserRound, Users, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -187,17 +187,9 @@ function summarize(text?: string) {
 }
 
 function maskEmail(email: string) {
-  const [localPart = "", domainPart = ""] = email.split("@");
-  const [domainName = "", ...domainTail] = domainPart.split(".");
-
-  const maskSegment = (value: string) => {
-    if (!value) return "•••";
-    if (value.length <= 1) return "•";
-    return `${value[0]}${"•".repeat(Math.max(2, value.length - 1))}`;
-  };
-
-  const maskedDomainTail = domainTail.length > 0 ? `.${domainTail.join(".")}` : "";
-  return `${maskSegment(localPart)}@${maskSegment(domainName)}${maskedDomainTail}`;
+  const trimmedEmail = email.trim();
+  if (!trimmedEmail) return "••••••••";
+  return trimmedEmail.includes("@") ? "••••••••@••••••••" : "••••••••";
 }
 
 function buildSessionKey(sessionId?: string, agentId?: string) {
@@ -613,6 +605,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [selectedBoardId, setSelectedBoardId] = useState<Id<"boards"> | null>(null);
   const [newBoardName, setNewBoardName] = useState("");
   const [showNewBoardForm, setShowNewBoardForm] = useState(false);
+  const [isCreatingBoard, setIsCreatingBoard] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isInboxDebugOpen, setIsInboxDebugOpen] = useState(false);
@@ -696,6 +689,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     (boardView?.board.allowedAgentIds ?? selectedBoard?.allowedAgentIds ?? []).slice().sort(),
   );
   const isSuperuser = viewer?.isSuperuser === true;
+  const isFullScreenModalOpen = Boolean(editingBoard || activeCardId);
 
   useEffect(() => {
     if (!isMobileSidebarOpen) return;
@@ -715,6 +709,32 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
       window.removeEventListener("keydown", handleEscape);
     };
   }, [isMobileSidebarOpen]);
+
+  useEffect(() => {
+    if (!isFullScreenModalOpen) return;
+
+    const scrollY = window.scrollY;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyPosition = document.body.style.position;
+    const previousBodyTop = document.body.style.top;
+    const previousBodyWidth = document.body.style.width;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+
+    return () => {
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.position = previousBodyPosition;
+      document.body.style.top = previousBodyTop;
+      document.body.style.width = previousBodyWidth;
+      window.scrollTo(0, scrollY);
+    };
+  }, [isFullScreenModalOpen]);
 
   useEffect(() => {
     if (!boards) return;
@@ -939,12 +959,22 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   async function handleCreateBoard(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const boardId = await createBoard({ name: newBoardName });
-    setNewBoardName("");
-    setShowNewBoardForm(false);
-    setSelectedBoardId(boardId);
-    setIsMobileSidebarOpen(false);
-    navigateToBoard(boardId, "push");
+    if (isCreatingBoard || !newBoardName.trim()) {
+      return;
+    }
+
+    setIsCreatingBoard(true);
+
+    try {
+      const boardId = await createBoard({ name: newBoardName });
+      setNewBoardName("");
+      setShowNewBoardForm(false);
+      setSelectedBoardId(boardId);
+      setIsMobileSidebarOpen(false);
+      navigateToBoard(boardId, "push");
+    } finally {
+      setIsCreatingBoard(false);
+    }
   }
 
   async function handleRenameBoard({
@@ -1277,23 +1307,22 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
               <button
                 type="button"
                 onClick={() => setIsExtensionAccessOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-sm text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:border-zinc-700 dark:hover:text-zinc-100"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:text-zinc-200"
                 title="Connect extension"
                 aria-label="Connect extension"
               >
                 <PlugZap className="h-4 w-4" />
-                <span className="hidden sm:inline">Connect Extension</span>
               </button>
 
               {isSuperuser ? (
                 <button
                   type="button"
                   onClick={() => setIsUserManagementOpen(true)}
-                  className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:text-zinc-200"
                   title="Manage users"
                   aria-label="Manage users"
                 >
-                  <Settings className="h-4 w-4" />
+                  <Users className="h-4 w-4" />
                 </button>
               ) : null}
 
@@ -1333,7 +1362,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
             type="button"
             aria-label="Close navigation"
             onClick={() => setIsMobileSidebarOpen(false)}
-            className="fixed inset-x-0 bottom-0 top-12 z-20 bg-zinc-950/40 backdrop-blur-[1px] lg:hidden"
+            className="fixed inset-x-0 bottom-0 top-[calc(3rem+env(safe-area-inset-top))] z-20 bg-zinc-950/40 backdrop-blur-[1px] lg:top-12 lg:hidden"
           />
         ) : null}
 
@@ -1417,6 +1446,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                     onChange={(event) => setNewBoardName(event.target.value)}
                     placeholder="Board name"
                     autoFocus
+                    disabled={isCreatingBoard}
                   />
                   <div className="flex items-center justify-end gap-1.5">
                     <button
@@ -1425,16 +1455,17 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                         setShowNewBoardForm(false);
                         setNewBoardName("");
                       }}
-                      className="inline-flex h-7 items-center justify-center px-1.5 text-xs text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
+                      className="inline-flex h-7 items-center justify-center px-1.5 text-xs text-zinc-500 transition hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-300"
+                      disabled={isCreatingBoard}
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="inline-flex h-7 items-center justify-center rounded-md bg-zinc-900 px-2.5 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-                      disabled={!newBoardName.trim()}
+                      className="inline-flex h-7 items-center justify-center rounded-md bg-zinc-900 px-2.5 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                      disabled={!newBoardName.trim() || isCreatingBoard}
                     >
-                      Create
+                      {isCreatingBoard ? "Creating…" : "Create"}
                     </button>
                   </div>
                 </form>
@@ -1611,7 +1642,12 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           key={editingBoard._id}
           board={editingBoard}
           allAgentOptions={allAgentOptions}
-          onClose={() => setEditingBoard(null)}
+          onClose={() => {
+            if (document.activeElement instanceof HTMLElement) {
+              document.activeElement.blur();
+            }
+            setEditingBoard(null);
+          }}
           onSave={(values) =>
             handleRenameBoard({
               boardId: editingBoard._id,
@@ -1639,7 +1675,12 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           agentOptions={filterBoardAgentOptions(sidebarAgentOptions, boardView.board.allowedAgentIds)}
           skillOptions={sidebarSkillOptions}
           modelOptions={sidebarModelOptions}
-          onClose={() => setActiveCardId(null)}
+          onClose={() => {
+            if (document.activeElement instanceof HTMLElement) {
+              document.activeElement.blur();
+            }
+            setActiveCardId(null);
+          }}
         />
       ) : null}
     </div>
@@ -1961,7 +2002,7 @@ function BoardEditModal({
               Cancel
             </button>
             <button type="submit" className={primaryButtonClass} disabled={!nameDraft.trim() || isSaving}>
-              Save
+              {isSaving ? "Saving…" : "Save"}
             </button>
           </div>
         </form>
@@ -2446,6 +2487,8 @@ function CardModal({
   const [skillsDraft, setSkillsDraft] = useState<string[]>(card.skills ?? []);
   const [commentDraft, setCommentDraft] = useState("");
   const [isSavingComment, setIsSavingComment] = useState(false);
+  const [isSavingCard, setIsSavingCard] = useState(false);
+  const [isDeletingCard, setIsDeletingCard] = useState(false);
 
   useEffect(() => {
     function onEscape(event: KeyboardEvent) {
@@ -2628,50 +2671,74 @@ function CardModal({
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const parsedSkills = skillsDraft.map((skill) => skill.trim()).filter(Boolean);
-
-    await updateCard({
-      cardId: card._id,
-      title: titleDraft,
-      description: descriptionDraft,
-      agentId: agentDraft,
-      reviewerId: reviewerDraft,
-      priority: priorityDraft,
-      size: sizeDraft,
-      type: typeDraft,
-      acp: acpDraft,
-      model: modelDraft,
-      skills: parsedSkills,
-    });
-
-    const selectedColumnName = columns.find((column) => column._id === columnDraft)?.name;
-
-    if (moveBoardDraft !== "current" && moveBoardDraft !== card.boardId) {
-      await moveToBoard({
-        cardId: card._id,
-        targetBoardId: moveBoardDraft,
-        targetColumnName: selectedColumnName,
-      });
-      onClose();
+    if (isSavingCard || isDeletingCard) {
       return;
     }
 
-    if (columnDraft !== card.columnId) {
-      await moveCard({
-        cardId: card._id,
-        targetColumnId: columnDraft,
-      });
-    }
+    const parsedSkills = skillsDraft.map((skill) => skill.trim()).filter(Boolean);
 
-    onClose();
+    setIsSavingCard(true);
+
+    try {
+      await updateCard({
+        cardId: card._id,
+        title: titleDraft,
+        description: descriptionDraft,
+        agentId: agentDraft,
+        reviewerId: reviewerDraft,
+        priority: priorityDraft,
+        size: sizeDraft,
+        type: typeDraft,
+        acp: acpDraft,
+        model: modelDraft,
+        skills: parsedSkills,
+      });
+
+      const selectedColumnName = columns.find((column) => column._id === columnDraft)?.name;
+
+      if (moveBoardDraft !== "current" && moveBoardDraft !== card.boardId) {
+        await moveToBoard({
+          cardId: card._id,
+          targetBoardId: moveBoardDraft,
+          targetColumnName: selectedColumnName,
+        });
+        onClose();
+        return;
+      }
+
+      if (columnDraft !== card.columnId) {
+        await moveCard({
+          cardId: card._id,
+          targetColumnId: columnDraft,
+        });
+      }
+
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save card");
+    } finally {
+      setIsSavingCard(false);
+    }
   }
 
   async function handleDelete() {
+    if (isDeletingCard || isSavingCard) {
+      return;
+    }
+
     const confirmed = window.confirm(`Delete "${card.title}"?`);
     if (!confirmed) return;
 
-    await deleteCard({ cardId: card._id });
-    onClose();
+    setIsDeletingCard(true);
+
+    try {
+      await deleteCard({ cardId: card._id });
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete card");
+    } finally {
+      setIsDeletingCard(false);
+    }
   }
 
   return (
@@ -2929,15 +2996,25 @@ function CardModal({
           </div>
 
           <div className="flex items-center justify-between border-t border-zinc-200 bg-white/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 sm:px-6 sm:pb-3">
-            <button type="button" className="text-sm text-zinc-500 transition hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400" onClick={handleDelete}>
-              Delete card
+            <button
+              type="button"
+              className="text-sm text-zinc-500 transition hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:text-rose-400"
+              onClick={handleDelete}
+              disabled={isSavingCard || isDeletingCard}
+            >
+              {isDeletingCard ? "Deleting…" : "Delete card"}
             </button>
             <div className="flex items-center gap-2">
-              <button type="button" className="px-3 py-2 text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300 transition-colors" onClick={onClose}>
+              <button
+                type="button"
+                className="px-3 py-2 text-sm text-zinc-500 transition-colors hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-300"
+                onClick={onClose}
+                disabled={isSavingCard || isDeletingCard}
+              >
                 Cancel
               </button>
-              <button type="submit" className={primaryButtonClass} disabled={!titleDraft.trim()}>
-                Save
+              <button type="submit" className={primaryButtonClass} disabled={!titleDraft.trim() || isSavingCard || isDeletingCard}>
+                {isSavingCard ? "Saving…" : "Save"}
               </button>
             </div>
           </div>

@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { authFetch, authHeaders } from "@/components/dashboard/auth";
@@ -33,7 +33,8 @@ export function ModelsPage({
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [providerModels, setProviderModels] = useState<any[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const [addingModelKey, setAddingModelKey] = useState<string | null>(null);
+  const [removingModelKey, setRemovingModelKey] = useState<string | null>(null);
   const [settingPrimary, setSettingPrimary] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
@@ -59,7 +60,9 @@ export function ModelsPage({
   }
 
   async function handleAdd(modelKey: string) {
-    setAdding(true);
+    if (addingModelKey) return;
+
+    setAddingModelKey(modelKey);
     try {
       const res = await fetch("/api/models/add", {
         method: "POST",
@@ -73,11 +76,14 @@ export function ModelsPage({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to add model");
     } finally {
-      setAdding(false);
+      setAddingModelKey(null);
     }
   }
 
   async function handleRemove(modelKey: string) {
+    if (removingModelKey) return;
+
+    setRemovingModelKey(modelKey);
     try {
       const res = await fetch("/api/models/remove", {
         method: "POST",
@@ -90,6 +96,8 @@ export function ModelsPage({
       toast.success(`Removed ${modelKey}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to remove model");
+    } finally {
+      setRemovingModelKey(null);
     }
   }
 
@@ -140,11 +148,11 @@ export function ModelsPage({
                     <div className="flex items-center gap-2 shrink-0">
                       {!isPrimary && (
                         <>
-                          <button onClick={() => handleSetPrimary(m.id)} disabled={settingPrimary === m.id} className="text-xs px-2 py-1 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50">
-                            Set primary
+                          <button onClick={() => handleSetPrimary(m.id)} disabled={settingPrimary === m.id} className="text-xs px-2 py-1 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors disabled:cursor-not-allowed disabled:opacity-50">
+                            {settingPrimary === m.id ? "Setting..." : "Set primary"}
                           </button>
-                          <button onClick={() => handleRemove(m.id)} className="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-red-500 transition-colors" title="Remove">
-                            <Trash2 size={14} />
+                          <button onClick={() => handleRemove(m.id)} disabled={removingModelKey === m.id} className="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-red-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50" title={removingModelKey === m.id ? "Removing..." : "Remove"}>
+                            {removingModelKey === m.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                           </button>
                         </>
                       )}
@@ -212,14 +220,14 @@ export function ModelsPage({
                             </div>
                             <button
                               onClick={() => handleAdd(m.key)}
-                              disabled={alreadyAdded || adding}
+                              disabled={alreadyAdded || addingModelKey !== null}
                               className={`text-xs px-2.5 py-1 rounded-md shrink-0 transition-colors ${
                                 alreadyAdded
                                   ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-default"
-                                  : "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50"
+                                  : "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
                               }`}
                             >
-                              {alreadyAdded ? "Added" : "Add"}
+                              {alreadyAdded ? "Added" : addingModelKey === m.key ? "Adding..." : "Add"}
                             </button>
                           </div>
                         );

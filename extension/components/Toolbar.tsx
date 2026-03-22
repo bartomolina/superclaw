@@ -58,7 +58,7 @@ export function Toolbar() {
   } | null>(null);
   const [pushLoading, setPushLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const rootRef = useRef<HTMLElement | null>(null);
+  const uiRootRef = useRef<HTMLDivElement | null>(null);
 
   const isDark = resolveIsDark(themeSetting);
   const colors = getThemeColors(isDark);
@@ -97,17 +97,13 @@ export function Toolbar() {
     }
   }, [open]);
 
-  // Resolve rootRef for ignoring toolbar clicks
-  useEffect(() => {
-    rootRef.current = document.getElementById("kanban-tagger-root");
-  }, []);
+  const isInsideExtensionUi = useCallback((event: Event) => {
+    const root = uiRootRef.current;
+    if (!root) return false;
 
-  const isInsideToolbar = useCallback(
-    (el: HTMLElement) => {
-      return rootRef.current?.contains(el) ?? false;
-    },
-    [],
-  );
+    const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+    return path.some((target) => target instanceof Node && root.contains(target));
+  }, []);
 
   // Element picking
   useEffect(() => {
@@ -118,8 +114,13 @@ export function Toolbar() {
         setAreaCurrent({ x: e.clientX, y: e.clientY });
         return;
       }
+      if (isInsideExtensionUi(e)) {
+        setHoverRect(null);
+        setHoverLabel("");
+        return;
+      }
       const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement;
-      if (!el || isInsideToolbar(el)) {
+      if (!el) {
         setHoverRect(null);
         setHoverLabel("");
         return;
@@ -130,11 +131,12 @@ export function Toolbar() {
 
     const onClick = (e: MouseEvent) => {
       if (mode !== "picking") return;
+      if (isInsideExtensionUi(e)) return;
       const el = document.elementFromPoint(
         e.clientX,
         e.clientY,
       ) as HTMLElement;
-      if (!el || isInsideToolbar(el)) return;
+      if (!el) return;
       e.preventDefault();
       e.stopPropagation();
 
@@ -169,7 +171,7 @@ export function Toolbar() {
 
     const onMouseDown = (e: MouseEvent) => {
       if (mode !== "area-select") return;
-      if (isInsideToolbar(e.target as HTMLElement)) return;
+      if (isInsideExtensionUi(e)) return;
       setAreaStart({ x: e.clientX, y: e.clientY });
       setAreaCurrent({ x: e.clientX, y: e.clientY });
     };
@@ -182,7 +184,7 @@ export function Toolbar() {
         const cx = (areaStart.x + e.clientX) / 2;
         const cy = (areaStart.y + e.clientY) / 2;
         const el = document.elementFromPoint(cx, cy) as HTMLElement;
-        if (el && !isInsideToolbar(el)) {
+        if (el) {
           const meta = identifyElement(el);
           setAnnotatingMeta(meta);
           setPopoverPos({ x: e.clientX + 8, y: e.clientY });
@@ -214,7 +216,7 @@ export function Toolbar() {
       document.removeEventListener("mouseup", onMouseUp, true);
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [open, mode, areaStart, isInsideToolbar]);
+  }, [open, mode, areaStart, isInsideExtensionUi]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -370,7 +372,7 @@ export function Toolbar() {
   };
 
   return (
-    <>
+    <div ref={uiRootRef}>
       {/* Hover highlight */}
       {hoverRect && mode === "picking" && (
         <>
@@ -540,7 +542,7 @@ export function Toolbar() {
           <IconClose />
         </ToolbarButton>
       </div>
-    </>
+    </div>
   );
 }
 
