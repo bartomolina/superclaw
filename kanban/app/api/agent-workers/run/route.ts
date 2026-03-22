@@ -28,6 +28,9 @@ type RunTarget = {
   title: string;
   columnName: string;
   inboxReason: string;
+  acp?: string;
+  model?: string;
+  executionHint?: string;
 };
 
 function createManualRunSession(agentId: string): ManualRunSession {
@@ -53,7 +56,12 @@ function buildWorkerMessage({
   const targetSummary =
     targets.length > 0
       ? targets
-          .map((target) => `- ${target.cardId} | ${target.columnName} | ${target.inboxReason} | ${target.title}`)
+          .map((target) => {
+            const executionHint = target.executionHint?.trim();
+            return executionHint
+              ? `- ${target.cardId} | ${target.columnName} | ${target.inboxReason} | ${target.title} | ${executionHint}`
+              : `- ${target.cardId} | ${target.columnName} | ${target.inboxReason} | ${target.title}`;
+          })
           .join("\n")
       : "- none";
 
@@ -69,6 +77,18 @@ function buildWorkerMessage({
     'If nothing actionable exists, still finish the session with status "done" and reply NO_REPLY.',
     "Follow the skill and its reference exactly.",
   ].join("\n");
+}
+
+function resolveManualRunModel(targets: RunTarget[]) {
+  const models = Array.from(
+    new Set(
+      targets
+        .map((target) => target.model?.trim())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  return models.length === 1 ? models[0] : null;
 }
 
 function completionStatusForGatewayStatus(status?: string | null) {
@@ -87,6 +107,13 @@ function completionStatusForGatewayStatus(status?: string | null) {
   }
 
   return null;
+}
+
+async function applyManualRunModelOverride(sessionKey: string, model: string) {
+  await gatewayCall("sessions.patch", {
+    key: sessionKey,
+    model,
+  });
 }
 
 async function startManualWorker(agentId: string, session: ManualRunSession, message: string) {
@@ -138,6 +165,7 @@ export async function POST(request: Request) {
       agentId,
     });
     const session = createManualRunSession(agentId);
+    const runModel = resolveManualRunModel(targets.targets);
 
     await fetchAuthMutation(api.card_runs.startManualSession, {
       boardId: boardId as Id<"boards">,
@@ -156,6 +184,10 @@ export async function POST(request: Request) {
     let run: Awaited<ReturnType<typeof startManualWorker>>;
 
     try {
+      if (runModel) {
+        await applyManualRunModelOverride(session.sessionKey, runModel);
+      }
+
       run = await startManualWorker(
         agentId,
         session,
@@ -191,6 +223,7 @@ export async function POST(request: Request) {
       runId: run.runId,
       status: run.status,
       targetCardIds: targets.cardIds,
+      model: runModel,
       mode: "manual-agent-run",
     });
   } catch (error) {
