@@ -1671,7 +1671,7 @@ function BoardEditModal({
     board.sharedUserIds ?? [],
   );
   const [allowedAgentIdsDraft, setAllowedAgentIdsDraft] = useState<string[]>(board.allowedAgentIds ?? []);
-  const [showBoardAccessEmails, setShowBoardAccessEmails] = useState(false);
+  const [revealedBoardAccessUserIds, setRevealedBoardAccessUserIds] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -1698,6 +1698,17 @@ function BoardEditModal({
       document.documentElement.style.overflow = previousHtmlOverflow;
     };
   }, []);
+
+  useEffect(() => {
+    setRevealedBoardAccessUserIds([]);
+  }, [board._id]);
+
+  function toggleBoardAccessEmail(userId: Id<"managedUsers">) {
+    const key = String(userId);
+    setRevealedBoardAccessUserIds((current) =>
+      current.includes(key) ? current.filter((value) => value !== key) : [...current, key],
+    );
+  }
 
   function handleEditorSubmitShortcut(
     event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -1818,25 +1829,11 @@ function BoardEditModal({
             </div>
 
             <div className="space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Board access</div>
-                  <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                    Select saved users who should be able to open and work inside this board.
-                  </div>
+              <div>
+                <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Board access</div>
+                <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                  Select saved users who should be able to open and work inside this board.
                 </div>
-
-                {sortedManagedUsers.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowBoardAccessEmails((current) => !current)}
-                    className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-zinc-200 px-2.5 text-xs text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-700 dark:hover:text-zinc-100"
-                    aria-pressed={showBoardAccessEmails}
-                  >
-                    {showBoardAccessEmails ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    {showBoardAccessEmails ? "Hide emails" : "Show emails"}
-                  </button>
-                ) : null}
               </div>
 
               {managedUsers === undefined ? (
@@ -1871,8 +1868,31 @@ function BoardEditModal({
                           <div className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
                             {user.name}
                           </div>
-                          <div className="truncate text-sm text-zinc-500 dark:text-zinc-400">
-                            {showBoardAccessEmails ? user.email : maskEmail(user.email)}
+                          <div className="mt-1 flex items-center gap-2">
+                            <div className="min-w-0 flex-1 truncate text-sm text-zinc-500 dark:text-zinc-400">
+                              {revealedBoardAccessUserIds.includes(String(user._id)) ? user.email : maskEmail(user.email)}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                toggleBoardAccessEmail(user._id);
+                              }}
+                              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:text-zinc-100"
+                              aria-label={
+                                revealedBoardAccessUserIds.includes(String(user._id))
+                                  ? `Hide email for ${user.name}`
+                                  : `Show email for ${user.name}`
+                              }
+                              aria-pressed={revealedBoardAccessUserIds.includes(String(user._id))}
+                            >
+                              {revealedBoardAccessUserIds.includes(String(user._id)) ? (
+                                <EyeOff className="h-3.5 w-3.5" />
+                              ) : (
+                                <Eye className="h-3.5 w-3.5" />
+                              )}
+                            </button>
                           </div>
                         </div>
                       </label>

@@ -70,7 +70,8 @@ export function UserManagementSheet({
   const [superuserName, setSuperuserName] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [showEmails, setShowEmails] = useState(false);
+  const [showSuperuserEmail, setShowSuperuserEmail] = useState(false);
+  const [revealedUserIds, setRevealedUserIds] = useState<string[]>([]);
   const [isSavingSuperuser, setIsSavingSuperuser] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -90,6 +91,13 @@ export function UserManagementSheet({
       }),
     [users],
   );
+
+  function toggleUserEmail(userId: Id<"managedUsers">) {
+    const key = String(userId);
+    setRevealedUserIds((current) =>
+      current.includes(key) ? current.filter((value) => value !== key) : [...current, key],
+    );
+  }
 
   if (!open) {
     return null;
@@ -159,25 +167,13 @@ export function UserManagementSheet({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowEmails((current) => !current)}
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-zinc-200 px-3 text-sm text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-700 dark:hover:text-zinc-100"
-              aria-pressed={showEmails}
-            >
-              {showEmails ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              {showEmails ? "Hide emails" : "Show emails"}
-            </button>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-sm text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-            >
-              Close
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            Close
+          </button>
         </div>
 
         <form
@@ -205,21 +201,33 @@ export function UserManagementSheet({
               />
             </label>
 
-            <label className="space-y-1.5">
+            <div className="space-y-1.5">
               <div className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
                 Email
               </div>
-              <input
-                className={inputClass}
-                value={
-                  showEmails
-                    ? (superuserProfile?.email ?? "")
-                    : maskEmail(superuserProfile?.email ?? "")
-                }
-                readOnly
-                disabled
-              />
-            </label>
+              <div className="flex gap-2">
+                <input
+                  className={inputClass}
+                  value={
+                    showSuperuserEmail
+                      ? (superuserProfile?.email ?? "")
+                      : maskEmail(superuserProfile?.email ?? "")
+                  }
+                  readOnly
+                  disabled
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSuperuserEmail((current) => !current)}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-700 dark:hover:text-zinc-100"
+                  aria-label={showSuperuserEmail ? "Hide superuser email" : "Show superuser email"}
+                  aria-pressed={showSuperuserEmail}
+                  disabled={!superuserProfile?.email}
+                >
+                  {showSuperuserEmail ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
 
             <button
               type="submit"
@@ -309,8 +317,27 @@ export function UserManagementSheet({
                       <div className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
                         {user.name}
                       </div>
-                      <div className="truncate text-sm text-zinc-600 dark:text-zinc-300">
-                        {showEmails ? user.email : maskEmail(user.email)}
+                      <div className="mt-1 flex items-center gap-2">
+                        <div className="min-w-0 flex-1 truncate text-sm text-zinc-600 dark:text-zinc-300">
+                          {revealedUserIds.includes(String(user._id)) ? user.email : maskEmail(user.email)}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleUserEmail(user._id)}
+                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:text-zinc-100"
+                          aria-label={
+                            revealedUserIds.includes(String(user._id))
+                              ? `Hide email for ${user.name}`
+                              : `Show email for ${user.name}`
+                          }
+                          aria-pressed={revealedUserIds.includes(String(user._id))}
+                        >
+                          {revealedUserIds.includes(String(user._id)) ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
                       </div>
                       <div className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
                         Updated {formatTimestamp(user.updatedAt)}
