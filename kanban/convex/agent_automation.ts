@@ -475,6 +475,9 @@ export const listBoardRunTargets = query({
         title: task.title,
         columnName: task.columnName,
         inboxReason: task.inboxReason,
+        acp: task.acp,
+        model: task.model,
+        executionHint: task.executionHint,
       })),
     };
   },
