@@ -22,7 +22,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useConvexAuth, useMutation, useQueries, useQuery } from "convex/react";
-import { Clock3, ExternalLink, Eye, EyeOff, Hash, Menu, Moon, Play, PlugZap, Send, Sun, UserRound, Users, X } from "lucide-react";
+import { Chrome, Clock3, ExternalLink, Eye, EyeOff, Hash, Menu, Moon, Play, Send, Sun, UserRound, Users, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -1311,7 +1311,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                 title="Connect extension"
                 aria-label="Connect extension"
               >
-                <PlugZap className="h-4 w-4" />
+                <Chrome className="h-4 w-4" />
               </button>
 
               {isSuperuser ? (
