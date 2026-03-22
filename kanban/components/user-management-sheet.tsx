@@ -42,7 +42,7 @@ function formatTimestamp(timestamp: number) {
 function maskEmail(email: string) {
   const trimmedEmail = email.trim();
   if (!trimmedEmail) return "••••••••";
-  return trimmedEmail.includes("@") ? "••••••••@••••••••" : "••••••••";
+  return "••••••••";
 }
 
 export function UserManagementSheet({
