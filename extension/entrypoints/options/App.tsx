@@ -301,9 +301,6 @@ export default function App() {
           )}
         </div>
 
-        <p className="text-xs text-zinc-400">
-          Cards are only marked created after the Kanban app confirms the card was written.
-        </p>
       </div>
     </div>
   );

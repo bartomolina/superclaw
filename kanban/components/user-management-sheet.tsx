@@ -40,17 +40,9 @@ function formatTimestamp(timestamp: number) {
 }
 
 function maskEmail(email: string) {
-  const [localPart = "", domainPart = ""] = email.split("@");
-  const [domainName = "", ...domainTail] = domainPart.split(".");
-
-  const maskSegment = (value: string) => {
-    if (!value) return "•••";
-    if (value.length <= 1) return "•";
-    return `${value[0]}${"•".repeat(Math.max(2, value.length - 1))}`;
-  };
-
-  const maskedDomainTail = domainTail.length > 0 ? `.${domainTail.join(".")}` : "";
-  return `${maskSegment(localPart)}@${maskSegment(domainName)}${maskedDomainTail}`;
+  const trimmedEmail = email.trim();
+  if (!trimmedEmail) return "••••••••";
+  return trimmedEmail.includes("@") ? "••••••••@••••••••" : "••••••••";
 }
 
 export function UserManagementSheet({
