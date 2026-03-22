@@ -189,7 +189,7 @@ function summarize(text?: string) {
 function maskEmail(email: string) {
   const trimmedEmail = email.trim();
   if (!trimmedEmail) return "••••••••";
-  return trimmedEmail.includes("@") ? "••••••••@••••••••" : "••••••••";
+  return "••••••••";
 }
 
 function buildSessionKey(sessionId?: string, agentId?: string) {
@@ -1307,7 +1307,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
               <button
                 type="button"
                 onClick={() => setIsExtensionAccessOpen(true)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:text-zinc-200"
+                className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-300"
                 title="Connect extension"
                 aria-label="Connect extension"
               >
@@ -1318,7 +1318,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                 <button
                   type="button"
                   onClick={() => setIsUserManagementOpen(true)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:text-zinc-200"
+                  className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-300"
                   title="Manage users"
                   aria-label="Manage users"
                 >
