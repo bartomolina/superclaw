@@ -30,6 +30,22 @@ Use these names:
 - `convex`
 - `superclaw-kanban`
 
+## Skills
+
+Repo copies of the SuperClaw-related agent skills live under:
+- [`skills/superclaw/`](./skills/superclaw/)
+- [`skills/kanban/`](./skills/kanban/)
+
+These repo copies are for versioning and sharing.
+Active OpenClaw skill copies should still live under `~/.openclaw/skills/`.
+
+Typical sync command:
+
+```bash
+mkdir -p ~/.openclaw/skills
+rsync -a ~/.openclaw/workspace/apps/superclaw/skills/ ~/.openclaw/skills/
+```
+
 ## Docs
 
 - Human install: [`INSTALL.md`](./INSTALL.md)

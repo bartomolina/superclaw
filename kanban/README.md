@@ -7,6 +7,10 @@ For the suite-level install flow, see:
 - `../INSTALL.md`
 - `../AGENT_INSTALL.md`
 
+For the repo copies of the SuperClaw/kanban agent skills, see:
+- `../skills/superclaw/`
+- `../skills/kanban/`
+
 ## Stack
 
 - Next.js 16

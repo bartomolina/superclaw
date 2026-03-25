@@ -102,7 +102,21 @@ Then open:
 - `http://127.0.0.1:4000`
 - `http://127.0.0.1:4100`
 
-## 4) Extension
+## 4) Install the accompanying agent skills
+
+SuperClaw keeps repo copies of its OpenClaw skills under `skills/`.
+Sync them into your active OpenClaw skills directory:
+
+```bash
+mkdir -p ~/.openclaw/skills
+rsync -a ~/.openclaw/workspace/apps/superclaw/skills/ ~/.openclaw/skills/
+```
+
+Installed skill copies:
+- `~/.openclaw/skills/superclaw/`
+- `~/.openclaw/skills/kanban/`
+
+## 5) Extension
 
 ```bash
 cd ~/.openclaw/workspace/apps/superclaw/extension
