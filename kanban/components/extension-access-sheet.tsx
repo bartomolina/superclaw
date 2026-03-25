@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Eye, EyeOff, PlugZap, RefreshCw, Trash2 } from "lucide-react";
+import { Copy, Download, Eye, EyeOff, PlugZap, RefreshCw, Trash2 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -234,6 +234,15 @@ export function ExtensionAccessSheet({
           <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
             Paste this base URL and the generated credential into the extension settings page, then use Verify connection there.
           </div>
+
+          <a
+            href="/api/extension/download"
+            download
+            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
+          >
+            <Download className="h-4 w-4" />
+            Download Extension
+          </a>
 
           <label className="mt-3 block space-y-1.5">
             <div className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
