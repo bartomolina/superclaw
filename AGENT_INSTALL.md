@@ -40,8 +40,9 @@ Host:
 6. connect/init Convex
 7. set Convex env vars
 8. start pm2 processes
-9. build the extension
-10. report final URLs and any manual follow-up
+9. sync the bundled SuperClaw skills into `~/.openclaw/skills/`
+10. build the extension
+11. report final URLs and any manual follow-up
 
 ## Rules
 
@@ -133,6 +134,19 @@ Start Kanban:
 ```bash
 pm2 start bash --name superclaw-kanban --cwd ~/.openclaw/workspace/apps/superclaw/kanban -- -lc 'pnpm exec next dev --hostname 127.0.0.1 --port 4100'
 ```
+
+## Skill sync
+
+Sync the repo copies of the SuperClaw skills into the active OpenClaw skills directory:
+
+```bash
+mkdir -p ~/.openclaw/skills
+rsync -a ~/.openclaw/workspace/apps/superclaw/skills/ ~/.openclaw/skills/
+```
+
+Expected active skill copies:
+- `~/.openclaw/skills/superclaw/`
+- `~/.openclaw/skills/kanban/`
 
 ## Extension build
 
