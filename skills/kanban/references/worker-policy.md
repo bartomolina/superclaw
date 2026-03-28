@@ -26,11 +26,23 @@ Sandboxed-agent note:
 ### Validation / failure rules
 
 - If either `KANBAN_BASE_URL` or `KANBAN_AGENT_TOKEN` is missing or empty, stop and report the exact missing env.
-- Never invent fallback hosts, ports, URLs, or auth schemes.
+- Treat `KANBAN_BASE_URL` as the full Kanban API base. It already points at `/agent/kanban`.
+- Never append another `/agent/kanban` segment or invent fallback hosts, ports, URLs, or auth schemes.
+- If a known Kanban endpoint returns `404`, treat that as a path-construction bug and stop immediately instead of trying alternate URLs.
+- If a known Kanban endpoint returns any non-2xx response, stop and report the exact endpoint + status instead of guessing and retrying with other paths.
 
 Required headers for agent API calls:
 - `X-Agent-Id: <agentId>`
 - `X-Agent-Token: <resolved token>`
+
+Deterministic worker call sequence:
+1. Resolve `agentId` from the running agent/session context.
+2. Validate `KANBAN_BASE_URL` and `KANBAN_AGENT_TOKEN` once.
+3. Set `BASE="${KANBAN_BASE_URL}"` exactly.
+4. Fetch `GET ${BASE}/inbox` with the required headers.
+5. Use only cards returned by `/inbox`.
+6. For tracked manual runs, use the provided `sessionId` only with the normal Kanban calls (`/comment`, `/transition`, `/session/finish`).
+7. Do not call `/tasks` during normal worker execution unless the user explicitly asks for debugging/raw inspection.
 
 ## 2) API endpoints
 
