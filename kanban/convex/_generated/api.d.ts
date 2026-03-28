@@ -11,6 +11,7 @@
 import type * as access from "../access.js";
 import type * as activity from "../activity.js";
 import type * as agent_automation from "../agent_automation.js";
+import type * as agent_credentials from "../agent_credentials.js";
 import type * as agent_http from "../agent_http.js";
 import type * as auth from "../auth.js";
 import type * as auth_rate_limits from "../auth_rate_limits.js";
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   access: typeof access;
   activity: typeof activity;
   agent_automation: typeof agent_automation;
+  agent_credentials: typeof agent_credentials;
   agent_http: typeof agent_http;
   auth: typeof auth;
   auth_rate_limits: typeof auth_rate_limits;

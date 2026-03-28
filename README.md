@@ -67,7 +67,15 @@ Persist those values in the OpenClaw gateway service runtime.
 
 Sandboxed Kanban workers are manual on purpose:
 - do **not** auto-mirror these values into `agents.defaults.sandbox.docker.env`
-- when a sandboxed agent needs Kanban access, set `KANBAN_BASE_URL` / `KANBAN_AGENT_TOKEN` explicitly for that agent
+- when a sandboxed agent needs Kanban access, set `KANBAN_BASE_URL` / `KANBAN_AGENT_TOKEN` explicitly for that agent under `agents.list[].sandbox.docker.env`
+- `KANBAN_AGENT_SHARED_TOKEN` remains the default shared credential for trusted/local agents
+- dedicated per-agent credentials are supported for isolation; if an agent has a dedicated Kanban credential, the shared token is no longer accepted for that agent id
+- helper for provisioning a dedicated per-agent credential locally:
+
+```bash
+cd ~/.openclaw/workspace/apps/superclaw/kanban
+./scripts/provision-agent-credential.mjs <agent-id> --json
+```
 
 ## Docs
 

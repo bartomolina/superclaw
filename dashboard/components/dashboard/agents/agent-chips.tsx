@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Clock, Cpu, FileText, MessageSquare, Puzzle } from "lucide-react";
+import { Clock, Cpu, FileText, Folder, MessageSquare, Puzzle, Settings2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { authHeaders } from "@/components/dashboard/auth";
@@ -15,6 +15,9 @@ export interface ChipSection {
   icon: typeof Cpu;
 }
 
+const DEFAULT_AGENT_FILE_NAMES = new Set(["AGENTS.md", "BOOTSTRAP.md", "HEARTBEAT.md", "MEMORY.md"]);
+const IDENTITY_FILE_NAMES = new Set(["IDENTITY.md", "SOUL.md", "USER.md", "TOOLS.md"]);
+
 interface AgentChipsProps {
   agent: Agent;
   uniqueSkills: Skill[];
@@ -24,11 +27,36 @@ interface AgentChipsProps {
   loadingFile: string | null;
 }
 
+function renderFileButton(file: Agent["files"][number], onOpenFile: (name: string) => Promise<void>, loadingFile: string | null) {
+  return (
+    <button
+      key={file.name}
+      onClick={() => !file.missing && onOpenFile(file.name)}
+      disabled={file.missing || loadingFile === file.name}
+      className={`text-[11px] px-2 py-1 rounded-md border transition-colors ${
+        file.missing
+          ? "border-red-200 dark:border-red-800/40 text-red-400 dark:text-red-500 cursor-default line-through"
+          : loadingFile === file.name
+            ? "border-zinc-300 dark:border-zinc-600 text-zinc-500 animate-pulse"
+            : "bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700/40 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
+      }`}
+      title={file.path}
+    >
+      {file.name}
+    </button>
+  );
+}
+
 export function AgentChips({ agent, uniqueSkills, sections, onRefreshData, onOpenFile, loadingFile }: AgentChipsProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [expandedCronMessages, setExpandedCronMessages] = useState<Record<string, boolean>>({});
 
   function toggle(id: string) {
     setExpanded(expanded === id ? null : id);
+  }
+
+  function toggleCronMessage(id: string) {
+    setExpandedCronMessages((current) => ({ ...current, [id]: !current[id] }));
   }
 
   return (
@@ -93,12 +121,16 @@ export function AgentChips({ agent, uniqueSkills, sections, onRefreshData, onOpe
                             {u.name}
                           </span>
                         ))}
-                        {c.groups.map((g) => (
-                          <span key={g.id} className="text-[11px] px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800/40 text-blue-500 dark:text-blue-400">
-                            Group {g.id}
-                            {!g.requireMention ? "" : " · @mention"}
-                          </span>
-                        ))}
+                        {c.groups.map((g) => {
+                          const replyMode = g.requireMention ? "mention only" : "all messages";
+                          const access = g.groupPolicy;
+
+                          return (
+                            <span key={g.id} className="text-[11px] px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800/40 text-blue-500 dark:text-blue-400">
+                              Group {g.id} · access: {access} · reply: {replyMode}
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -123,75 +155,101 @@ export function AgentChips({ agent, uniqueSkills, sections, onRefreshData, onOpe
 
           {expanded === "crons" && (
             <div className="space-y-2">
-              {agent.crons.map((cr) => (
-                <div key={cr.id} className="bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800/40 rounded-lg p-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{cr.name}</span>
-                    <span className="flex items-center gap-1.5 text-xs shrink-0">
-                      <StatusDot active={cr.enabled} />
-                      {cr.enabled ? "active" : "paused"}
-                    </span>
+              {agent.crons.map((cr) => {
+                const isMessageExpanded = !!expandedCronMessages[cr.id];
+                const shouldShowMessageToggle = (cr.message?.length || 0) > 120;
+
+                return (
+                  <div key={cr.id} className="bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800/40 rounded-lg p-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{cr.name}</span>
+                      <span className="flex items-center gap-1.5 text-xs shrink-0">
+                        <StatusDot active={cr.enabled} />
+                        {cr.enabled ? "active" : "paused"}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-[11px] text-zinc-400 dark:text-zinc-500">
+                      <span className="font-mono">{cr.schedule}</span>
+                      <span className="flex items-center gap-1">
+                        model:
+                        <select
+                          value={cr.model || "__default__"}
+                          onChange={async (e) => {
+                            const model = e.target.value === "__default__" ? null : e.target.value;
+                            try {
+                              const res = await fetch(`/api/crons/${cr.id}/model`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json", ...authHeaders() },
+                                body: JSON.stringify({ model }),
+                              });
+                              const data = await res.json();
+                              if (!data.ok) throw new Error(data.error || "Failed to update cron model");
+                              await onRefreshData();
+                            } catch (error) {
+                              toast.error(error instanceof Error ? error.message : "Failed to update cron model");
+                            }
+                          }}
+                          className="text-[11px] bg-transparent text-zinc-600 dark:text-zinc-400 focus:outline-none cursor-pointer"
+                        >
+                          <option value="__default__">default</option>
+                          {agent.models.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </select>
+                      </span>
+                      {cr.nextRunAtMs && <span>next: {new Date(cr.nextRunAtMs).toLocaleString()}</span>}
+                    </div>
+                    {cr.message && (
+                      <div className="mt-1">
+                        <div className={`text-[11px] text-zinc-500 dark:text-zinc-400 ${isMessageExpanded ? "whitespace-pre-wrap break-words" : "truncate"}`}>
+                          {cr.message}
+                        </div>
+                        {shouldShowMessageToggle && (
+                          <button
+                            type="button"
+                            onClick={() => toggleCronMessage(cr.id)}
+                            className="mt-1 text-[11px] text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 transition-colors"
+                          >
+                            {isMessageExpanded ? "show less" : "show more"}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-[11px] text-zinc-400 dark:text-zinc-500">
-                    <span className="font-mono">{cr.schedule}</span>
-                    <span className="flex items-center gap-1">
-                      model:
-                      <select
-                        value={cr.model || "__default__"}
-                        onChange={async (e) => {
-                          const model = e.target.value === "__default__" ? null : e.target.value;
-                          try {
-                            const res = await fetch(`/api/crons/${cr.id}/model`, {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json", ...authHeaders() },
-                              body: JSON.stringify({ model }),
-                            });
-                            const data = await res.json();
-                            if (!data.ok) throw new Error(data.error || "Failed to update cron model");
-                            await onRefreshData();
-                          } catch (error) {
-                            toast.error(error instanceof Error ? error.message : "Failed to update cron model");
-                          }
-                        }}
-                        className="text-[11px] bg-transparent text-zinc-600 dark:text-zinc-400 focus:outline-none cursor-pointer"
-                      >
-                        <option value="__default__">default</option>
-                        {agent.models.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name}
-                          </option>
-                        ))}
-                      </select>
-                    </span>
-                    {cr.nextRunAtMs && <span>next: {new Date(cr.nextRunAtMs).toLocaleString()}</span>}
-                  </div>
-                  {cr.message && <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">{cr.message}</div>}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
-          {expanded === "files" && (
-            <div className="flex flex-wrap gap-1.5">
-              {agent.files.map((file) => (
-                <button
-                  key={file.name}
-                  onClick={() => !file.missing && onOpenFile(file.name)}
-                  disabled={file.missing || loadingFile === file.name}
-                  className={`text-[11px] px-2 py-1 rounded-md border transition-colors ${
-                    file.missing
-                      ? "border-red-200 dark:border-red-800/40 text-red-400 dark:text-red-500 cursor-default line-through"
-                      : loadingFile === file.name
-                        ? "border-zinc-300 dark:border-zinc-600 text-zinc-500 animate-pulse"
-                        : "bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700/40 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
-                  }`}
-                  title={file.path}
-                >
-                  {file.name}
-                </button>
-              ))}
-            </div>
-          )}
+          {expanded === "files" && (() => {
+            const defaultFiles = agent.files.filter((file) => DEFAULT_AGENT_FILE_NAMES.has(file.name));
+            const identityFiles = agent.files.filter((file) => IDENTITY_FILE_NAMES.has(file.name));
+            const otherFiles = agent.files.filter(
+              (file) => !DEFAULT_AGENT_FILE_NAMES.has(file.name) && !IDENTITY_FILE_NAMES.has(file.name),
+            );
+
+            const groups = [
+              { id: "default", icon: Settings2, files: defaultFiles },
+              { id: "identity", icon: UserRound, files: identityFiles },
+              { id: "other", icon: Folder, files: otherFiles },
+            ].filter((group) => group.files.length > 0);
+
+            return (
+              <div className="space-y-2">
+                {groups.map((group) => {
+                  const Icon = group.icon;
+                  return (
+                    <div key={group.id} className="flex items-start gap-2">
+                      <Icon size={13} className="text-zinc-400 mt-1 shrink-0" />
+                      <div className="flex flex-wrap gap-1.5">{group.files.map((file) => renderFileButton(file, onOpenFile, loadingFile))}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

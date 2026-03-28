@@ -35,12 +35,19 @@ export function parseIdentityFromMarkdown(content: string | null | undefined) {
 }
 
 export function hasMeaningfulMarkdownContent(content: string | null | undefined) {
-  return String(content || "")
-    .split("\n")
-    .some((line) => {
-      const trimmed = line.trim();
-      return trimmed && !trimmed.startsWith("#");
-    });
+  if (content === undefined || content === null) return false;
+  if (typeof content !== "string") return false;
+
+  const lines = content.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (/^#+(\s|$)/.test(trimmed)) continue;
+    if (/^[-*+]\s*(\[[\sXx]?\]\s*)?$/.test(trimmed)) continue;
+    return true;
+  }
+
+  return false;
 }
 
 function getAgentWorkspace(agentId: string) {

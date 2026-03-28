@@ -59,11 +59,17 @@ export function mapChannelsByAgent(channelsData: any, sessionsData: any, configR
         }));
 
       const streaming = accountConfig.streaming ?? configRaw.channels?.[channelId]?.streaming ?? "partial";
+      const detailLabel =
+        account.accountId === "default"
+          ? detail
+          : channelId === "telegram" && account.accountId === agentId
+            ? null
+            : `${detail || label} · ${account.accountId}`;
 
       accountsByAgent[agentId].push({
         id: `${channelId}:${account.accountId}`,
         name: label,
-        detail: account.accountId === "default" ? detail : `${detail || label} · ${account.accountId}`,
+        detail: detailLabel,
         running: account.running ?? false,
         mode: account.mode ?? null,
         streaming: channelId === "telegram" ? streaming : null,

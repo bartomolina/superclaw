@@ -22,6 +22,8 @@ Sandboxed-agent note:
 - expected path: `<agent-workspace>/skills/kanban/`
 - do **not** assume a sandboxed agent can read host skill paths like `~/.openclaw/skills/kanban/` or `/usr/lib/node_modules/openclaw/skills/kanban/`
 - sandboxed agents should receive `KANBAN_BASE_URL` / `KANBAN_AGENT_TOKEN` explicitly per agent when needed; do not assume global sandbox defaults
+- dedicated per-agent Kanban credentials are preferred for sandboxed agents; if a dedicated credential exists for this agent id, the shared token will not work for it
+- the normal provisioning helper for dedicated credentials lives at `kanban/scripts/provision-agent-credential.mjs`
 
 ### Validation / failure rules
 

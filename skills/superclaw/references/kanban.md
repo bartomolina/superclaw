@@ -62,18 +62,29 @@ cd ~/.openclaw/workspace/apps/superclaw/kanban
 Runtime rules:
 - unsandboxed/local agents should read `KANBAN_BASE_URL` and `KANBAN_AGENT_TOKEN` from the OpenClaw gateway service environment
 - do **not** auto-mirror these values into `agents.defaults.sandbox.docker.env`
-- sandboxed Kanban access should be configured manually per agent when needed
+- sandboxed Kanban access should be configured manually per agent when needed under `agents.list[].sandbox.docker.env`
+- `KANBAN_AGENT_SHARED_TOKEN` remains the default shared credential for trusted/local agents
+- dedicated per-agent Kanban credentials are supported for isolation; if a dedicated credential exists for an agent id, the shared token is no longer accepted for that agent
 - do not invent fallback hosts, ports, or auth schemes
 
 Additional requirement for sandboxed agents:
-- keep a workspace-local copy of the kanban skill under `<agent-workspace>/skills/kanban/`
-- do not assume the sandbox can read host skill paths like `~/.openclaw/skills/kanban/` or `/usr/lib/node_modules/openclaw/skills/kanban/`
+- keep workspace-local copies of the required SuperClaw skills under `<agent-workspace>/skills/kanban/` and `<agent-workspace>/skills/superclaw/`
+- do not assume the sandbox can read host skill paths like `~/.openclaw/skills/kanban/`, `~/.openclaw/skills/superclaw/`, or `/usr/lib/node_modules/openclaw/skills/...`
+- to provision a dedicated token for a sandboxed agent, use:
+
+```bash
+cd ~/.openclaw/workspace/apps/superclaw/kanban
+./scripts/provision-agent-credential.mjs <agent-id> --json
+```
+
+This returns the dedicated `KANBAN_AGENT_TOKEN` plus the exact `agents.list[].sandbox.docker.env` payload to inject for that agent.
 
 Example for an agent workspace:
 
 ```bash
 mkdir -p ~/.openclaw/workspace-<agent>/skills
 rsync -a ~/.openclaw/skills/kanban/ ~/.openclaw/workspace-<agent>/skills/kanban/
+rsync -a ~/.openclaw/skills/superclaw/ ~/.openclaw/workspace-<agent>/skills/superclaw/
 ```
 
 ## Worker API surface

@@ -12,6 +12,13 @@ type AuthUser = {
   name?: string;
 };
 
+type ConvexIdentityLike = {
+  subject?: string;
+  tokenIdentifier?: string;
+  email?: string;
+  name?: string;
+};
+
 type HumanIdentity = {
   email?: string | null;
   name?: string | null;
@@ -173,7 +180,7 @@ export async function getUser(ctx: Ctx) {
     authUser = null;
   }
 
-  const identity = await ctx.auth.getUserIdentity();
+  const identity = (await ctx.auth.getUserIdentity()) as ConvexIdentityLike | null;
 
   const userId =
     authUser?.userId ?? authUser?.id ?? identity?.subject ?? identity?.tokenIdentifier ?? null;
@@ -184,8 +191,8 @@ export async function getUser(ctx: Ctx) {
 
   return {
     userId,
-    email: normalizeEmail(authUser?.email),
-    name: authUser?.name,
+    email: normalizeEmail(authUser?.email ?? identity?.email),
+    name: authUser?.name ?? identity?.name,
   };
 }
 

@@ -128,6 +128,21 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_scope_key", ["scope", "key"]),
 
+  agentCredentials: defineTable({
+    agentId: v.string(),
+    normalizedAgentId: v.string(),
+    tokenHash: v.string(),
+    tokenPreview: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdByUserId: v.optional(v.string()),
+    createdByEmail: v.optional(v.string()),
+    lastVerifiedAt: v.optional(v.number()),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_normalized_agent", ["normalizedAgentId"])
+    .index("by_token_hash", ["tokenHash"]),
+
   extensionCredentials: defineTable({
     ownerId: v.string(),
     ownerEmail: v.string(),

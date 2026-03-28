@@ -129,16 +129,19 @@ Use the resolved values in the OpenClaw gateway service environment:
 
 1. **OpenClaw gateway service env**
    - unsandboxed/local agents read `KANBAN_BASE_URL` and `KANBAN_AGENT_TOKEN` from the running gateway service environment
+   - the underlying trusted secret on the Kanban/Convex side is `KANBAN_AGENT_SHARED_TOKEN`
 
 2. **Sandboxed agents (manual)**
    - do **not** mirror these values globally by default
-   - when a sandboxed agent needs Kanban access, set `KANBAN_BASE_URL` and `KANBAN_AGENT_TOKEN` explicitly for that agent
+   - when a sandboxed agent needs Kanban access, set `KANBAN_BASE_URL` and `KANBAN_AGENT_TOKEN` explicitly for that agent under `agents.list[].sandbox.docker.env`
+   - dedicated per-agent credentials are supported and preferred for sandboxed agents; when a dedicated credential exists for an agent id, the shared token is no longer accepted for that agent
 
-Sandboxed-agent setup still needs a local copy of the kanban skill in the agent workspace:
+Sandboxed-agent setup should keep the required SuperClaw skills locally in the agent workspace:
 
 ```bash
 mkdir -p ~/.openclaw/workspace-<agent>/skills
 rsync -a ~/.openclaw/skills/kanban/ ~/.openclaw/workspace-<agent>/skills/kanban/
+rsync -a ~/.openclaw/skills/superclaw/ ~/.openclaw/workspace-<agent>/skills/superclaw/
 ```
 
 Agent HTTP endpoints:

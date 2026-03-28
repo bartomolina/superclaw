@@ -2,9 +2,10 @@ import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery, query } from "./_generated/server";
 import { isAgentAllowedForBoard, requireAccessibleBoard, requireMember, resolveCommentAuthorLabel } from "./access";
+import { findDedicatedAgentCredential, hashAgentCredential } from "./agent_credentials";
 import { getNextOrder, optionalText, touchBoard } from "./helpers";
 
 type AgentRole = "assignee" | "reviewer";
@@ -97,15 +98,26 @@ function buildExecutionHint({
   return `run this with acp ${normalizedAcp}`;
 }
 
-function authenticateAgent(agentId: string, agentToken: string): AgentIdentity {
+async function authenticateAgent(ctx: QueryCtx | MutationCtx, agentId: string, agentToken: string): Promise<AgentIdentity> {
   const id = agentId.trim();
   const token = agentToken.trim();
-  const sharedToken = process.env.KANBAN_AGENT_SHARED_TOKEN?.trim();
 
   if (!id || !token) {
     throw new ConvexError({ code: "UNAUTHORIZED", message: "Missing agent credentials" });
   }
 
+  const dedicatedCredential = await findDedicatedAgentCredential(ctx, id);
+  if (dedicatedCredential) {
+    const tokenHash = await hashAgentCredential(token);
+
+    if (tokenHash !== dedicatedCredential.tokenHash) {
+      throw new ConvexError({ code: "UNAUTHORIZED", message: "Invalid agent credentials" });
+    }
+
+    return { id, normalizedId: normalize(id) };
+  }
+
+  const sharedToken = process.env.KANBAN_AGENT_SHARED_TOKEN?.trim();
   if (!sharedToken) {
     throw new ConvexError({
       code: "UNAUTHORIZED",
@@ -389,7 +401,7 @@ export const listAssignedTasks = internalQuery({
     includeDone: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const agent = authenticateAgent(args.agentId, args.agentToken);
+    const agent = await authenticateAgent(ctx, args.agentId, args.agentToken);
     return await listTasksWithCommentState(ctx, agent, Boolean(args.includeDone));
   },
 });
@@ -400,7 +412,7 @@ export const listAgentInbox = internalQuery({
     agentToken: v.string(),
   },
   handler: async (ctx, args) => {
-    const agent = authenticateAgent(args.agentId, args.agentToken);
+    const agent = await authenticateAgent(ctx, args.agentId, args.agentToken);
     const tasks = await listTasksWithCommentState(ctx, agent, false);
     const inbox = buildInbox(tasks, agent);
 
@@ -416,8 +428,8 @@ export const verifyAgentAccess = internalQuery({
     agentId: v.string(),
     agentToken: v.string(),
   },
-  handler: async (_ctx, args) => {
-    const agent = authenticateAgent(args.agentId, args.agentToken);
+  handler: async (ctx, args) => {
+    const agent = await authenticateAgent(ctx, args.agentId, args.agentToken);
 
     return {
       ok: true,
@@ -528,7 +540,7 @@ export const getManualSessionTargets = internalQuery({
     sessionId: v.string(),
   },
   handler: async (ctx, args) => {
-    const agent = authenticateAgent(args.agentId, args.agentToken);
+    const agent = await authenticateAgent(ctx, args.agentId, args.agentToken);
     const sessionId = args.sessionId.trim();
     const rows = await ctx.db
       .query("cardRunSessions")
@@ -592,7 +604,7 @@ export const addAgentComment = internalMutation({
     sessionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const agent = authenticateAgent(args.agentId, args.agentToken);
+    const agent = await authenticateAgent(ctx, args.agentId, args.agentToken);
 
     const card = await ctx.db.get(args.cardId);
     if (!card) {
@@ -661,7 +673,7 @@ export const transitionAgentCard = internalMutation({
     sessionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const agent = authenticateAgent(args.agentId, args.agentToken);
+    const agent = await authenticateAgent(ctx, args.agentId, args.agentToken);
 
     const card = await ctx.db.get(args.cardId);
     if (!card) {
