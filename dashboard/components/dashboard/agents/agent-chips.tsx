@@ -31,7 +31,7 @@ export function AgentChips({ agent, uniqueSkills, sections, onRefreshData }: Age
 
   return (
     <div className="border-t border-zinc-200 dark:border-zinc-800/60">
-      <div className="px-5 py-3 flex flex-wrap gap-1.5">
+      <div className="px-4 py-2.5 flex flex-wrap gap-1.5">
         {sections.map((s) => {
           const Icon = s.icon;
           const active = s.count > 0;
@@ -57,7 +57,7 @@ export function AgentChips({ agent, uniqueSkills, sections, onRefreshData }: Age
       </div>
 
       {expanded && (
-        <div className="px-5 pb-3">
+        <div className="px-4 pb-3">
           {expanded === "channels" &&
             (agent.channels.length > 0 ? (
               <div className="space-y-2">

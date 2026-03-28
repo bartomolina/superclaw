@@ -178,7 +178,6 @@ export default function App() {
         fallbacks: a.fallbacks || [],
         hasOwnModel: a.hasOwnModel ?? true,
         workspace: a.workspace || "—",
-        toolsProfile: a.toolsProfile || null,
         sandboxed: a.sandboxed ?? false,
         workspaceAccess: a.workspaceAccess ?? null,
         isDefault: a.isDefault ?? false,
@@ -189,7 +188,6 @@ export default function App() {
           name: m.name || m.id,
           provider: m.provider || "",
         })),
-        toolGroups: [],
         files: (a.files || []).map((f: any) => ({
           name: f.name,
           path: f.path || "",

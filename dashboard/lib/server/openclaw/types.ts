@@ -15,14 +15,12 @@ export type DashboardAgent = {
   fallbacks: string[];
   hasOwnModel: boolean;
   workspace: string;
-  toolsProfile: string | null;
   sandboxed: boolean;
   workspaceAccess: "none" | "ro" | "rw" | null;
   isDefault: boolean;
   channels: unknown[];
   skills: unknown[];
   models: DashboardModel[];
-  toolGroups: unknown[];
   heartbeat: {
     every: string | null;
     model: string | null;

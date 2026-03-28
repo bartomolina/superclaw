@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { Plus, Trash2 } from "lucide-react";
+import { Heart, HeartCrack, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { authHeaders } from "@/components/dashboard/auth";
@@ -71,7 +71,7 @@ export function AgentsPage({ agents, defaultPrimary, onModelChange, onRefresh, o
       {agents.length === 0 ? (
         <div className="text-center py-24 text-zinc-400 dark:text-zinc-500 text-sm">No agents configured</div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4">
           {agents.map((agent) => (
             <div key={agent.id} className="relative">
               <AgentCard
@@ -82,17 +82,27 @@ export function AgentsPage({ agents, defaultPrimary, onModelChange, onRefresh, o
                 onConfigChange={onRefresh}
                 onRefreshData={onRefreshQuick}
               />
-              {!agent.isDefault && (
-                <div className="absolute top-4 right-4">
+              <div className="absolute top-4 right-4 flex items-center gap-0.5">
+                <span
+                  className={`p-1 rounded-md ${
+                    agent.heartbeat.active
+                      ? "text-red-500"
+                      : "text-zinc-300 dark:text-zinc-600"
+                  }`}
+                  title={agent.heartbeat.active ? "Heartbeat enabled" : "Heartbeat disabled"}
+                >
+                  {agent.heartbeat.active ? <Heart size={14} className="fill-current" /> : <HeartCrack size={14} />}
+                </span>
+                {!agent.isDefault && (
                   <button
                     onClick={() => setDeleteConfirmAgentId(agent.id)}
-                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-red-500 transition-colors"
+                    className="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-red-500 transition-colors"
                     title="Delete agent"
                   >
                     <Trash2 size={14} />
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           ))}
         </div>

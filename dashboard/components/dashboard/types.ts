@@ -19,7 +19,6 @@ export type Skill = {
   source: string;
   missing?: { bins?: string[]; anyBins?: string[]; env?: string[]; os?: string[] };
 };
-export type ToolGroup = { id: string; label: string; tools: { id: string; label: string; description: string }[] };
 export type AgentFile = { name: string; path: string; missing: boolean; size: number; updatedAtMs: number };
 export type Model = { id: string; name: string; provider: string };
 export type Cron = {
@@ -43,14 +42,12 @@ export type Agent = {
   fallbacks: string[];
   hasOwnModel: boolean;
   workspace: string;
-  toolsProfile: string | null;
   sandboxed: boolean;
   workspaceAccess: "none" | "ro" | "rw" | null;
   isDefault: boolean;
   channels: Channel[];
   skills: Skill[];
   models: Model[];
-  toolGroups: ToolGroup[];
   heartbeat: Heartbeat;
   crons: Cron[];
   files: AgentFile[];
