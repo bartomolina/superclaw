@@ -36,27 +36,44 @@ function createDeferred<T>(): Deferred<T> {
 async function importOpenClawGatewayModule(): Promise<OpenClawGatewayModule> {
   const packageDir = path.dirname(OPENCLAW_PACKAGE_JSON);
   const distDir = path.join(packageDir, "dist");
-  const candidates = fs.readdirSync(distDir).filter((entry) => entry.startsWith("reply-") && entry.endsWith(".js")).sort();
-  const entry = candidates[0];
+  const entries = fs.readdirSync(distDir).filter((entry) => entry.endsWith(".js")).sort();
 
-  if (!entry) {
+  const preferredPrefixes = ["method-scopes-", "reply-"];
+  const candidates = [
+    ...preferredPrefixes.flatMap((prefix) => entries.filter((entry) => entry.startsWith(prefix))),
+    ...entries.filter((entry) => !preferredPrefixes.some((prefix) => entry.startsWith(prefix))),
+  ];
+
+  if (candidates.length === 0) {
     throw new Error(`Could not find an OpenClaw gateway bundle under ${distDir}`);
   }
 
-  const importPath = pathToFileURL(path.join(distDir, entry)).href;
   const dynamicImport = new Function("modulePath", "return import(modulePath);") as (modulePath: string) => Promise<Record<string, unknown>>;
-  const mod = await dynamicImport(importPath);
-  const GatewayClient = Object.values(mod).find((value): value is GatewayClientCtor => typeof value === "function" && value.name === "GatewayClient");
-  const loadOrCreateDeviceIdentity = Object.values(mod).find(
-    (value): value is OpenClawGatewayModule["loadOrCreateDeviceIdentity"] =>
-      typeof value === "function" && value.name === "loadOrCreateDeviceIdentity",
-  );
+  const errors: string[] = [];
 
-  if (!GatewayClient || !loadOrCreateDeviceIdentity) {
-    throw new Error("Could not resolve OpenClaw GatewayClient internals from installed package");
+  for (const entry of candidates) {
+    try {
+      const importPath = pathToFileURL(path.join(distDir, entry)).href;
+      const mod = await dynamicImport(importPath);
+      const GatewayClient = Object.values(mod).find(
+        (value): value is GatewayClientCtor => typeof value === "function" && value.name === "GatewayClient",
+      );
+      const loadOrCreateDeviceIdentity = Object.values(mod).find(
+        (value): value is OpenClawGatewayModule["loadOrCreateDeviceIdentity"] =>
+          typeof value === "function" && value.name === "loadOrCreateDeviceIdentity",
+      );
+
+      if (GatewayClient && loadOrCreateDeviceIdentity) {
+        return { GatewayClient, loadOrCreateDeviceIdentity };
+      }
+
+      errors.push(`${entry}: missing GatewayClient/loadOrCreateDeviceIdentity exports`);
+    } catch (error) {
+      errors.push(`${entry}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  return { GatewayClient, loadOrCreateDeviceIdentity };
+  throw new Error(`Could not resolve OpenClaw GatewayClient internals from installed package (${errors.slice(0, 5).join("; ")})`);
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
