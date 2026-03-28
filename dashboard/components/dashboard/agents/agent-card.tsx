@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { Cpu, Shield } from "lucide-react";
+import { AlertTriangle, Check, Cpu, Shield } from "lucide-react";
 import { toast } from "sonner";
 
 import { authFetch, authHeaders } from "@/components/dashboard/auth";
@@ -26,6 +26,8 @@ function formatKanbanMissing(items: string[]) {
     if (item === "skill:superclaw") return "Copy superclaw skill into workspace skills";
     if (item === "env:KANBAN_BASE_URL") return "Set KANBAN_BASE_URL in sandbox env";
     if (item === "env:KANBAN_AGENT_TOKEN") return "Set KANBAN_AGENT_TOKEN in sandbox env";
+    if (item === "credential:dedicated") return "Provision a dedicated Kanban credential for this agent";
+    if (item === "credential:status") return "Unable to verify dedicated Kanban credential status right now";
     return item;
   });
 }
@@ -162,7 +164,7 @@ export function AgentCard({
                   onChange={(e) => updateSandbox(e.target.checked, (agent.workspaceAccess || "rw") as "none" | "ro" | "rw")}
                   className="h-3.5 w-3.5 rounded border-zinc-300 dark:border-zinc-700"
                 />
-                <span className="text-zinc-700 dark:text-zinc-300 font-medium">Sandboxed</span>
+                <span className="text-zinc-700 dark:text-zinc-300 font-medium">Sandbox</span>
               </label>
               <select
                 value={agent.workspaceAccess || "rw"}
@@ -178,16 +180,17 @@ export function AgentCard({
                 <span
                   title={
                     agent.kanbanReadiness.ready
-                      ? "Sandbox workspace has kanban + superclaw skills copied and required Kanban env vars configured."
+                      ? "Sandbox workspace has kanban + superclaw skills copied, required Kanban env vars configured, and a dedicated Kanban credential for this agent."
                       : kanbanMissing.join("\n")
                   }
-                  className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${
+                  className={`inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[9px] font-medium tracking-normal whitespace-nowrap ${
                     agent.kanbanReadiness.ready
                       ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300"
                       : "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
                   }`}
                 >
-                  {agent.kanbanReadiness.ready ? "Kanban ready" : "Kanban setup needed"}
+                  <span>Kanban</span>
+                  {agent.kanbanReadiness.ready ? <Check size={10} /> : <AlertTriangle size={10} />}
                 </span>
               )}
             </div>

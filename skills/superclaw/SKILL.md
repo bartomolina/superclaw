@@ -1,6 +1,9 @@
 ---
 name: superclaw
 description: Work on the SuperClaw companion suite for OpenClaw. Use when modifying or extending the repo under `apps/superclaw/`, creating new suite-level apps or features, adjusting shared install/runtime conventions, or working on the Dashboard, Kanban, Extension, or their cross-cutting architecture.
+metadata:
+  openclaw:
+    emoji: "🦞"
 ---
 
 # SuperClaw

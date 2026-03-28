@@ -1,6 +1,9 @@
 ---
 name: kanban
 description: Work assigned SuperClaw Kanban tasks for autonomous agents. Use when an agent should pick up its assigned Kanban work, leave progress or blocker comments, move cards through TODO/In Progress/Review according to policy, or run a scheduled or manual Kanban worker pass.
+metadata:
+  openclaw:
+    emoji: "🦞"
 ---
 
 # SuperClaw Kanban worker
@@ -23,4 +26,5 @@ Use the broader `superclaw` skill when the task is about suite architecture, ins
 10. If the task results in repo changes, commit and push them when the work is complete unless explicitly told not to.
 11. Do not shell out just to inspect env or infer identity. In particular, do not run inline Python to read env vars; assume `python` may not exist.
 12. Use one deterministic API flow only: validate envs once, then use `/inbox` for normal runs or `/session/targets?sessionId=...` for tracked manual runs, then call `/comment`, `/transition`, and `/session/finish` as needed. Do not improvise alternate endpoint shapes, fallback URLs, or recovery attempts.
-13. If a known Kanban API call returns a client/server error, stop and report the exact failing endpoint/status instead of guessing and retrying with different paths.
+13. When shelling out for Kanban API calls, prefer `bash -lc` for strict-shell snippets and build JSON payloads with `jq -nc`; never hand-roll JSON escaping with `printf | sed` or similar fragile quoting.
+14. If a known Kanban API call returns a client/server error, stop and report the exact failing endpoint/status instead of guessing and retrying with different paths.

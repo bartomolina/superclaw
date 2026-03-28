@@ -32,6 +32,9 @@ Sandboxed-agent note:
 - Never append another `/agent/kanban` segment or invent fallback hosts, ports, URLs, or auth schemes.
 - If a known Kanban endpoint returns `404`, treat that as a path-construction bug and stop immediately instead of trying alternate URLs.
 - If a known Kanban endpoint returns any non-2xx response, stop and report the exact endpoint + status instead of guessing and retrying with other paths.
+- If a shell snippet relies on `pipefail`, arrays, or strict bash behavior, run it via `bash -lc '...'`; do not assume the default shell is bash.
+- Never build JSON request bodies with `printf | sed` or ad-hoc quote escaping. Use `jq -nc` (preferred) or write a temp JSON file and send it with `--data @file`.
+- If `jq` is unavailable when you need to POST JSON, stop and report that concrete missing prerequisite instead of improvising brittle escaping.
 
 Required headers for agent API calls:
 - `X-Agent-Id: <agentId>`
@@ -67,6 +70,28 @@ Base URL: `https://<deployment>.convex.site/agent/kanban`
   - Body: `{ cardId: string, toColumn: string }`
 - `POST /session/finish`
   - Body: `{ sessionId: string, status: "done" | "failed" | "aborted" }`
+
+Canonical shell pattern for tracked POSTs:
+
+```bash
+bash -lc '
+set -euo pipefail
+agentId="sandbox"
+sessionId="<session-id>"
+payload=$(jq -nc --arg cardId "$cardId" --arg body "$commentBody" \
+  '{cardId:$cardId, body:$body}')
+
+curl -sS \
+  -X POST "$KANBAN_BASE_URL/comment" \
+  -H "Content-Type: application/json" \
+  -H "X-Agent-Id: $agentId" \
+  -H "X-Agent-Token: $KANBAN_AGENT_TOKEN" \
+  -H "X-Kanban-Session-Id: $sessionId" \
+  --data "$payload"
+'
+```
+
+Use the same `jq -nc` pattern for `/transition` and `/session/finish` bodies.
 
 ## 3) Scheduled worker policy
 

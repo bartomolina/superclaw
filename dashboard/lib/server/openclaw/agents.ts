@@ -50,9 +50,33 @@ function normalizeAgentsList(parsed: any): { agents: any[]; defaultId: string | 
 }
 
 const execFileAsync = promisify(execFile);
+const KANBAN_APP_DIR = path.join(OPENCLAW_HOME, "workspace", "apps", "superclaw", "kanban");
 
 function addWarning(warnings: string[], label: string, error: unknown) {
   warnings.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+}
+
+function parseCliJsonValue<T>(stdout: string, stderr: string, fallback: T): T {
+  const candidates = [stdout, stderr]
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .map((text) => {
+      const objectStart = text.indexOf("{");
+      const arrayStart = text.indexOf("[");
+      if (objectStart === -1) return arrayStart >= 0 ? text.slice(arrayStart) : text;
+      if (arrayStart === -1) return text.slice(objectStart);
+      return text.slice(Math.min(objectStart, arrayStart));
+    });
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as T;
+    } catch {
+      // try next candidate
+    }
+  }
+
+  return fallback;
 }
 
 function detectImageExtension(buffer: Buffer) {
@@ -133,14 +157,61 @@ function hasRealCopiedSkill(workspace: string, skillName: string) {
   }
 }
 
+async function listDedicatedKanbanCredentialAgentIds() {
+  const { stdout: superuserStdout, stderr: superuserStderr } = await execFileAsync(
+    "pnpm",
+    ["exec", "convex", "env", "get", "SUPERUSER_EMAIL"],
+    {
+      cwd: KANBAN_APP_DIR,
+      timeout: 15_000,
+      env: process.env,
+      maxBuffer: 256 * 1024,
+    },
+  );
+
+  const superuserEmail = [superuserStdout, superuserStderr]
+    .flatMap((text) => text.split(/\r?\n/))
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1);
+
+  if (!superuserEmail) {
+    throw new Error("SUPERUSER_EMAIL is missing from the Convex deployment");
+  }
+
+  const identity = JSON.stringify({
+    email: superuserEmail,
+    subject: "openclaw-operator",
+    name: "OpenClaw Operator",
+  });
+
+  const { stdout, stderr } = await execFileAsync(
+    "pnpm",
+    ["exec", "convex", "run", "agent_credentials:listCredentials", "--identity", identity, "{}"],
+    {
+      cwd: KANBAN_APP_DIR,
+      timeout: 20_000,
+      env: process.env,
+      maxBuffer: 512 * 1024,
+    },
+  );
+
+  const rows = parseCliJsonValue<Array<{ agentId?: string }>>(stdout, stderr, []);
+  return new Set(rows.map((row) => row.agentId).filter((value): value is string => typeof value === "string" && value.trim().length > 0));
+}
+
 function buildKanbanReadiness({
   sandboxed,
   workspace,
   sandboxEnv,
+  hasDedicatedCredential,
+  canVerifyDedicatedCredential,
 }: {
   sandboxed: boolean;
   workspace: string;
   sandboxEnv: Record<string, unknown> | undefined | null;
+  hasDedicatedCredential: boolean;
+  canVerifyDedicatedCredential: boolean;
 }) {
   if (!sandboxed) {
     return {
@@ -160,6 +231,8 @@ function buildKanbanReadiness({
 
   if (!baseUrl) missing.push("env:KANBAN_BASE_URL");
   if (!token) missing.push("env:KANBAN_AGENT_TOKEN");
+  if (!canVerifyDedicatedCredential) missing.push("credential:status");
+  else if (!hasDedicatedCredential) missing.push("credential:dedicated");
 
   return {
     applicable: true,
@@ -221,6 +294,15 @@ async function buildAgentResponse(): Promise<AgentsListResponse> {
 
   const availableModels = inferAvailableModels(providerMap);
   const configModels = localConfig.agents?.defaults?.models || {};
+  let dedicatedCredentialAgentIds = new Set<string>();
+  let canVerifyDedicatedCredentials = true;
+
+  try {
+    dedicatedCredentialAgentIds = await listDedicatedKanbanCredentialAgentIds();
+  } catch (error) {
+    canVerifyDedicatedCredentials = false;
+    addWarning(warnings, "kanban dedicated credentials", error);
+  }
   const models = Object.keys(configModels).map((key) => {
     const provider = key.split("/")[0];
     return {
@@ -269,7 +351,13 @@ async function buildAgentResponse(): Promise<AgentsListResponse> {
       heartbeat: {
         active: hasHeartbeatContent,
       },
-      kanbanReadiness: buildKanbanReadiness({ sandboxed, workspace, sandboxEnv }),
+      kanbanReadiness: buildKanbanReadiness({
+        sandboxed,
+        workspace,
+        sandboxEnv,
+        hasDedicatedCredential: dedicatedCredentialAgentIds.has(agent.id),
+        canVerifyDedicatedCredential: canVerifyDedicatedCredentials,
+      }),
       files: listAgentWorkspaceFiles(agent.id),
       crons: [],
     };

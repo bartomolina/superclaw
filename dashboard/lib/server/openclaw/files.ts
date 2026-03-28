@@ -79,11 +79,6 @@ export function listAgentWorkspaceFiles(agentId: string) {
     return readdirSync(workspace, { withFileTypes: true })
       .filter((entry) => entry.isFile())
       .map((entry) => {
-        const ext = path.extname(entry.name).toLowerCase();
-        return { entry, ext };
-      })
-      .filter(({ entry, ext }) => /^[A-Za-z0-9._-]+$/.test(entry.name) && [".md", ".txt", ".json", ".yaml", ".yml"].includes(ext))
-      .map(({ entry }) => {
         const absPath = path.join(workspace, entry.name);
         const stat = statSync(absPath);
         return {

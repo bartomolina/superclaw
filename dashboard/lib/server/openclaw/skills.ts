@@ -31,19 +31,10 @@ type SkillsStatusResponse = {
   skills?: SkillRecord[];
 };
 
-function defaultSkillEmoji(skill: SkillRecord) {
-  if (skill.emoji) return skill.emoji;
-
-  const customSources = new Set(["openclaw-workspace", "openclaw-managed", "agents-skills-personal"]);
-  if (skill.source && customSources.has(skill.source)) return "👨‍💻";
-
-  return "📦";
-}
-
 function normalizeSkill(skill: SkillRecord) {
   return {
     name: skill.name,
-    emoji: defaultSkillEmoji(skill),
+    emoji: skill.emoji || "📦",
     description: skill.description || "",
     eligible: skill.eligible ?? false,
     disabled: skill.disabled ?? false,
