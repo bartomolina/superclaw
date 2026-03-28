@@ -31,7 +31,8 @@ export type Cron = {
   enabled: boolean;
   nextRunAtMs: number | null;
 };
-export type Heartbeat = { every: string | null; model: string | null; active: boolean };
+export type Heartbeat = { active: boolean };
+export type KanbanReadiness = { applicable: boolean; ready: boolean; missing: string[] };
 export type Agent = {
   id: string;
   name: string;
@@ -49,6 +50,7 @@ export type Agent = {
   skills: Skill[];
   models: Model[];
   heartbeat: Heartbeat;
+  kanbanReadiness: KanbanReadiness;
   crons: Cron[];
   files: AgentFile[];
 };

@@ -195,7 +195,8 @@ export default function App() {
           size: f.size ?? 0,
           updatedAtMs: f.updatedAtMs ?? 0,
         })),
-        heartbeat: a.heartbeat || { every: null, model: null, active: false },
+        heartbeat: a.heartbeat || { active: false },
+        kanbanReadiness: a.kanbanReadiness || { applicable: false, ready: false, missing: [] },
         crons: agentCrons.map((cr: any) => ({
           id: cr.id,
           name: cr.name || cr.id,

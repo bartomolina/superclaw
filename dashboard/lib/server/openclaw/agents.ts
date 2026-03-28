@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { execFile } from "child_process";
+import { existsSync, lstatSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import path from "path";
+import { promisify } from "util";
 
 import { GoogleGenAI } from "@google/genai";
 import { NextRequest } from "next/server";
@@ -47,8 +49,18 @@ function normalizeAgentsList(parsed: any): { agents: any[]; defaultId: string | 
   return { agents: [], defaultId: null };
 }
 
+const execFileAsync = promisify(execFile);
+
 function addWarning(warnings: string[], label: string, error: unknown) {
   warnings.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+}
+
+function detectImageExtension(buffer: Buffer) {
+  if (buffer.length >= 12 && buffer.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))) return ".png";
+  if (buffer.length >= 3 && buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return ".jpg";
+  if (buffer.length >= 6 && (buffer.subarray(0, 6).toString("ascii") === "GIF87a" || buffer.subarray(0, 6).toString("ascii") === "GIF89a")) return ".gif";
+  if (buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP") return ".webp";
+  return ".png";
 }
 
 async function generateAvatarImage({
@@ -76,7 +88,18 @@ async function generateAvatarImage({
     throw new Error("Gemini returned no image data");
   }
 
-  writeFileSync(outputPath, Buffer.from(image, "base64"));
+  const buffer = Buffer.from(image, "base64");
+  const sourcePath = outputPath.replace(/\.webp$/i, `.source${detectImageExtension(buffer)}`);
+  writeFileSync(sourcePath, buffer);
+
+  try {
+    await execFileAsync("convert", [sourcePath, "-resize", "512x512", "-strip", "-quality", "84", outputPath], {
+      timeout: 30_000,
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  } finally {
+    rmSync(sourcePath, { force: true });
+  }
 }
 
 function ensureAgentSandbox(agent: any) {
@@ -97,6 +120,52 @@ function ensureAgentSandbox(agent: any) {
   }
 
   return agent.sandbox;
+}
+
+function hasRealCopiedSkill(workspace: string, skillName: string) {
+  try {
+    const skillDir = path.join(workspace, "skills", skillName);
+    const skillFile = path.join(skillDir, "SKILL.md");
+    if (!existsSync(skillDir) || !existsSync(skillFile)) return false;
+    return !lstatSync(skillDir).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+function buildKanbanReadiness({
+  sandboxed,
+  workspace,
+  sandboxEnv,
+}: {
+  sandboxed: boolean;
+  workspace: string;
+  sandboxEnv: Record<string, unknown> | undefined | null;
+}) {
+  if (!sandboxed) {
+    return {
+      applicable: false,
+      ready: false,
+      missing: [] as string[],
+    };
+  }
+
+  const missing: string[] = [];
+
+  if (!hasRealCopiedSkill(workspace, "kanban")) missing.push("skill:kanban");
+  if (!hasRealCopiedSkill(workspace, "superclaw")) missing.push("skill:superclaw");
+
+  const baseUrl = typeof sandboxEnv?.KANBAN_BASE_URL === "string" ? sandboxEnv.KANBAN_BASE_URL.trim() : "";
+  const token = typeof sandboxEnv?.KANBAN_AGENT_TOKEN === "string" ? sandboxEnv.KANBAN_AGENT_TOKEN.trim() : "";
+
+  if (!baseUrl) missing.push("env:KANBAN_BASE_URL");
+  if (!token) missing.push("env:KANBAN_AGENT_TOKEN");
+
+  return {
+    applicable: true,
+    ready: missing.length === 0,
+    missing,
+  };
 }
 
 async function buildAgentResponse(): Promise<AgentsListResponse> {
@@ -173,6 +242,12 @@ async function buildAgentResponse(): Promise<AgentsListResponse> {
     const agentModel = modelObj.primary ?? defaultModel.primary ?? agent.modelFull;
     const agentFallbacks = modelObj.fallbacks ?? defaultModel.fallbacks ?? [];
     const isDefault = agent.id === (defaultId || defaults.id || null);
+    const sandboxed = !!agentConfig.sandbox?.mode && agentConfig.sandbox.mode !== "off";
+    const workspace = agentConfig.workspace ?? agent.workspace ?? defaults.workspace ?? "—";
+    const sandboxEnv = {
+      ...(defaults?.sandbox?.docker?.env || {}),
+      ...(agentConfig.sandbox?.docker?.env || {}),
+    };
 
     return {
       id: agent.id,
@@ -184,18 +259,17 @@ async function buildAgentResponse(): Promise<AgentsListResponse> {
       modelFull: agentModel,
       fallbacks: agentFallbacks,
       hasOwnModel: !!agentConfig.model,
-      workspace: agentConfig.workspace ?? agent.workspace ?? defaults.workspace ?? "—",
+      workspace,
       isDefault,
-      sandboxed: !!agentConfig.sandbox?.mode && agentConfig.sandbox.mode !== "off",
+      sandboxed,
       workspaceAccess: agentConfig.sandbox?.workspaceAccess ?? null,
       channels: [],
       skills: [],
       models: models.length > 0 ? models : availableModels,
       heartbeat: {
-        every: agentConfig.heartbeat?.every ?? defaults.heartbeat?.every ?? null,
-        model: agentConfig.heartbeat?.model ?? defaults.heartbeat?.model ?? null,
         active: hasHeartbeatContent,
       },
+      kanbanReadiness: buildKanbanReadiness({ sandboxed, workspace, sandboxEnv }),
       files: listAgentWorkspaceFiles(agent.id),
       crons: [],
     };
@@ -249,7 +323,7 @@ export async function handleCreateAgent(req: NextRequest) {
       const avatarDir = path.join(workspace, "avatars");
       mkdirSync(avatarDir, { recursive: true });
 
-      const avatarPath = path.join(avatarDir, `${id}-avatar.png`);
+      const avatarPath = path.join(avatarDir, `${id}-avatar.webp`);
       const basePrompt =
         "Digital illustration close-up portrait in a vibrant cel-shaded style with vivid saturated colors, sharp detailed background, clean lines. Borderless seamless artwork, no panel borders, no frames. Square 1:1 composition, character from chest up filling the frame. Keep the subject clearly separated from the background with strong contrast in value and hue so clothes, hair, and silhouette never blend into the scene. Prefer grounded, natural color palettes and avoid purple-heavy, magenta-heavy, or neon AI-art color schemes unless explicitly requested. Character:";
       const fullPrompt = `${basePrompt} ${description}`;
@@ -264,7 +338,7 @@ export async function handleCreateAgent(req: NextRequest) {
         outputPath: avatarPath,
       });
 
-      avatarRelativePath = `avatars/${id}-avatar.png`;
+      avatarRelativePath = `avatars/${id}-avatar.webp`;
     } catch {
       // Non-fatal; agent creation succeeded.
     }

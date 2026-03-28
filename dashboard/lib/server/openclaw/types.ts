@@ -22,9 +22,12 @@ export type DashboardAgent = {
   skills: unknown[];
   models: DashboardModel[];
   heartbeat: {
-    every: string | null;
-    model: string | null;
     active: boolean;
+  };
+  kanbanReadiness: {
+    applicable: boolean;
+    ready: boolean;
+    missing: string[];
   };
   crons: unknown[];
   files: unknown[];

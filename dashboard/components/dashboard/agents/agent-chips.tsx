@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Clock, Cpu, MessageSquare, Puzzle } from "lucide-react";
+import { Clock, Cpu, FileText, MessageSquare, Puzzle } from "lucide-react";
 import { toast } from "sonner";
 
 import { authHeaders } from "@/components/dashboard/auth";
@@ -20,9 +20,11 @@ interface AgentChipsProps {
   uniqueSkills: Skill[];
   sections: ChipSection[];
   onRefreshData: () => Promise<void>;
+  onOpenFile: (name: string) => Promise<void>;
+  loadingFile: string | null;
 }
 
-export function AgentChips({ agent, uniqueSkills, sections, onRefreshData }: AgentChipsProps) {
+export function AgentChips({ agent, uniqueSkills, sections, onRefreshData, onOpenFile, loadingFile }: AgentChipsProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   function toggle(id: string) {
@@ -168,6 +170,28 @@ export function AgentChips({ agent, uniqueSkills, sections, onRefreshData }: Age
               ))}
             </div>
           )}
+
+          {expanded === "files" && (
+            <div className="flex flex-wrap gap-1.5">
+              {agent.files.map((file) => (
+                <button
+                  key={file.name}
+                  onClick={() => !file.missing && onOpenFile(file.name)}
+                  disabled={file.missing || loadingFile === file.name}
+                  className={`text-[11px] px-2 py-1 rounded-md border transition-colors ${
+                    file.missing
+                      ? "border-red-200 dark:border-red-800/40 text-red-400 dark:text-red-500 cursor-default line-through"
+                      : loadingFile === file.name
+                        ? "border-zinc-300 dark:border-zinc-600 text-zinc-500 animate-pulse"
+                        : "bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700/40 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
+                  }`}
+                  title={file.path}
+                >
+                  {file.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -179,5 +203,6 @@ export function buildAgentSections(agent: Agent, uniqueSkillsCount: number): Chi
     { id: "channels", label: "Channels", count: agent.channels.length, icon: MessageSquare },
     { id: "skills", label: "Skills", count: uniqueSkillsCount, icon: Puzzle },
     { id: "crons", label: "Crons", count: agent.crons.length, icon: Clock },
+    { id: "files", label: "Files", count: agent.files.length, icon: FileText },
   ];
 }

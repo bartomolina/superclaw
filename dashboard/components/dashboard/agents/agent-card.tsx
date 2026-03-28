@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { Cpu, FileText, Heart, Shield } from "lucide-react";
+import { Cpu, Shield } from "lucide-react";
 import { toast } from "sonner";
 
 import { authFetch, authHeaders } from "@/components/dashboard/auth";
@@ -18,6 +18,16 @@ interface AgentCardProps {
   onModelChange: (agentId: string, model: string) => void;
   onConfigChange: () => Promise<void>;
   onRefreshData: () => Promise<void>;
+}
+
+function formatKanbanMissing(items: string[]) {
+  return items.map((item) => {
+    if (item === "skill:kanban") return "Copy kanban skill into workspace skills";
+    if (item === "skill:superclaw") return "Copy superclaw skill into workspace skills";
+    if (item === "env:KANBAN_BASE_URL") return "Set KANBAN_BASE_URL in sandbox env";
+    if (item === "env:KANBAN_AGENT_TOKEN") return "Set KANBAN_AGENT_TOKEN in sandbox env";
+    return item;
+  });
 }
 
 export function AgentCard({
@@ -76,6 +86,7 @@ export function AgentCard({
   }
 
   const sections = buildAgentSections(agent, uniqueSkills.length);
+  const kanbanMissing = formatKanbanMissing(agent.kanbanReadiness.missing);
 
   return (
     <>
@@ -113,13 +124,13 @@ export function AgentCard({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
               <Cpu size={13} className="text-zinc-400 shrink-0" />
               <select
                 value={agent.hasOwnModel ? agent.modelFull : "__default__"}
                 onChange={(e) => handleModelSwitch(e.target.value)}
                 disabled={switching}
-                className="flex-1 min-w-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 bg-transparent focus:outline-none cursor-pointer disabled:opacity-50"
+                className="w-auto max-w-[14rem] text-sm font-medium text-zinc-700 dark:text-zinc-300 bg-transparent focus:outline-none cursor-pointer disabled:opacity-50"
               >
                 <option value="__default__">Inherit default ({defaultPrimary.split("/").pop()})</option>
                 {agent.models.map((m) => (
@@ -128,30 +139,20 @@ export function AgentCard({
                   </option>
                 ))}
               </select>
-              {!agent.hasOwnModel && (
-                <span className="text-[10px] uppercase tracking-wider bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded whitespace-nowrap">
-                  inherited
+              {agent.fallbacks.length > 0 && (
+                <span
+                  title={agent.fallbacks.map((fallback) => fallback.split("/").slice(-1)[0]).join("\n")}
+                  className="text-[10px] uppercase tracking-wider bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 px-1.5 py-0.5 rounded whitespace-nowrap cursor-default"
+                >
+                  +{agent.fallbacks.length} fallback{agent.fallbacks.length === 1 ? "" : "s"}
                 </span>
               )}
             </div>
 
-            {agent.fallbacks.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500 pl-5">
-                <span>Fallbacks:</span>
-                {agent.fallbacks.map((fallback, i) => (
-                  <span
-                    key={i}
-                    className="font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 px-1.5 py-0.5 rounded"
-                  >
-                    {fallback.split("/").slice(-1)[0]}
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
               <Shield size={11} className="text-zinc-400 shrink-0" />
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -173,81 +174,35 @@ export function AgentCard({
                 <option value="ro">read-only</option>
                 <option value="rw">read-write</option>
               </select>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs">
-              <Heart size={11} className="text-zinc-400 shrink-0" />
-              {agent.heartbeat.active ? (
-                <>
-                  <span className="text-green-600 dark:text-green-400 font-medium">Active</span>
-                  {agent.heartbeat.every && <span className="text-zinc-400 dark:text-zinc-500 font-mono">{agent.heartbeat.every}</span>}
-                  <span className="text-zinc-400 dark:text-zinc-500">·</span>
-                  <select
-                    value={agent.heartbeat.model || "__default__"}
-                    onChange={async (e) => {
-                      const model = e.target.value === "__default__" ? null : e.target.value;
-                      try {
-                        const res = await fetch(`/api/agents/${agent.id}/heartbeat-model`, {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json", ...authHeaders() },
-                          body: JSON.stringify({ model }),
-                        });
-                        const data = await res.json();
-                        if (!data.ok) throw new Error(data.error || "Failed to update heartbeat model");
-                        await onConfigChange();
-                        toast.success(model ? `Updated ${agent.id} heartbeat model` : `Reset ${agent.id} heartbeat model`);
-                      } catch (error) {
-                        toast.error(error instanceof Error ? error.message : "Failed to update heartbeat model");
-                      }
-                    }}
-                    className="text-xs bg-transparent text-zinc-600 dark:text-zinc-400 focus:outline-none cursor-pointer"
-                  >
-                    <option value="__default__">default model</option>
-                    {agent.models.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </>
-              ) : (
-                <span className="text-zinc-400 dark:text-zinc-500">Disabled</span>
-              )}
-            </div>
-
-            <div className="rounded-lg border border-zinc-200 dark:border-zinc-800/60 bg-zinc-50/70 dark:bg-zinc-950/40 px-3 py-2 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">
-              Kanban worker env is global now: <span className="font-mono">KANBAN_BASE_URL</span> and <span className="font-mono">KANBAN_AGENT_TOKEN</span> come from the OpenClaw runtime.
-              {agent.sandboxed && (
-                <span>
-                  {" "}
-                  Mirror them into <span className="font-mono">agents.defaults.sandbox.docker.env</span> if this agent needs them inside the sandbox.
+              {agent.kanbanReadiness.applicable && (
+                <span
+                  title={
+                    agent.kanbanReadiness.ready
+                      ? "Sandbox workspace has kanban + superclaw skills copied and required Kanban env vars configured."
+                      : kanbanMissing.join("\n")
+                  }
+                  className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${
+                    agent.kanbanReadiness.ready
+                      ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300"
+                      : "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                  }`}
+                >
+                  {agent.kanbanReadiness.ready ? "Kanban ready" : "Kanban setup needed"}
                 </span>
               )}
             </div>
 
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <FileText size={11} className="text-zinc-400 shrink-0" />
-              {agent.files.map((file) => (
-                <button
-                  key={file.name}
-                  onClick={() => !file.missing && openFile(file.name)}
-                  disabled={file.missing || loadingFile === file.name}
-                  className={`text-[11px] px-1.5 py-0.5 rounded border transition-colors ${
-                    file.missing
-                      ? "border-red-200 dark:border-red-800/40 text-red-400 dark:text-red-500 cursor-default line-through"
-                      : loadingFile === file.name
-                        ? "border-zinc-300 dark:border-zinc-600 text-zinc-500 animate-pulse"
-                        : "border-zinc-200 dark:border-zinc-700/40 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300 cursor-pointer"
-                  }`}
-                >
-                  {file.name.replace(".md", "")}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
 
-        <AgentChips agent={agent} uniqueSkills={uniqueSkills} sections={sections} onRefreshData={onRefreshData} />
+        <AgentChips
+          agent={agent}
+          uniqueSkills={uniqueSkills}
+          sections={sections}
+          onRefreshData={onRefreshData}
+          onOpenFile={openFile}
+          loadingFile={loadingFile}
+        />
       </div>
 
       {viewingFile &&
