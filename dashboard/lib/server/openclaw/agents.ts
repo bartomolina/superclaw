@@ -254,7 +254,7 @@ export async function handleCreateAgent(req: NextRequest) {
 
       const avatarPath = path.join(avatarDir, `${id}-avatar.png`);
       const basePrompt =
-        "Digital illustration close-up portrait in a vibrant cel-shaded style with vivid saturated colors, sharp detailed background, clean lines. Borderless seamless artwork, no panel borders, no frames. Square 1:1 composition, character from chest up filling the frame. Character:";
+        "Digital illustration close-up portrait in a vibrant cel-shaded style with vivid saturated colors, sharp detailed background, clean lines. Borderless seamless artwork, no panel borders, no frames. Square 1:1 composition, character from chest up filling the frame. Keep the subject clearly separated from the background with strong contrast in value and hue so clothes, hair, and silhouette never blend into the scene. Prefer grounded, natural color palettes and avoid purple-heavy, magenta-heavy, or neon AI-art color schemes unless explicitly requested. Character:";
       const fullPrompt = `${basePrompt} ${description}`;
       const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
       if (!apiKey) {
