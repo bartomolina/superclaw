@@ -32,7 +32,7 @@ import { ExtensionAccessSheet } from "@/components/extension-access-sheet";
 import { InboxDebugSheet } from "@/components/inbox-debug-sheet";
 import { UserManagementSheet } from "@/components/user-management-sheet";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -580,6 +580,98 @@ function columnsSignature(columns: ColumnModel[]) {
   return columns
     .map((column) => `${column._id}:${column.cards.map((card) => card._id).join(",")}`)
     .join("|");
+}
+
+function renderCommentText(text: string, keyPrefix: string) {
+  const inlineCodePattern = /`([^`]+)`/g;
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = inlineCodePattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(
+        <Fragment key={`${keyPrefix}-text-${lastIndex}`}>
+          {text.slice(lastIndex, match.index)}
+        </Fragment>,
+      );
+    }
+
+    parts.push(
+      <code
+        key={`${keyPrefix}-code-${match.index}`}
+        className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[12px] text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100"
+      >
+        {match[1]}
+      </code>,
+    );
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(
+      <Fragment key={`${keyPrefix}-text-${lastIndex}`}>
+        {text.slice(lastIndex)}
+      </Fragment>,
+    );
+  }
+
+  return parts.length > 0 ? parts : text;
+}
+
+function renderCommentBody(body: string) {
+  const blockCodePattern = /```([^\n`]*)\n([\s\S]*?)```/g;
+  const sections: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = blockCodePattern.exec(body)) !== null) {
+    if (match.index > lastIndex) {
+      const text = body.slice(lastIndex, match.index);
+      if (text) {
+        sections.push(
+          <p
+            key={`comment-text-${lastIndex}`}
+            className="whitespace-pre-wrap text-[13px] leading-5 text-zinc-700 dark:text-zinc-200"
+          >
+            {renderCommentText(text, `comment-text-${lastIndex}`)}
+          </p>,
+        );
+      }
+    }
+
+    const language = match[1].trim();
+    const code = match[2].replace(/\n$/, "");
+
+    sections.push(
+      <div
+        key={`comment-code-${match.index}`}
+        className="overflow-x-auto rounded-xl border border-zinc-200 bg-zinc-950 px-3 py-2 dark:border-zinc-800"
+      >
+        {language ? <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-400">{language}</div> : null}
+        <pre className="whitespace-pre-wrap font-mono text-[12px] leading-5 text-zinc-100">
+          <code>{code}</code>
+        </pre>
+      </div>,
+    );
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < body.length) {
+    const text = body.slice(lastIndex);
+    sections.push(
+      <p
+        key={`comment-text-${lastIndex}`}
+        className="whitespace-pre-wrap text-[13px] leading-5 text-zinc-700 dark:text-zinc-200"
+      >
+        {renderCommentText(text, `comment-text-${lastIndex}`)}
+      </p>,
+    );
+  }
+
+  return sections.length > 0 ? sections : renderCommentText(body, "comment-inline");
 }
 
 function useTheme() {
@@ -2884,9 +2976,7 @@ function CardModal({
                                 <span className="font-medium text-zinc-700 dark:text-zinc-200">{author.name}</span>
                                 <span>{formatCommentTime(comment.createdAt)}</span>
                               </div>
-                              <p className="whitespace-pre-wrap text-[13px] leading-5 text-zinc-700 dark:text-zinc-200">
-                                {comment.body}
-                              </p>
+                              <div className="space-y-2">{renderCommentBody(comment.body)}</div>
                             </div>
                           </div>
                         );
