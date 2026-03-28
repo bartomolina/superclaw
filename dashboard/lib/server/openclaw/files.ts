@@ -8,18 +8,28 @@ import { optionalAgentId, requiredString } from "@/lib/server/validate";
 import { readLocalConfig } from "@/lib/server/openclaw/config";
 import { json, parseBody } from "@/lib/server/openclaw/http";
 
+function parseInlineIdentityField(content: string, field: "Name" | "Emoji" | "Avatar") {
+  const line = content
+    .split(/\r?\n/)
+    .find((entry) => new RegExp(`\\*\\*${field}:\\*\\*`, "i").test(entry));
+  if (!line) return null;
+
+  const match = line.match(new RegExp(`\\*\\*${field}:\\*\\*([^\\n]*)`, "i"));
+  const value = match?.[1]?.trim() || "";
+  return value.length > 0 ? value : null;
+}
+
 export function parseAvatarFromIdentity(content: string | null | undefined) {
   if (!content) return null;
-  const match = content.match(/\*\*Avatar:\*\*\s*(.+)/i);
-  return match?.[1]?.trim() || null;
+  return parseInlineIdentityField(content, "Avatar");
 }
 
 export function parseIdentityFromMarkdown(content: string | null | undefined) {
   if (!content) return {};
 
-  const name = content.match(/\*\*Name:\*\*\s*(.+)/i)?.[1]?.trim() || null;
-  const emoji = content.match(/\*\*Emoji:\*\*\s*(.+)/i)?.[1]?.trim() || null;
-  const avatar = parseAvatarFromIdentity(content);
+  const name = parseInlineIdentityField(content, "Name");
+  const emoji = parseInlineIdentityField(content, "Emoji");
+  const avatar = parseInlineIdentityField(content, "Avatar");
 
   return { name, emoji, avatar };
 }
