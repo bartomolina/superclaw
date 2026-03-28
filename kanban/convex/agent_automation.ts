@@ -25,6 +25,7 @@ type BaseTask = {
   columnName: string;
   title: string;
   description: string | undefined;
+  extensionContext: string | undefined;
   assigneeId: string | undefined;
   reviewerId: string | undefined;
   acp: string | undefined;
@@ -231,6 +232,7 @@ async function buildBaseTasks(
         columnName: column.name,
         title: card.title,
         description: card.description,
+        extensionContext: card.extensionContext,
         assigneeId: card.agentId,
         reviewerId: card.reviewerId,
         acp: card.acp,

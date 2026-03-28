@@ -119,8 +119,16 @@ There are now two supported runtime-config patterns for Kanban workers:
      - `KANBAN_BASE_URL`
      - `KANBAN_AGENT_TOKEN`
    - the kanban skill should use those directly instead of trying to read the local repo / Convex config
+   - also copy the kanban skill into the sandboxed agent workspace at `<agent-workspace>/skills/kanban/`
 
 This keeps the skill portable: local agents can autodiscover, while sandboxed agents can work with explicitly injected runtime config.
+
+Example sandboxed-agent setup:
+
+```bash
+mkdir -p ~/.openclaw/workspace-<agent>/skills
+rsync -a ~/.openclaw/skills/kanban/ ~/.openclaw/workspace-<agent>/skills/kanban/
+```
 
 Convex HTTP endpoints:
 
@@ -130,7 +138,7 @@ Convex HTTP endpoints:
 - `POST <NEXT_PUBLIC_CONVEX_SITE_URL>/agent/kanban/transition`
 - `POST <NEXT_PUBLIC_CONVEX_SITE_URL>/agent/kanban/session/finish`
 
-`/agent/kanban/inbox` returns grouped actionable items for the current agent and now includes each card's full discussion comment history in `comments` so workers can act with full context.
+`/agent/kanban/tasks` and `/agent/kanban/inbox` include each card's `extensionContext` when present, and `/agent/kanban/inbox` also includes each card's full discussion comment history in `comments` so workers can act with full context.
 
 Required headers:
 
