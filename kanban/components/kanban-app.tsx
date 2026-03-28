@@ -69,6 +69,7 @@ type CardModel = {
   columnId: Id<"columns">;
   title: string;
   description?: string;
+  extensionContext?: string;
   source?: string;
   agentId?: string;
   reviewerId?: string;
@@ -93,6 +94,7 @@ type CardMetaTag = {
   title?: string;
   icon?: ReactNode;
   iconOnly?: boolean;
+  plainIcon?: boolean;
 };
 
 type CommentModel = {
@@ -2291,10 +2293,10 @@ function KanbanCard({
           key: "source-extension",
           label: "Extension",
           title: "Created from extension",
-          icon: <Chrome className="h-3.5 w-3.5" aria-hidden="true" />,
+          icon: <Chrome className="h-4 w-4" aria-hidden="true" />,
           iconOnly: true,
-          className:
-            "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/70 dark:bg-indigo-950/40 dark:text-indigo-200",
+          plainIcon: true,
+          className: "text-indigo-600 dark:text-indigo-300",
         }
       : null,
     card.acp
@@ -2403,7 +2405,11 @@ function KanbanCard({
                   <span
                     key={tag.key}
                     title={tag.title}
-                    className={`inline-flex h-6 items-center rounded-full border text-[10px] font-medium ${tag.iconOnly ? "w-6 justify-center px-0" : "px-2"} ${tag.className}`}
+                    className={
+                      tag.plainIcon
+                        ? `inline-flex h-6 w-6 items-center justify-center ${tag.className}`
+                        : `inline-flex h-6 items-center rounded-full border text-[10px] font-medium ${tag.iconOnly ? "w-6 justify-center px-0" : "px-2"} ${tag.className}`
+                    }
                   >
                     {tag.icon ? (
                       <>
@@ -2772,12 +2778,9 @@ function CardModal({
                 <div className="flex items-center gap-2">
                   <div className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Edit card</div>
                   {card.source === "extension" ? (
-                    <span
-                      className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/70 dark:bg-indigo-950/40 dark:text-indigo-200"
-                      title="Created from extension"
-                    >
+                    <span className="inline-flex h-6 w-6 items-center justify-center text-indigo-600 dark:text-indigo-300" title="Created from extension">
                       <span className="sr-only">Extension</span>
-                      <Chrome className="h-3.5 w-3.5" aria-hidden="true" />
+                      <Chrome className="h-4 w-4" aria-hidden="true" />
                     </span>
                   ) : null}
                 </div>
@@ -2845,6 +2848,17 @@ function CardModal({
                   placeholder="Add a description..."
                 />
               </div>
+
+              {card.extensionContext ? (
+                <div>
+                  <div className="mb-2">
+                    <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400">Extension context</label>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs leading-5 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950/60 dark:text-zinc-300">
+                    <p className="whitespace-pre-wrap">{card.extensionContext}</p>
+                  </div>
+                </div>
+              ) : null}
 
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Discussion</label>

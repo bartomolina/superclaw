@@ -324,7 +324,7 @@ export const createCard = mutation({
       }),
       "New extension capture",
     );
-    const description = buildCardDescription({
+    const extensionContext = buildCardDescription({
       sourceTitle: args.sourceTitle,
       sourceUrl: args.sourceUrl,
       annotations: args.annotations,
@@ -335,7 +335,7 @@ export const createCard = mutation({
       boardId: board._id,
       columnId: targetColumn._id,
       title,
-      ...(description ? { description } : {}),
+      ...(extensionContext ? { extensionContext } : {}),
       ...(agentId ? { agentId } : {}),
       source: "extension",
       isRunning: false,

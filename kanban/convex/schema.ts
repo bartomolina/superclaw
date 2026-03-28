@@ -42,6 +42,7 @@ export default defineSchema({
     columnId: v.id("columns"),
     title: v.string(),
     description: v.optional(v.string()),
+    extensionContext: v.optional(v.string()),
     source: v.optional(v.string()),
     agentId: v.optional(v.string()),
     reviewerId: v.optional(v.string()),

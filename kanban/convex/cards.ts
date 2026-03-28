@@ -140,6 +140,8 @@ export const update = mutation({
       columnId: card.columnId,
       title: normalizeText(args.title, card.title),
       ...(description ? { description } : {}),
+      ...(card.extensionContext ? { extensionContext: card.extensionContext } : {}),
+      ...(card.source ? { source: card.source } : {}),
       ...(agentId ? { agentId } : {}),
       ...(reviewerId ? { reviewerId } : {}),
       ...(priority ? { priority } : {}),
