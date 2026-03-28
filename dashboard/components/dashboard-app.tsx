@@ -7,10 +7,10 @@ import { toast } from "sonner";
 
 import { clearToken, getToken, setToken, authFetch, authHeaders } from "@/components/dashboard/auth";
 import { AgentsPage } from "@/components/dashboard/agents";
-import { ComingSoon } from "@/components/dashboard/common";
 import { DebugPage, PerformancePage, UsagePage } from "@/components/dashboard/debug";
 import { LoginScreen } from "@/components/dashboard/login-screen";
 import { ModelsPage } from "@/components/dashboard/models-page";
+import { OpsPage } from "@/components/dashboard/ops-page";
 import { SkillsPage } from "@/components/dashboard/skills-page";
 import { type Agent, type Model, type Page } from "@/components/dashboard/types";
 import { useTheme } from "@/components/dashboard/use-theme";
@@ -418,7 +418,7 @@ export default function App() {
               {page === "models" && <ModelsPage configuredModels={configuredModels} defaultModel={defaultModel} onRefresh={waitForGateway} />}
               {page === "skills" && <SkillsPage />}
               {page === "debug" && debugRpcEnabled && <DebugPage />}
-              {page === "ops" && <ComingSoon title="Ops" />}
+              {page === "ops" && <OpsPage />}
               {page === "performance" && <PerformancePage />}
               {page === "usage" && <UsagePage />}
             </>

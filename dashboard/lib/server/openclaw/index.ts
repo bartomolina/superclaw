@@ -7,6 +7,7 @@ export { handleDebugWs, handleFeatures, isDebugRpcEnabled } from "@/lib/server/o
 export { handleAgentFileGet, handleAgentFilePut, handleAgentFilesList, handleAvatar, parseAvatarFromIdentity } from "@/lib/server/openclaw/files";
 export { errorResponse, json, parseBody } from "@/lib/server/openclaw/http";
 export { handleModelsAdd, handleModelsCatalogProvider, handleModelsCatalogProviders, handleModelsGet, handleModelsRemove, handleModelsSetPrimary } from "@/lib/server/openclaw/models";
+export { handleKanbanWorkerStatus } from "@/lib/server/openclaw/kanban-runtime";
 export { handleAgentSkills, handleSkills } from "@/lib/server/openclaw/skills";
 export { getInstalledOpenClawVersion, handleGatewayStatus, handlePerformance, handleUsage } from "@/lib/server/openclaw/status";
 export {
