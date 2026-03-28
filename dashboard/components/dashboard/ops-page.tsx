@@ -127,7 +127,7 @@ export function OpsPage() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">Ops</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">Global Kanban worker runtime wiring for host + sandbox sessions.</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">Global Kanban worker runtime wiring for the OpenClaw gateway service, plus optional sandbox overrides.</p>
         </div>
         <button
           onClick={() => void load()}
@@ -164,14 +164,19 @@ export function OpsPage() {
           extra={<div className="text-[11px] text-zinc-400">Computed via <span className="font-mono">kanban/scripts/resolve-worker-env.sh</span></div>}
         />
         <RuntimeCard
-          title="Sandbox defaults"
+          title="Sandbox defaults (optional)"
           icon={<Shield size={16} />}
           data={data.sandboxDefaults}
           extra={
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-zinc-600 dark:text-zinc-400">Sandbox mode</span>
-              <span className="text-zinc-800 dark:text-zinc-200 font-medium">{data.sandboxDefaults.enabled ? data.sandboxDefaults.mode : "off"}</span>
-            </div>
+            <>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-zinc-600 dark:text-zinc-400">Sandbox mode</span>
+                <span className="text-zinc-800 dark:text-zinc-200 font-medium">{data.sandboxDefaults.enabled ? data.sandboxDefaults.mode : "off"}</span>
+              </div>
+              <div className="text-[11px] text-zinc-400">
+                Leave this unset by default. Sandboxed Kanban workers should get env manually per agent when needed.
+              </div>
+            </>
           }
         />
       </div>
@@ -180,8 +185,8 @@ export function OpsPage() {
         <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl p-5 space-y-3">
           <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Consistency checks</h2>
           <CheckRow label="Host matches derived local Kanban values" value={data.checks.hostMatchesDerived} />
-          <CheckRow label="Sandbox defaults match host runtime" value={data.checks.sandboxMatchesHost} />
-          <CheckRow label="Sandbox defaults match derived local Kanban values" value={data.checks.sandboxMatchesDerived} />
+          <CheckRow label="Optional sandbox defaults match host runtime" value={data.checks.sandboxMatchesHost} />
+          <CheckRow label="Optional sandbox defaults match derived local Kanban values" value={data.checks.sandboxMatchesDerived} />
         </div>
 
         <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl p-5 space-y-3">

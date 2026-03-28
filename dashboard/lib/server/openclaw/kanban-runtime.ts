@@ -16,6 +16,25 @@ type RuntimeEnvStatus = {
   hasToken: boolean;
 };
 
+async function readGatewayServiceEnvStatus() {
+  const { stdout } = await execFileAsync("systemctl", ["--user", "show", "openclaw-gateway.service", "-p", "Environment", "--value"], {
+    timeout: 10_000,
+    env: process.env,
+    maxBuffer: 256 * 1024,
+  });
+
+  const line = stdout.trim();
+  const baseUrl = line.match(/(?:^|\s)KANBAN_BASE_URL=([^\s"]+)/)?.[1] || null;
+  const token = line.match(/(?:^|\s)KANBAN_AGENT_TOKEN=([^\s"]+)/)?.[1] || "";
+
+  return {
+    configured: !!baseUrl && token.length > 0,
+    baseUrl,
+    hasToken: token.length > 0,
+    token,
+  };
+}
+
 function readStatusFromEnv(env: Record<string, unknown> | undefined | null): RuntimeEnvStatus {
   const baseUrl = typeof env?.KANBAN_BASE_URL === "string" && env.KANBAN_BASE_URL.trim() ? env.KANBAN_BASE_URL.trim() : null;
   const hasToken = typeof env?.KANBAN_AGENT_TOKEN === "string" ? env.KANBAN_AGENT_TOKEN.trim().length > 0 : false;
@@ -61,13 +80,26 @@ export async function handleKanbanWorkerStatus() {
   const warnings: string[] = [];
   const localConfig = readLocalConfig();
 
-  const hostBaseUrl = process.env.KANBAN_BASE_URL?.trim() || null;
-  const hostToken = process.env.KANBAN_AGENT_TOKEN?.trim() || "";
-  const host: RuntimeEnvStatus = {
-    configured: !!hostBaseUrl && hostToken.length > 0,
-    baseUrl: hostBaseUrl,
-    hasToken: hostToken.length > 0,
+  let host = {
+    configured: false,
+    baseUrl: null as string | null,
+    hasToken: false,
+    token: "",
   };
+
+  try {
+    host = await readGatewayServiceEnvStatus();
+  } catch (error) {
+    warnings.push(`gateway service env: ${error instanceof Error ? error.message : String(error)}`);
+    const hostBaseUrl = process.env.KANBAN_BASE_URL?.trim() || null;
+    const hostToken = process.env.KANBAN_AGENT_TOKEN?.trim() || "";
+    host = {
+      configured: !!hostBaseUrl && hostToken.length > 0,
+      baseUrl: hostBaseUrl,
+      hasToken: hostToken.length > 0,
+      token: hostToken,
+    };
+  }
 
   const sandboxDefaultsEnv = localConfig.agents?.defaults?.sandbox?.docker?.env;
   const sandboxDefaults = readStatusFromEnv(sandboxDefaultsEnv);
@@ -89,32 +121,30 @@ export async function handleKanbanWorkerStatus() {
   }
 
   const checks = {
-    hostMatchesDerived: host.configured && derived.available ? host.baseUrl === derived.baseUrl && hostToken === derived.token : null,
-    sandboxMatchesHost: sandboxEnabled && sandboxDefaults.configured && host.configured ? sandboxDefaults.baseUrl === host.baseUrl && sandboxDefaultsToken === hostToken : null,
-    sandboxMatchesDerived:
-      sandboxEnabled && sandboxDefaults.configured && derived.available
-        ? sandboxDefaults.baseUrl === derived.baseUrl && sandboxDefaultsToken === derived.token
-        : null,
+    hostMatchesDerived: host.configured && derived.available ? host.baseUrl === derived.baseUrl && host.token === derived.token : null,
+    sandboxMatchesHost: sandboxDefaults.configured && host.configured ? sandboxDefaults.baseUrl === host.baseUrl && sandboxDefaultsToken === host.token : null,
+    sandboxMatchesDerived: sandboxDefaults.configured && derived.available ? sandboxDefaults.baseUrl === derived.baseUrl && sandboxDefaultsToken === derived.token : null,
   };
 
-  const ready = host.configured && (!sandboxEnabled || sandboxDefaults.configured);
+  const ready = host.configured;
 
   if (!host.configured) {
-    warnings.push("OpenClaw host runtime is missing KANBAN_BASE_URL and/or KANBAN_AGENT_TOKEN.");
-  }
-  if (sandboxEnabled && !sandboxDefaults.configured) {
-    warnings.push("Sandbox defaults are enabled but agents.defaults.sandbox.docker.env is missing KANBAN_BASE_URL and/or KANBAN_AGENT_TOKEN.");
+    warnings.push("OpenClaw gateway service is missing KANBAN_BASE_URL and/or KANBAN_AGENT_TOKEN.");
   }
   if (checks.hostMatchesDerived === false) {
-    warnings.push("OpenClaw host runtime does not match the values derived from the local Kanban app.");
+    warnings.push("OpenClaw gateway service env does not match the values derived from the local Kanban app.");
   }
-  if (checks.sandboxMatchesHost === false) {
-    warnings.push("Sandbox defaults do not match the OpenClaw host runtime values.");
+  if (sandboxDefaults.configured && checks.sandboxMatchesHost === false) {
+    warnings.push("Configured sandbox defaults do not match the OpenClaw gateway service env.");
   }
 
   return json({
     ready,
-    host,
+    host: {
+      configured: host.configured,
+      baseUrl: host.baseUrl,
+      hasToken: host.hasToken,
+    },
     sandboxDefaults: {
       ...sandboxDefaults,
       enabled: sandboxEnabled,

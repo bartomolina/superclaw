@@ -18,7 +18,7 @@ Sandboxed-agent note:
 - if the agent runtime is sandboxed, the kanban skill must be available inside the agent workspace too
 - expected path: `<agent-workspace>/skills/kanban/`
 - do **not** assume a sandboxed agent can read host skill paths like `~/.openclaw/skills/kanban/` or `/usr/lib/node_modules/openclaw/skills/kanban/`
-- sandboxed agents should inherit the same `KANBAN_BASE_URL` / `KANBAN_AGENT_TOKEN` values via `agents.defaults.sandbox.docker.env`
+- sandboxed agents should receive `KANBAN_BASE_URL` / `KANBAN_AGENT_TOKEN` explicitly per agent when needed; do not assume global sandbox defaults
 
 ### Validation / failure rules
 

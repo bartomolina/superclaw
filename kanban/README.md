@@ -125,14 +125,14 @@ cd ~/.openclaw/workspace/apps/superclaw/kanban
 ./scripts/resolve-worker-env.sh --exports
 ```
 
-Use the resolved values in both places that matter:
+Use the resolved values in the OpenClaw gateway service environment:
 
-1. **OpenClaw host/runtime env**
-   - unsandboxed/local agents read `KANBAN_BASE_URL` and `KANBAN_AGENT_TOKEN` from the OpenClaw process environment
+1. **OpenClaw gateway service env**
+   - unsandboxed/local agents read `KANBAN_BASE_URL` and `KANBAN_AGENT_TOKEN` from the running gateway service environment
 
-2. **Sandbox defaults**
-   - if sandboxing is enabled, mirror the same values into `agents.defaults.sandbox.docker.env`
-   - do not keep per-agent Kanban overrides
+2. **Sandboxed agents (manual)**
+   - do **not** mirror these values globally by default
+   - when a sandboxed agent needs Kanban access, set `KANBAN_BASE_URL` and `KANBAN_AGENT_TOKEN` explicitly for that agent
 
 Sandboxed-agent setup still needs a local copy of the kanban skill in the agent workspace:
 

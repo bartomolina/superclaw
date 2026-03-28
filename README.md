@@ -59,7 +59,11 @@ cd ~/.openclaw/workspace/apps/superclaw/kanban
 ./scripts/resolve-worker-env.sh --exports
 ```
 
-Persist those values in the OpenClaw runtime. If sandboxing is enabled, mirror the same values into `agents.defaults.sandbox.docker.env` instead of configuring per-agent Kanban overrides.
+Persist those values in the OpenClaw gateway service runtime.
+
+Sandboxed Kanban workers are manual on purpose:
+- do **not** auto-mirror these values into `agents.defaults.sandbox.docker.env`
+- when a sandboxed agent needs Kanban access, set `KANBAN_BASE_URL` / `KANBAN_AGENT_TOKEN` explicitly for that agent
 
 ## Docs
 

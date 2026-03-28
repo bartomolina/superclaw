@@ -164,9 +164,9 @@ Persist these two values for the OpenClaw runtime:
 - `KANBAN_AGENT_TOKEN`
 
 Rules:
-- unsandboxed/local agents should read them from the OpenClaw host process environment
-- sandboxed agents should inherit the same values from `agents.defaults.sandbox.docker.env`
-- do not keep per-agent Kanban overrides
+- unsandboxed/local agents should read them from the OpenClaw gateway service environment
+- do **not** auto-mirror them into `agents.defaults.sandbox.docker.env`
+- sandboxed Kanban access should be configured manually per agent when needed
 
 If an agent will run Kanban worker passes inside a sandboxed agent workspace, also copy the kanban skill into that agent workspace so the sandbox can read it locally:
 

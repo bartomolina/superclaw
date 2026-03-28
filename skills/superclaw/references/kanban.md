@@ -60,9 +60,9 @@ cd ~/.openclaw/workspace/apps/superclaw/kanban
 ```
 
 Runtime rules:
-- unsandboxed/local agents should read `KANBAN_BASE_URL` and `KANBAN_AGENT_TOKEN` from the OpenClaw host process environment
-- sandboxed agents should inherit the same values from `agents.defaults.sandbox.docker.env`
-- do not keep per-agent Kanban overrides
+- unsandboxed/local agents should read `KANBAN_BASE_URL` and `KANBAN_AGENT_TOKEN` from the OpenClaw gateway service environment
+- do **not** auto-mirror these values into `agents.defaults.sandbox.docker.env`
+- sandboxed Kanban access should be configured manually per agent when needed
 - do not invent fallback hosts, ports, or auth schemes
 
 Additional requirement for sandboxed agents:
