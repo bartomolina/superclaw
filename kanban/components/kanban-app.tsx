@@ -2183,7 +2183,7 @@ function KanbanColumn({
               onClick={() => setShowComposer(true)}
               className="inline-flex h-7 items-center rounded-md px-2 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-200"
             >
-              + Add card
+              + New card
             </button>
           ) : (
             <form onSubmit={handleCreateCard} className="space-y-1.5">
