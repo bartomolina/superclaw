@@ -31,7 +31,7 @@ import { ActivitySheet } from "@/components/activity-sheet";
 import { ExtensionAccessSheet } from "@/components/extension-access-sheet";
 import { InboxDebugSheet } from "@/components/inbox-debug-sheet";
 import { UserManagementSheet } from "@/components/user-management-sheet";
-import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/convex/_generated/api";
@@ -84,6 +84,15 @@ type CardModel = {
   lastSessionUpdatedAt?: number;
   lastRunStatus?: "running" | "done" | "failed" | "aborted";
   order: number;
+};
+
+type CardMetaTag = {
+  key: string;
+  label: string;
+  className: string;
+  title?: string;
+  icon?: ReactNode;
+  iconOnly?: boolean;
 };
 
 type CommentModel = {
@@ -2172,7 +2181,7 @@ function KanbanColumn({
               onClick={() => setShowComposer(true)}
               className="inline-flex h-7 items-center rounded-md px-2 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-200"
             >
-              + New card
+              + Add card
             </button>
           ) : (
             <form onSubmit={handleCreateCard} className="space-y-1.5">
@@ -2238,7 +2247,7 @@ function KanbanCard({
   const reviewerAvatarUrl = resolveAgentAvatarUrl(card.reviewerId);
   const hasAssignee = Boolean(card.agentId);
   const hasReviewer = Boolean(card.reviewerId);
-  const cardMetaTags = [
+  const cardMetaTags = ([
     card.priority
       ? {
           key: `priority-${card.priority}`,
@@ -2282,6 +2291,8 @@ function KanbanCard({
           key: "source-extension",
           label: "Extension",
           title: "Created from extension",
+          icon: <Chrome className="h-3.5 w-3.5" aria-hidden="true" />,
+          iconOnly: true,
           className:
             "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/70 dark:bg-indigo-950/40 dark:text-indigo-200",
         }
@@ -2294,7 +2305,7 @@ function KanbanCard({
             "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/70 dark:bg-cyan-950/40 dark:text-cyan-200",
         }
       : null,
-  ].filter((tag): tag is { key: string; label: string; className: string; title?: string } => Boolean(tag));
+  ] as Array<CardMetaTag | null>).filter((tag): tag is CardMetaTag => Boolean(tag));
 
   useEffect(() => {
     if (!menuPosition) return;
@@ -2392,9 +2403,16 @@ function KanbanCard({
                   <span
                     key={tag.key}
                     title={tag.title}
-                    className={`inline-flex h-6 items-center rounded-full border px-2 text-[10px] font-medium ${tag.className}`}
+                    className={`inline-flex h-6 items-center rounded-full border text-[10px] font-medium ${tag.iconOnly ? "w-6 justify-center px-0" : "px-2"} ${tag.className}`}
                   >
-                    {tag.label}
+                    {tag.icon ? (
+                      <>
+                        <span className="sr-only">{tag.label}</span>
+                        {tag.icon}
+                      </>
+                    ) : (
+                      tag.label
+                    )}
                   </span>
                 ))}
               </div>
@@ -2754,8 +2772,12 @@ function CardModal({
                 <div className="flex items-center gap-2">
                   <div className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Edit card</div>
                   {card.source === "extension" ? (
-                    <span className="inline-flex h-6 items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 text-[10px] font-medium text-indigo-700 dark:border-indigo-900/70 dark:bg-indigo-950/40 dark:text-indigo-200">
-                      Extension
+                    <span
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/70 dark:bg-indigo-950/40 dark:text-indigo-200"
+                      title="Created from extension"
+                    >
+                      <span className="sr-only">Extension</span>
+                      <Chrome className="h-3.5 w-3.5" aria-hidden="true" />
                     </span>
                   ) : null}
                 </div>
