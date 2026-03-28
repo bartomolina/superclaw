@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { mkdirSync, rmSync, writeFileSync } from "fs";
-import { homedir } from "os";
 import path from "path";
 
+import { GoogleGenAI } from "@google/genai";
 import { NextRequest } from "next/server";
 
-import { runCommand } from "@/lib/server/command";
 import { ApiError } from "@/lib/server/errors";
 import { isSafeWorkspacePath } from "@/lib/server/path-safety";
 import { optionalAgentId, optionalString, requiredAgentId, requiredString } from "@/lib/server/validate";
@@ -50,6 +49,34 @@ function normalizeAgentsList(parsed: any): { agents: any[]; defaultId: string | 
 
 function addWarning(warnings: string[], label: string, error: unknown) {
   warnings.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+}
+
+async function generateAvatarImage({
+  apiKey,
+  prompt,
+  outputPath,
+}: {
+  apiKey: string;
+  prompt: string;
+  outputPath: string;
+}) {
+  const ai = new GoogleGenAI({ apiKey });
+  const interaction = await ai.interactions.create({
+    model: process.env.GEMINI_IMAGE_MODEL || "gemini-3-pro-image-preview",
+    input: prompt,
+    response_modalities: ["image"],
+  });
+
+  const imageOutput = interaction.outputs?.find(
+    (output): output is { type: "image"; data?: string } => output.type === "image",
+  );
+  const image = imageOutput?.data;
+
+  if (!image) {
+    throw new Error("Gemini returned no image data");
+  }
+
+  writeFileSync(outputPath, Buffer.from(image, "base64"));
 }
 
 function getSandboxKanbanConfig(agentConfig: any): SandboxKanbanConfig {
@@ -244,6 +271,8 @@ export async function handleCreateAgent(req: NextRequest) {
     await runOpenClaw(args, { timeoutMs: 10_000 });
   }
 
+  let avatarRelativePath: string | null = null;
+
   if (description) {
     try {
       const avatarDir = path.join(workspace, "avatars");
@@ -253,37 +282,32 @@ export async function handleCreateAgent(req: NextRequest) {
       const basePrompt =
         "Digital illustration close-up portrait in a vibrant cel-shaded style with vivid saturated colors, sharp detailed background, clean lines. Borderless seamless artwork, no panel borders, no frames. Square 1:1 composition, character from chest up filling the frame. Character:";
       const fullPrompt = `${basePrompt} ${description}`;
-      const apiKey = process.env.GEMINI_API_KEY || "";
-      const uvPath = process.env.UV_PATH || `${homedir()}/.local/bin`;
+      const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+      if (!apiKey) {
+        throw new Error("Missing GEMINI_API_KEY");
+      }
 
-      await runCommand(
-        "uv",
-        [
-          "run",
-          "/usr/lib/node_modules/openclaw/skills/nano-banana-pro/scripts/generate_image.py",
-          "--prompt",
-          fullPrompt,
-          "--filename",
-          avatarPath,
-          "--resolution",
-          "1K",
-        ],
-        {
-          timeoutMs: 60_000,
-          env: {
-            ...process.env,
-            GEMINI_API_KEY: apiKey,
-            PATH: `${uvPath}:${process.env.PATH || ""}`,
-          },
-        },
-      );
+      await generateAvatarImage({
+        apiKey,
+        prompt: fullPrompt,
+        outputPath: avatarPath,
+      });
 
-      const identityContent = `# IDENTITY.md - Who Am I?\n\n- **Name:** ${name || id}\n- **Emoji:** ${emoji || "🤖"}\n- **Avatar:** avatars/${id}-avatar.png\n`;
-      writeFileSync(path.join(workspace, "IDENTITY.md"), identityContent, "utf8");
+      avatarRelativePath = `avatars/${id}-avatar.png`;
     } catch {
       // Non-fatal; agent creation succeeded.
     }
   }
+
+  const identityContent = [
+    "# IDENTITY.md - Who Am I?",
+    "",
+    `- **Name:** ${name || id}`,
+    `- **Emoji:** ${emoji || "🤖"}`,
+    ...(avatarRelativePath ? [`- **Avatar:** ${avatarRelativePath}`] : []),
+    "",
+  ].join("\n");
+  writeFileSync(path.join(workspace, "IDENTITY.md"), identityContent, "utf8");
 
   if (telegramToken) {
     await runOpenClaw(["channels", "add", "--channel", "telegram", "--account", id, "--token", telegramToken], {
