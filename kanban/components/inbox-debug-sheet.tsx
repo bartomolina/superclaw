@@ -173,7 +173,7 @@ export function InboxDebugSheet({
         </div>
 
         {showRaw ? (
-          <pre className="mb-4 overflow-x-auto rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs leading-5 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
+          <pre className="mb-4 whitespace-pre-wrap break-all rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs leading-5 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
             {prettyJson}
           </pre>
         ) : null}
