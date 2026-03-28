@@ -4,32 +4,25 @@
 
 Use the current SuperClaw Kanban app only.
 
-Determine the current agent id from the running agent context (`main`, `life`, `gepeto`, `stallman`, etc.). Then resolve runtime config using exactly one of these modes:
-
-### Mode A — explicit sandbox/runtime config (preferred for isolated agents)
-
-If both of these environment variables are present and non-empty, use them directly:
+Determine the current agent id from the running agent context (`main`, `life`, `gepeto`, `stallman`, etc.). Kanban workers now use exactly one runtime contract everywhere:
 - `KANBAN_BASE_URL`
 - `KANBAN_AGENT_TOKEN`
 
 Behavior:
 - Base URL: `${KANBAN_BASE_URL}`
 - Auth token: `${KANBAN_AGENT_TOKEN}`
-- Do **not** try to read local repo files or run Convex lookup in this mode.
+- Do **not** try to read local repo files or run `convex env get ...` at runtime.
 - Do **not** print the token.
 
-### Mode B — local autodiscovery (for non-sandboxed/local agents)
-
-If explicit sandbox/runtime config is not present, fall back to local autodiscovery:
-- App directory: `/root/.openclaw/workspace/apps/superclaw/kanban`
-- Read `NEXT_PUBLIC_CONVEX_SITE_URL` from `.env.local` in the app directory
-- Read the shared agent token by running `pnpm exec convex env get KANBAN_AGENT_SHARED_TOKEN` in the app directory
-- Base URL: `<NEXT_PUBLIC_CONVEX_SITE_URL>/agent/kanban`
+Sandboxed-agent note:
+- if the agent runtime is sandboxed, the kanban skill must be available inside the agent workspace too
+- expected path: `<agent-workspace>/skills/kanban/`
+- do **not** assume a sandboxed agent can read host skill paths like `~/.openclaw/skills/kanban/` or `/usr/lib/node_modules/openclaw/skills/kanban/`
+- sandboxed agents should inherit the same `KANBAN_BASE_URL` / `KANBAN_AGENT_TOKEN` values via `agents.defaults.sandbox.docker.env`
 
 ### Validation / failure rules
 
-- If only one of `KANBAN_BASE_URL` or `KANBAN_AGENT_TOKEN` is set, stop and report that the explicit runtime config is incomplete.
-- If explicit sandbox/runtime config is absent and local autodiscovery fails (missing app dir, missing `.env.local`, token lookup failure, etc.), stop and report the exact failing step.
+- If either `KANBAN_BASE_URL` or `KANBAN_AGENT_TOKEN` is missing or empty, stop and report the exact missing env.
 - Never invent fallback hosts, ports, URLs, or auth schemes.
 
 Required headers for agent API calls:

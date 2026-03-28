@@ -148,6 +148,33 @@ Expected active skill copies:
 - `~/.openclaw/skills/superclaw/`
 - `~/.openclaw/skills/kanban/`
 
+### Kanban worker runtime env
+
+Derive the canonical Kanban worker env from the local Kanban + Convex setup:
+
+```bash
+cd ~/.openclaw/workspace/apps/superclaw/kanban
+./scripts/resolve-worker-env.sh
+# or emit shell exports:
+./scripts/resolve-worker-env.sh --exports
+```
+
+Persist these two values for the OpenClaw runtime:
+- `KANBAN_BASE_URL`
+- `KANBAN_AGENT_TOKEN`
+
+Rules:
+- unsandboxed/local agents should read them from the OpenClaw host process environment
+- sandboxed agents should inherit the same values from `agents.defaults.sandbox.docker.env`
+- do not keep per-agent Kanban overrides
+
+If an agent will run Kanban worker passes inside a sandboxed agent workspace, also copy the kanban skill into that agent workspace so the sandbox can read it locally:
+
+```bash
+mkdir -p ~/.openclaw/workspace-<agent>/skills
+rsync -a ~/.openclaw/skills/kanban/ ~/.openclaw/workspace-<agent>/skills/kanban/
+```
+
 ## Extension build
 
 ```bash

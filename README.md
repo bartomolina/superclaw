@@ -46,6 +46,21 @@ mkdir -p ~/.openclaw/skills
 rsync -a ~/.openclaw/workspace/apps/superclaw/skills/ ~/.openclaw/skills/
 ```
 
+## Kanban worker runtime
+
+Kanban worker runs use one canonical runtime contract everywhere:
+- `KANBAN_BASE_URL`
+- `KANBAN_AGENT_TOKEN`
+
+Derive them from the Kanban app with:
+
+```bash
+cd ~/.openclaw/workspace/apps/superclaw/kanban
+./scripts/resolve-worker-env.sh --exports
+```
+
+Persist those values in the OpenClaw runtime. If sandboxing is enabled, mirror the same values into `agents.defaults.sandbox.docker.env` instead of configuring per-agent Kanban overrides.
+
 ## Docs
 
 - Human install: [`INSTALL.md`](./INSTALL.md)

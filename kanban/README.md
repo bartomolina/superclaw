@@ -106,37 +106,48 @@ pnpm dev
 
 ## Agent automation API (v1)
 
-### Runtime config modes for agents
+### Canonical runtime env for agents
 
-There are now two supported runtime-config patterns for Kanban workers:
+Kanban workers now use exactly one runtime contract everywhere:
 
-1. **Local autodiscovery** (good for non-sandboxed/local agents)
-   - read `NEXT_PUBLIC_CONVEX_SITE_URL` from the Kanban app's `.env.local`
-   - read `KANBAN_AGENT_SHARED_TOKEN` via `pnpm exec convex env get ...`
+- `KANBAN_BASE_URL`
+- `KANBAN_AGENT_TOKEN`
 
-2. **Explicit runtime config** (good for sandboxed/isolated agents)
-   - inject these env vars into the agent runtime:
-     - `KANBAN_BASE_URL`
-     - `KANBAN_AGENT_TOKEN`
-   - the kanban skill should use those directly instead of trying to read the local repo / Convex config
-   - also copy the kanban skill into the sandboxed agent workspace at `<agent-workspace>/skills/kanban/`
+The worker skill should never inspect the Kanban repo or call `convex env get ...` at runtime.
+Resolve those two values once during install/bootstrap, then expose them through the OpenClaw runtime.
 
-This keeps the skill portable: local agents can autodiscover, while sandboxed agents can work with explicitly injected runtime config.
+Derive the canonical values from the local Kanban setup with:
 
-Example sandboxed-agent setup:
+```bash
+cd ~/.openclaw/workspace/apps/superclaw/kanban
+./scripts/resolve-worker-env.sh
+# or ready-to-source shell exports:
+./scripts/resolve-worker-env.sh --exports
+```
+
+Use the resolved values in both places that matter:
+
+1. **OpenClaw host/runtime env**
+   - unsandboxed/local agents read `KANBAN_BASE_URL` and `KANBAN_AGENT_TOKEN` from the OpenClaw process environment
+
+2. **Sandbox defaults**
+   - if sandboxing is enabled, mirror the same values into `agents.defaults.sandbox.docker.env`
+   - do not keep per-agent Kanban overrides
+
+Sandboxed-agent setup still needs a local copy of the kanban skill in the agent workspace:
 
 ```bash
 mkdir -p ~/.openclaw/workspace-<agent>/skills
 rsync -a ~/.openclaw/skills/kanban/ ~/.openclaw/workspace-<agent>/skills/kanban/
 ```
 
-Convex HTTP endpoints:
+Agent HTTP endpoints:
 
-- `GET <NEXT_PUBLIC_CONVEX_SITE_URL>/agent/kanban/tasks?includeDone=1`
-- `GET <NEXT_PUBLIC_CONVEX_SITE_URL>/agent/kanban/inbox`
-- `POST <NEXT_PUBLIC_CONVEX_SITE_URL>/agent/kanban/comment`
-- `POST <NEXT_PUBLIC_CONVEX_SITE_URL>/agent/kanban/transition`
-- `POST <NEXT_PUBLIC_CONVEX_SITE_URL>/agent/kanban/session/finish`
+- `GET ${KANBAN_BASE_URL}/tasks?includeDone=1`
+- `GET ${KANBAN_BASE_URL}/inbox`
+- `POST ${KANBAN_BASE_URL}/comment`
+- `POST ${KANBAN_BASE_URL}/transition`
+- `POST ${KANBAN_BASE_URL}/session/finish`
 
 `/agent/kanban/tasks` and `/agent/kanban/inbox` include each card's `extensionContext` when present, and `/agent/kanban/inbox` also includes each card's full discussion comment history in `comments` so workers can act with full context.
 
@@ -167,8 +178,8 @@ Example:
 ```bash
 curl -s \
   -H "X-Agent-Id: main" \
-  -H "X-Agent-Token: $KANBAN_AGENT_SHARED_TOKEN" \
-  "${NEXT_PUBLIC_CONVEX_SITE_URL}/agent/kanban/tasks"
+  -H "X-Agent-Token: $KANBAN_AGENT_TOKEN" \
+  "${KANBAN_BASE_URL}/tasks"
 ```
 
 Policy enforced by API:

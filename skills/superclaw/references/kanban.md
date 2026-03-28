@@ -42,26 +42,39 @@ Important Convex env keys:
 - `AUTH_FROM_EMAIL`
 - `KANBAN_AGENT_SHARED_TOKEN`
 
-## Agent automation runtime modes
+## Agent automation runtime
 
-There are two supported runtime-config patterns for Kanban workers:
-
-### Mode A — explicit runtime config
-
-Use these env vars directly when present:
+Kanban workers use one canonical runtime contract everywhere:
 - `KANBAN_BASE_URL`
 - `KANBAN_AGENT_TOKEN`
 
-This is the preferred mode for sandboxed or isolated agents.
+Resolve those values once during install/bootstrap. Do not make the worker skill inspect the repo or call `convex env get ...` at runtime.
 
-### Mode B — local autodiscovery
+Derive the canonical values from the app with:
 
-For local/non-sandboxed agents:
-- read `NEXT_PUBLIC_CONVEX_SITE_URL` from `apps/superclaw/kanban/.env.local`
-- read `KANBAN_AGENT_SHARED_TOKEN` via `pnpm exec convex env get KANBAN_AGENT_SHARED_TOKEN`
-- base URL becomes `<NEXT_PUBLIC_CONVEX_SITE_URL>/agent/kanban`
+```bash
+cd ~/.openclaw/workspace/apps/superclaw/kanban
+./scripts/resolve-worker-env.sh
+# or emit shell exports:
+./scripts/resolve-worker-env.sh --exports
+```
 
-Do not invent fallback hosts, ports, or auth schemes.
+Runtime rules:
+- unsandboxed/local agents should read `KANBAN_BASE_URL` and `KANBAN_AGENT_TOKEN` from the OpenClaw host process environment
+- sandboxed agents should inherit the same values from `agents.defaults.sandbox.docker.env`
+- do not keep per-agent Kanban overrides
+- do not invent fallback hosts, ports, or auth schemes
+
+Additional requirement for sandboxed agents:
+- keep a workspace-local copy of the kanban skill under `<agent-workspace>/skills/kanban/`
+- do not assume the sandbox can read host skill paths like `~/.openclaw/skills/kanban/` or `/usr/lib/node_modules/openclaw/skills/kanban/`
+
+Example for an agent workspace:
+
+```bash
+mkdir -p ~/.openclaw/workspace-<agent>/skills
+rsync -a ~/.openclaw/skills/kanban/ ~/.openclaw/workspace-<agent>/skills/kanban/
+```
 
 ## Worker API surface
 
