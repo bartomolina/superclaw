@@ -11,7 +11,10 @@ Determine the current agent id from the running agent context (`main`, `life`, `
 Behavior:
 - Base URL: `${KANBAN_BASE_URL}`
 - Auth token: `${KANBAN_AGENT_TOKEN}`
+- Determine the agent id from the running agent/session context, not from `OPENCLAW_AGENT_ID`, `AGENT_ID`, or other env probing.
 - Do **not** try to read local repo files or run `convex env get ...` at runtime.
+- Do **not** shell out just to inspect env values; if validation is needed, use direct runtime env access or a minimal portable shell check.
+- Do **not** use inline Python for env checks; `python` may not exist.
 - Do **not** print the token.
 
 Sandboxed-agent note:
