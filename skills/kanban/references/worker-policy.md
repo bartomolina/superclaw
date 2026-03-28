@@ -39,10 +39,11 @@ Deterministic worker call sequence:
 1. Resolve `agentId` from the running agent/session context.
 2. Validate `KANBAN_BASE_URL` and `KANBAN_AGENT_TOKEN` once.
 3. Set `BASE="${KANBAN_BASE_URL}"` exactly.
-4. Fetch `GET ${BASE}/inbox` with the required headers.
-5. Use only cards returned by `/inbox`.
-6. For tracked manual runs, use the provided `sessionId` only with the normal Kanban calls (`/comment`, `/transition`, `/session/finish`).
-7. Do not call `/tasks` during normal worker execution unless the user explicitly asks for debugging/raw inspection.
+4. For normal scheduled runs, fetch `GET ${BASE}/inbox` with the required headers and use only cards returned by `/inbox`.
+5. For tracked manual runs with an explicit `sessionId`, fetch `GET ${BASE}/session/targets?sessionId=<sessionId>` and use that response as the authoritative target list. Do **not** treat a live `/inbox` fetch as the source of truth for a tracked manual run.
+6. Use the tracked/manual target list only for that manual run.
+7. Use the provided `sessionId` with the normal tracked writes (`/comment`, `/transition`, `/session/finish`).
+8. Do not call `/tasks` during normal worker execution unless the user explicitly asks for debugging/raw inspection.
 
 ## 2) API endpoints
 

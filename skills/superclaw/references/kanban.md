@@ -83,10 +83,16 @@ Base URL:
 
 Endpoints:
 - `GET /inbox`
+- `GET /session/targets?sessionId=...` (tracked manual runs)
 - `GET /tasks?includeDone=1`
 - `POST /comment`
 - `POST /transition`
 - `POST /session/finish`
+
+Consumer model:
+- live inbox / debug preview should continue to read from the shared inbox selector
+- tracked manual runs should snapshot card ids once, then expose them through `/session/targets?sessionId=...`
+- do not make tracked manual runs rediscover claimed cards through live `/inbox`
 
 Required headers:
 - `X-Agent-Id: <agent-id>`

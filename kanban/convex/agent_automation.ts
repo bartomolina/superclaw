@@ -56,6 +56,10 @@ type InboxTask = EnrichedTask & {
   inboxReason: InboxReason;
 };
 
+type SessionTargetTask = EnrichedTask & {
+  trackedReason: InboxReason | "manual-session";
+};
+
 type CommentAuthor = {
   type: CommentAuthorType | null;
   id: string | null;
@@ -513,6 +517,68 @@ export const debugAgentInbox = query({
     return {
       agentId: agent.id,
       ...inbox,
+    };
+  },
+});
+
+export const getManualSessionTargets = internalQuery({
+  args: {
+    agentId: v.string(),
+    agentToken: v.string(),
+    sessionId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const agent = authenticateAgent(args.agentId, args.agentToken);
+    const sessionId = args.sessionId.trim();
+    const rows = await ctx.db
+      .query("cardRunSessions")
+      .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+      .collect();
+
+    if (rows.length === 0) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "Manual run session not found or already finished" });
+    }
+
+    if (rows.some((row) => row.agentId !== agent.id)) {
+      throw new ConvexError({ code: "FORBIDDEN", message: "Session does not belong to this agent" });
+    }
+
+    const trackedCardIds = rows.slice().sort((a, b) => a.createdAt - b.createdAt).map((row) => row.cardId);
+    const tasks = await listTasksWithCommentState(ctx, agent, true);
+    const matchedCardIds = new Set<string>();
+    const targets: SessionTargetTask[] = trackedCardIds
+      .map((cardId) => {
+        const match = tasks.find((task) => String(task.cardId) === String(cardId));
+        if (match) {
+          matchedCardIds.add(String(cardId));
+        }
+        return match;
+      })
+      .filter((task): task is EnrichedTask => Boolean(task))
+      .map((task) => ({
+        ...task,
+        trackedReason: inboxReasonForTask(task, agent) ?? "manual-session",
+      }));
+
+    return {
+      sessionId,
+      agentId: agent.id,
+      totalCount: targets.length,
+      cardIds: trackedCardIds,
+      targets: targets.map((task) => ({
+        cardId: task.cardId,
+        boardId: task.boardId,
+        boardName: task.boardName,
+        title: task.title,
+        columnName: task.columnName,
+        trackedReason: task.trackedReason,
+        extensionContext: task.extensionContext,
+        acp: task.acp,
+        model: task.model,
+        executionHint: task.executionHint,
+        comments: task.comments,
+      })),
+      missingCardIds: trackedCardIds.filter((cardId) => !matchedCardIds.has(String(cardId))),
     };
   },
 });

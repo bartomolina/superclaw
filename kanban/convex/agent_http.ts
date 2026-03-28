@@ -80,6 +80,31 @@ export const listInbox = httpAction(async (ctx, request) => {
   }
 });
 
+export const listSessionTargets = httpAction(async (ctx, request) => {
+  try {
+    const { agentId, agentToken } = agentHeaders(request);
+    const url = new URL(request.url);
+    const sessionId = url.searchParams.get("sessionId")?.trim() ?? "";
+
+    if (!sessionId) {
+      return Response.json(
+        { ok: false, code: "INVALID_INPUT", error: "sessionId is required" },
+        { status: 400 },
+      );
+    }
+
+    const targets = await ctx.runQuery(internal.agent_automation.getManualSessionTargets, {
+      agentId,
+      agentToken,
+      sessionId,
+    });
+
+    return Response.json({ ok: true, ...targets });
+  } catch (error) {
+    return errorResponse(error);
+  }
+});
+
 export const commentOnCard = httpAction(async (ctx, request) => {
   try {
     const { agentId, agentToken } = agentHeaders(request);

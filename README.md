@@ -52,6 +52,10 @@ Kanban worker runs use one canonical runtime contract everywhere:
 - `KANBAN_BASE_URL`
 - `KANBAN_AGENT_TOKEN`
 
+Worker source-of-truth split:
+- normal scheduled runs use live `GET /inbox`
+- tracked manual runs use `GET /session/targets?sessionId=...` so claimed cards do not disappear after moving to `In Progress`
+
 Derive them from the Kanban app with:
 
 ```bash

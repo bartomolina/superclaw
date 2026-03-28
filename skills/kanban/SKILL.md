@@ -22,5 +22,5 @@ Use the broader `superclaw` skill when the task is about suite architecture, ins
 9. Avoid creating worktrees, side clones, or PR-based flows unless explicitly requested.
 10. If the task results in repo changes, commit and push them when the work is complete unless explicitly told not to.
 11. Do not shell out just to inspect env or infer identity. In particular, do not run inline Python to read env vars; assume `python` may not exist.
-12. Use one deterministic API flow only: validate envs once, fetch `/inbox`, act on returned cards, then call `/comment`, `/transition`, and `/session/finish` as needed. Do not improvise alternate endpoint shapes, fallback URLs, or recovery attempts.
+12. Use one deterministic API flow only: validate envs once, then use `/inbox` for normal runs or `/session/targets?sessionId=...` for tracked manual runs, then call `/comment`, `/transition`, and `/session/finish` as needed. Do not improvise alternate endpoint shapes, fallback URLs, or recovery attempts.
 13. If a known Kanban API call returns a client/server error, stop and report the exact failing endpoint/status instead of guessing and retrying with different paths.

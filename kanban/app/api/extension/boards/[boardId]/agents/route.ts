@@ -38,7 +38,7 @@ export async function GET(
     ]);
 
     const filteredAgents = access.restricted
-      ? agents.filter((agent) => access.allowedAgentIds.includes(String(agent.id).trim()))
+      ? agents.filter((agent: { id: string | number }) => access.allowedAgentIds.includes(String(agent.id).trim()))
       : agents;
 
     return NextResponse.json(

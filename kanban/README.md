@@ -143,13 +143,14 @@ rsync -a ~/.openclaw/skills/kanban/ ~/.openclaw/workspace-<agent>/skills/kanban/
 
 Agent HTTP endpoints:
 
-- `GET ${KANBAN_BASE_URL}/tasks?includeDone=1`
 - `GET ${KANBAN_BASE_URL}/inbox`
+- `GET ${KANBAN_BASE_URL}/session/targets?sessionId=...` (tracked manual runs)
+- `GET ${KANBAN_BASE_URL}/tasks?includeDone=1`
 - `POST ${KANBAN_BASE_URL}/comment`
 - `POST ${KANBAN_BASE_URL}/transition`
 - `POST ${KANBAN_BASE_URL}/session/finish`
 
-`/agent/kanban/tasks` and `/agent/kanban/inbox` include each card's `extensionContext` when present, and `/agent/kanban/inbox` also includes each card's full discussion comment history in `comments` so workers can act with full context.
+`/agent/kanban/tasks`, `/agent/kanban/inbox`, and `/agent/kanban/session/targets` include each card's `extensionContext` when present. `/agent/kanban/inbox` and `/agent/kanban/session/targets` also include each card's full discussion comment history in `comments` so workers can act with full context.
 
 Required headers:
 
@@ -168,6 +169,7 @@ Manual board-scoped runs from the Kanban UI now pre-mark the board's current act
 Worker contract for explicit run state:
 
 - Manual run prompts now include the `sessionId` and the exact board/card scope for that pass.
+- Tracked manual runs should fetch `GET /agent/kanban/session/targets?sessionId=...` and use that response as the source of truth instead of re-checking live `/inbox`.
 - Every worker write to Kanban should send `X-Kanban-Session-Id` so touched cards stay associated with the active session.
 - When the pass finishes, call `POST /agent/kanban/session/finish` with JSON like `{"sessionId":"...","status":"done"}`.
 - Use `status: "failed"` or `status: "aborted"` when the pass does not complete normally.

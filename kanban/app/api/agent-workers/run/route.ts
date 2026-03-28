@@ -69,6 +69,7 @@ function buildWorkerMessage({
     "Read the kanban skill first.",
     `Run one cron-safe SuperClaw Kanban worker pass for the current agent, scoped only to board "${boardName}" (${boardId}).`,
     `Use this Kanban session id for explicit run tracking: ${sessionId}.`,
+    `For this tracked manual run, fetch GET /agent/kanban/session/targets?sessionId=${sessionId} and use that response as the authoritative target list. Do not treat a live /inbox fetch as the source of truth for this run.`,
     `Include header X-Kanban-Session-Id: ${sessionId} on every POST /agent/kanban/comment and POST /agent/kanban/transition request.`,
     "TODO cards selected for this manual run have already been claimed into In Progress by the backend before your work starts. Do not re-claim them.",
     `When the pass finishes, call POST /agent/kanban/session/finish with JSON {\"sessionId\":\"${sessionId}\",\"status\":\"done\"}. Use status \"failed\" or \"aborted\" when appropriate.`,
