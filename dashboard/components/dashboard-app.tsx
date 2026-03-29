@@ -138,6 +138,12 @@ export default function App() {
     }
   }, [navItems, page]);
 
+  useEffect(() => {
+    const pageLabel = navItems.find((item) => item.id === page)?.label;
+    const baseTitle = "Dashboard";
+    document.title = pageLabel ? `${pageLabel} - ${baseTitle}` : baseTitle;
+  }, [navItems, page]);
+
   const fetchAll = useCallback(async () => {
     try {
       const [agentsRes, gwStatus, featuresRes, modelsRes, cronsRes] = await Promise.all([

@@ -841,8 +841,8 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const isFullScreenModalOpen = Boolean(editingBoard || activeCardId);
 
   useEffect(() => {
-    const baseTitle = "SuperClaw Kanban";
-    const nextTitle = selectedBoard?.name?.trim() ? `${selectedBoard.name} · ${baseTitle}` : baseTitle;
+    const baseTitle = "Kanban";
+    const nextTitle = selectedBoard?.name?.trim() ? `${selectedBoard.name} - ${baseTitle}` : baseTitle;
     document.title = nextTitle;
 
     let icon = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
@@ -1348,8 +1348,8 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
     setActiveDragCardId(cardId);
 
-    if (boardView) {
-      setDragColumns(cloneColumns(boardView.columns));
+    if (dndColumns.length > 0) {
+      setDragColumns(cloneColumns(dndColumns));
     }
   }
 

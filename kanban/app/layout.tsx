@@ -2,16 +2,16 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SuperClaw - Kanban",
+  title: "Kanban",
   description: "Kanban board for the SuperClaw companion suite.",
-  applicationName: "SuperClaw Kanban",
+  applicationName: "Kanban",
   manifest: "/manifest.webmanifest",
   formatDetection: {
     telephone: false,
   },
   appleWebApp: {
     capable: true,
-    title: "SuperClaw Kanban",
+    title: "Kanban",
     statusBarStyle: "default",
   },
   icons: {
