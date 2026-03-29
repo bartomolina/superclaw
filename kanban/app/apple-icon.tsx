@@ -1,5 +1,7 @@
 import { ImageResponse } from "next/og";
 
+const APP_ORANGE = "#f97316";
+
 export const size = {
   width: 180,
   height: 180,
@@ -14,21 +16,9 @@ export default function AppleIcon() {
         style={{
           width: "100%",
           height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#09090b",
-          color: "#fafafa",
-          fontSize: 78,
-          fontWeight: 800,
-          lineHeight: 1,
-          letterSpacing: "-0.08em",
-          borderRadius: 36,
-          fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          background: APP_ORANGE,
         }}
-      >
-        SC
-      </div>
+      />
     ),
     size,
   );

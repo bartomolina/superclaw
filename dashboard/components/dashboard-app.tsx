@@ -30,6 +30,11 @@ function pageFromHash(hash: string): Page {
   return BASE_NAV_ITEMS.some((item) => item.id === normalized) ? normalized : "agents";
 }
 
+function documentTitleForPage(page: Page) {
+  const label = BASE_NAV_ITEMS.find((item) => item.id === page)?.label;
+  return label ? `Dashboard - ${label}` : "Dashboard";
+}
+
 export default function App() {
   const { dark, toggle: toggleTheme } = useTheme();
   const [authenticated, setAuthenticated] = useState(false);
@@ -45,6 +50,9 @@ export default function App() {
   );
   const setPage = (p: Page) => {
     setPageState(p);
+    if (typeof document !== "undefined") {
+      document.title = documentTitleForPage(p);
+    }
     if (typeof window !== "undefined") {
       window.location.hash = p;
     }
@@ -105,6 +113,7 @@ export default function App() {
 
     const syncPageFromHash = () => {
       const nextPage = pageFromHash(window.location.hash);
+      document.title = documentTitleForPage(nextPage);
       setPageState((current) => (current === nextPage ? current : nextPage));
     };
 
@@ -159,9 +168,8 @@ export default function App() {
   }, [navItems, page]);
 
   useEffect(() => {
-    const pageLabel = navItems.find((item) => item.id === page)?.label;
-    const baseTitle = "Dashboard";
-    document.title = pageLabel ? `${baseTitle} - ${pageLabel}` : baseTitle;
+    const effectivePage = navItems.some((item) => item.id === page) ? page : "agents";
+    document.title = documentTitleForPage(effectivePage);
   }, [navItems, page]);
 
   const fetchAll = useCallback(async () => {
