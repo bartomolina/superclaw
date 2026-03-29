@@ -694,27 +694,6 @@ function boardOrderSignature(boards: BoardModel[] | null | undefined) {
   return (boards ?? []).map((board) => String(board._id)).join("|");
 }
 
-function escapeSvgText(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function createBoardFaviconHref(boardName: string) {
-  const badge = Array.from(boardName.trim())[0]?.toUpperCase() ?? "🦞";
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-      <rect width="64" height="64" rx="16" fill="#09090b" />
-      <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="34" fill="#ffffff">${escapeSvgText(badge)}</text>
-    </svg>
-  `;
-
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
-}
-
 export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const { dark, toggle: toggleTheme } = useTheme();
   const { isAuthenticated: isConvexAuthenticated } = useConvexAuth();
@@ -844,17 +823,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     const baseTitle = "Kanban";
     const nextTitle = selectedBoard?.name?.trim() ? `${selectedBoard.name} - ${baseTitle}` : baseTitle;
     document.title = nextTitle;
-
-    let icon = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
-    if (!icon) {
-      icon = document.createElement("link");
-      icon.rel = "icon";
-      document.head.appendChild(icon);
-    }
-
-    icon.type = "image/svg+xml";
-    icon.href = createBoardFaviconHref(selectedBoard?.name ?? "Kanban");
-  }, [selectedBoard]);
+  }, [selectedBoard?.name]);
 
   useEffect(() => {
     if (!optimisticBoards || !boards) return;

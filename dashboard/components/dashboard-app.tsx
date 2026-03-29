@@ -25,14 +25,18 @@ const BASE_NAV_ITEMS: { id: Page; label: string; icon: typeof Users }[] = [
   { id: "debug", label: "Debug", icon: Terminal },
 ];
 
+function pageFromHash(hash: string): Page {
+  const normalized = hash.replace(/^#/, "") as Page;
+  return BASE_NAV_ITEMS.some((item) => item.id === normalized) ? normalized : "agents";
+}
+
 export default function App() {
   const { dark, toggle: toggleTheme } = useTheme();
   const [authenticated, setAuthenticated] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [page, setPageState] = useState<Page>(() => {
     if (typeof window === "undefined") return "agents";
-    const hash = window.location.hash.replace("#", "") as Page;
-    return BASE_NAV_ITEMS.some((n) => n.id === hash) ? hash : "agents";
+    return pageFromHash(window.location.hash);
   });
   const [debugRpcEnabled, setDebugRpcEnabled] = useState(false);
   const navItems = useMemo(
@@ -94,6 +98,22 @@ export default function App() {
         return { ...agent, channels: next.channels, skills: next.skills };
       }),
     );
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const syncPageFromHash = () => {
+      const nextPage = pageFromHash(window.location.hash);
+      setPageState((current) => (current === nextPage ? current : nextPage));
+    };
+
+    syncPageFromHash();
+    window.addEventListener("hashchange", syncPageFromHash);
+
+    return () => {
+      window.removeEventListener("hashchange", syncPageFromHash);
+    };
   }, []);
 
   useEffect(() => {
