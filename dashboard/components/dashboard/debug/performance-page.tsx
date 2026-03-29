@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 
 import { authFetch } from "@/components/dashboard/auth";
+import { StateMessage } from "@/components/dashboard/state-message";
 import { fmt, fmtUptime } from "./utils";
 
 export function PerformancePage() {
@@ -40,8 +41,8 @@ export function PerformancePage() {
     return () => clearInterval(i);
   }, []);
 
-  if (loading && !data) return <div className="text-center text-zinc-400 py-12">Loading...</div>;
-  if (!data) return <div className="text-center text-zinc-400 py-12">Failed to load performance data</div>;
+  if (loading && !data) return <StateMessage>Loading performance...</StateMessage>;
+  if (!data) return <StateMessage tone="error">Failed to load performance data</StateMessage>;
 
   const memPct = ((data.memory.used / data.memory.total) * 100).toFixed(0);
   const diskPct = ((data.disk.used / data.disk.total) * 100).toFixed(0);

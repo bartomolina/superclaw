@@ -61,7 +61,7 @@ export function mapChannelsByAgent(channelsData: any, sessionsData: any, configR
       const streaming = accountConfig.streaming ?? configRaw.channels?.[channelId]?.streaming ?? "partial";
       const detailLabel =
         account.accountId === "default"
-          ? detail
+          ? null
           : channelId === "telegram" && account.accountId === agentId
             ? null
             : `${detail || label} · ${account.accountId}`;

@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 
 import { authFetch } from "@/components/dashboard/auth";
+import { StateMessage } from "@/components/dashboard/state-message";
 
 function getSkillSourceLabel(skill: any) {
   if (skill.bundled) return "bundled";
@@ -70,7 +71,7 @@ export function SkillsPage() {
     },
   ].filter((group) => group.skills.length > 0);
 
-  if (loading) return <div className="text-center py-24 text-zinc-400 dark:text-zinc-500 text-sm">Loading skills...</div>;
+  if (loading) return <StateMessage>Loading skills...</StateMessage>;
 
   return (
     <div className="space-y-4">

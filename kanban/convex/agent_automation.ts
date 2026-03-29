@@ -508,11 +508,15 @@ export const debugAgentInbox = query({
     refreshKey: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await requireMember(ctx);
+    await requireMember(ctx);
 
     const agentId = args.agentId.trim();
     if (!agentId) {
       throw new Error("Agent id is required");
+    }
+
+    if (args.boardId) {
+      await requireAccessibleBoard(ctx, args.boardId);
     }
 
     const agent = {
@@ -520,10 +524,7 @@ export const debugAgentInbox = query({
       normalizedId: normalize(agentId),
     } satisfies AgentIdentity;
 
-    const tasks = await listTasksWithCommentState(ctx, agent, false, {
-      ownerId: user.userId,
-      ...(args.boardId ? { boardId: args.boardId } : {}),
-    });
+    const tasks = await listTasksWithCommentState(ctx, agent, false, args.boardId ? { boardId: args.boardId } : undefined);
     const inbox = buildInbox(tasks, agent);
 
     return {

@@ -3,11 +3,14 @@ export { gatewayCall, runOpenClaw, runOpenClawJson } from "@/lib/server/openclaw
 export { handleAgentChannels } from "@/lib/server/openclaw/channels";
 export { applyConfig, getConfigDocument, handleConfigGet, handleConfigPut, parseConfigRaw, readLocalConfig } from "@/lib/server/openclaw/config";
 export { handleCronModel, handleCronsList } from "@/lib/server/openclaw/crons";
+export { handleCaddyStatus } from "@/lib/server/openclaw/caddy";
 export { handleDebugWs, handleFeatures, isDebugRpcEnabled } from "@/lib/server/openclaw/debug";
 export { handleAgentFileGet, handleAgentFilePut, handleAgentFilesList, handleAvatar, parseAvatarFromIdentity } from "@/lib/server/openclaw/files";
 export { errorResponse, json, parseBody } from "@/lib/server/openclaw/http";
 export { handleModelsAdd, handleModelsCatalogProvider, handleModelsCatalogProviders, handleModelsGet, handleModelsRemove, handleModelsSetPrimary } from "@/lib/server/openclaw/models";
 export { handleKanbanWorkerStatus } from "@/lib/server/openclaw/kanban-runtime";
+export { handleMcpList } from "@/lib/server/openclaw/mcp";
+export { handleVercelDomains } from "@/lib/server/openclaw/vercel";
 export { handleAgentSkills, handleSkills } from "@/lib/server/openclaw/skills";
 export { getInstalledOpenClawVersion, handleGatewayStatus, handlePerformance, handleUsage } from "@/lib/server/openclaw/status";
 export {

@@ -6,6 +6,7 @@ import { Heart, HeartCrack, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { authHeaders } from "@/components/dashboard/auth";
+import { StateMessage } from "@/components/dashboard/state-message";
 import { type Agent } from "@/components/dashboard/types";
 import { AgentCard } from "./agent-card";
 import { CreateAgentForm, ConfigModal, DeleteAgentModal } from "./agent-modals";
@@ -69,7 +70,7 @@ export function AgentsPage({ agents, defaultPrimary, onModelChange, onRefresh, o
       <CreateAgentForm onRefresh={onRefresh} open={showCreate} onClose={() => setShowCreate(false)} />
 
       {agents.length === 0 ? (
-        <div className="text-center py-24 text-zinc-400 dark:text-zinc-500 text-sm">No agents configured</div>
+        <StateMessage>No agents configured</StateMessage>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4">
           {agents.map((agent) => (

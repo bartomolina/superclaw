@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 
 import { authFetch } from "@/components/dashboard/auth";
+import { StateMessage } from "@/components/dashboard/state-message";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 
 export function UsagePage() {
@@ -21,8 +22,8 @@ export function UsagePage() {
       .catch(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="text-center text-zinc-400 py-12">Loading usage data...</div>;
-  if (!data?.aggregates) return <div className="text-center text-zinc-400 py-12">No usage data available</div>;
+  if (loading) return <StateMessage>Loading usage data...</StateMessage>;
+  if (!data?.aggregates) return <StateMessage>No usage data available</StateMessage>;
 
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - range);

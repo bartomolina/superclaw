@@ -128,7 +128,7 @@ export function ModelsPage({
         <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200 mb-3">Configured Models</h2>
         <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl overflow-hidden shadow-sm dark:shadow-none">
           {configuredModels.length === 0 ? (
-            <div className="p-5 text-sm text-zinc-400 italic">No models configured</div>
+            <div className="p-5 text-sm text-zinc-400 dark:text-zinc-500">No models configured</div>
           ) : (
             <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
               {orderedConfiguredModels.map((m) => {

@@ -32,6 +32,18 @@ function formatKanbanMissing(items: string[]) {
   });
 }
 
+function formatWorkspacePath(workspace: string) {
+  if (workspace.startsWith("/root/")) {
+    return `~/${workspace.slice("/root/".length)}`;
+  }
+
+  if (workspace === "/root") {
+    return "~";
+  }
+
+  return workspace;
+}
+
 export function AgentCard({
   agent,
   defaultPrimary,
@@ -89,6 +101,7 @@ export function AgentCard({
 
   const sections = buildAgentSections(agent, uniqueSkills.length);
   const kanbanMissing = formatKanbanMissing(agent.kanbanReadiness.missing);
+  const workspacePath = formatWorkspacePath(agent.workspace);
 
   return (
     <>
@@ -120,7 +133,7 @@ export function AgentCard({
                 {agent.id}
               </div>
               <div className="mt-0.5 text-xs leading-tight text-zinc-400 dark:text-zinc-500 font-mono truncate">
-                {agent.workspace}
+                {workspacePath}
               </div>
             </div>
           </div>
@@ -146,7 +159,7 @@ export function AgentCard({
                   title={agent.fallbacks.map((fallback) => fallback.split("/").slice(-1)[0]).join("\n")}
                   className="text-[10px] uppercase tracking-wider bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 px-1.5 py-0.5 rounded whitespace-nowrap cursor-default"
                 >
-                  +{agent.fallbacks.length} fallback{agent.fallbacks.length === 1 ? "" : "s"}
+                  +{agent.fallbacks.length}
                 </span>
               )}
             </div>
