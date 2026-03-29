@@ -723,6 +723,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [sidebarModelOptions, setSidebarModelOptions] = useState<ModelOption[]>([]);
   const [runningAgentId, setRunningAgentId] = useState<string | null>(null);
   const [activeCardId, setActiveCardId] = useState<Id<"cards"> | null>(null);
+  const [creatingCardColumnId, setCreatingCardColumnId] = useState<Id<"columns"> | null>(null);
   const [activeBoardId, setActiveBoardId] = useState<Id<"boards"> | null>(null);
   const [activeDragCardId, setActiveDragCardId] = useState<Id<"cards"> | null>(null);
   const [dragColumns, setDragColumns] = useState<ColumnModel[] | null>(null);
@@ -792,7 +793,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     (boardView?.board.allowedAgentIds ?? selectedBoard?.allowedAgentIds ?? []).slice().sort(),
   );
   const isSuperuser = viewer?.isSuperuser === true;
-  const isFullScreenModalOpen = Boolean(editingBoard || activeCardId);
+  const isFullScreenModalOpen = Boolean(editingBoard || activeCardId || creatingCardColumnId);
 
   useEffect(() => {
     if (!isMobileSidebarOpen) return;
@@ -941,6 +942,16 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   }, [activeCardId, boardView]);
 
   useEffect(() => {
+    if (creatingCardColumnId && boardView) {
+      const columnStillExists = boardView.columns.some((column) => column._id === creatingCardColumnId);
+
+      if (!columnStillExists) {
+        setCreatingCardColumnId(null);
+      }
+    }
+  }, [creatingCardColumnId, boardView]);
+
+  useEffect(() => {
     if (!isConvexAuthenticated || !isSuperuser) return;
 
     let cancelled = false;
@@ -985,6 +996,12 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
     return null;
   }, [boardView, activeCardId]);
+
+  const creatingColumn = useMemo(() => {
+    if (!boardView || !creatingCardColumnId) return null;
+
+    return boardView.columns.find((column) => column._id === creatingCardColumnId) ?? null;
+  }, [boardView, creatingCardColumnId]);
 
   const dndColumns = useMemo(() => dragColumns ?? boardView?.columns ?? [], [dragColumns, boardView]);
 
@@ -1676,6 +1693,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                         column={column}
                         accentClass={getColumnTone(column.name)}
                         onOpenCard={(cardId) => setActiveCardId(cardId)}
+                        onAddCard={() => setCreatingCardColumnId(column._id)}
                       />
                     ))}
                   </div>
@@ -1766,6 +1784,26 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
               nextAllowedAgentIds: values.allowedAgentIds,
             })
           }
+        />
+      ) : null}
+
+      {creatingColumn && boardView ? (
+        <CreateCardModal
+          key={creatingColumn._id}
+          column={creatingColumn}
+          agentOptions={filterBoardAgentOptions(sidebarAgentOptions, boardView.board.allowedAgentIds)}
+          skillOptions={sidebarSkillOptions}
+          modelOptions={sidebarModelOptions}
+          onClose={() => {
+            if (document.activeElement instanceof HTMLElement) {
+              document.activeElement.blur();
+            }
+            setCreatingCardColumnId(null);
+          }}
+          onCreated={(cardId) => {
+            setCreatingCardColumnId(null);
+            setActiveCardId(cardId);
+          }}
         />
       ) : null}
 
@@ -2203,45 +2241,17 @@ function KanbanColumn({
   column,
   accentClass,
   onOpenCard,
+  onAddCard,
 }: {
   column: ColumnModel;
   accentClass: string;
   onOpenCard: (cardId: Id<"cards">) => void;
+  onAddCard: () => void;
 }) {
-  const createCard = useMutation(api.cards.create);
   const { setNodeRef, isOver } = useDroppable({
     id: `column-${column._id}`,
     data: { type: "column", columnId: column._id },
   });
-
-  const [showComposer, setShowComposer] = useState(false);
-  const [newCardTitle, setNewCardTitle] = useState("");
-  const [isCreatingCard, setIsCreatingCard] = useState(false);
-  const trimmedNewCardTitle = newCardTitle.trim();
-
-  async function handleCreateCard(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (isCreatingCard || !trimmedNewCardTitle) {
-      return;
-    }
-
-    setIsCreatingCard(true);
-
-    try {
-      await createCard({
-        columnId: column._id,
-        title: trimmedNewCardTitle,
-      });
-
-      setNewCardTitle("");
-      setShowComposer(false);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to add card");
-    } finally {
-      setIsCreatingCard(false);
-    }
-  }
 
   return (
     <section
@@ -2269,46 +2279,13 @@ function KanbanColumn({
             />
           ))}
 
-          {!showComposer ? (
-            <button
-              type="button"
-              onClick={() => setShowComposer(true)}
-              className="inline-flex h-7 items-center rounded-md px-2 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-200"
-            >
-              + Add card
-            </button>
-          ) : (
-            <form onSubmit={handleCreateCard} className="space-y-1.5">
-              <input
-                className={`${inputClass} h-8 px-2.5 text-xs`}
-                value={newCardTitle}
-                onChange={(event) => setNewCardTitle(event.target.value)}
-                placeholder="Card title"
-                autoFocus
-                disabled={isCreatingCard}
-              />
-              <div className="flex items-center justify-end gap-1.5">
-                <button
-                  type="button"
-                  className="inline-flex h-7 items-center justify-center px-1.5 text-xs text-zinc-500 transition hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-300"
-                  onClick={() => {
-                    setShowComposer(false);
-                    setNewCardTitle("");
-                  }}
-                  disabled={isCreatingCard}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="inline-flex h-7 items-center justify-center rounded-md bg-zinc-900 px-2.5 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-                  disabled={!trimmedNewCardTitle || isCreatingCard}
-                >
-                  {isCreatingCard ? "Adding…" : "Add"}
-                </button>
-              </div>
-            </form>
-          )}
+          <button
+            type="button"
+            onClick={onAddCard}
+            className="inline-flex h-7 items-center rounded-md px-2 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-200"
+          >
+            + Add card
+          </button>
         </div>
       </SortableContext>
     </section>
@@ -2552,6 +2529,285 @@ function KanbanCard({
         </div>
       ) : null}
     </>
+  );
+}
+
+function CreateCardModal({
+  column,
+  agentOptions,
+  skillOptions,
+  modelOptions,
+  onClose,
+  onCreated,
+}: {
+  column: ColumnModel;
+  agentOptions: AgentOption[];
+  skillOptions: SkillOption[];
+  modelOptions: ModelOption[];
+  onClose: () => void;
+  onCreated: (cardId: Id<"cards">) => void;
+}) {
+  const createCard = useMutation(api.cards.create);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [descriptionDraft, setDescriptionDraft] = useState("");
+  const [agentDraft, setAgentDraft] = useState("");
+  const [reviewerDraft, setReviewerDraft] = useState("");
+  const [priorityDraft, setPriorityDraft] = useState("");
+  const [sizeDraft, setSizeDraft] = useState("");
+  const [typeDraft, setTypeDraft] = useState("");
+  const [acpDraft, setAcpDraft] = useState("");
+  const [modelDraft, setModelDraft] = useState("");
+  const [skillsDraft, setSkillsDraft] = useState<string[]>([]);
+  const [isCreatingCard, setIsCreatingCard] = useState(false);
+
+  useEffect(() => {
+    function onEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [onClose]);
+
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyOverscroll = document.body.style.overscrollBehavior;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "contain";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.overscrollBehavior = previousBodyOverscroll;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, []);
+
+  function handleEditorSubmitShortcut(
+    event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
+    if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey) || event.nativeEvent.isComposing) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
+  }
+
+  const availableSkillOptions = useMemo(() => {
+    const seen = new Set<string>();
+
+    return skillOptions.filter((option) => {
+      const key = option.name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [skillOptions]);
+
+  useEffect(() => {
+    if (availableSkillOptions.length === 0) return;
+
+    const eligibleSkillNames = new Set(availableSkillOptions.map((skill) => skill.name.toLowerCase()));
+
+    setSkillsDraft((current) =>
+      current.filter((skill) => eligibleSkillNames.has(skill.trim().toLowerCase())),
+    );
+  }, [availableSkillOptions]);
+
+  function toggleSkill(skillName: string) {
+    setSkillsDraft((current) => {
+      const hasSkill = current.some((skill) => skill.toLowerCase() === skillName.toLowerCase());
+      if (hasSkill) {
+        return current.filter((skill) => skill.toLowerCase() !== skillName.toLowerCase());
+      }
+
+      return [...current, skillName];
+    });
+  }
+
+  function handleModelChange(value: string) {
+    setModelDraft(value);
+    if (value) {
+      setAcpDraft("");
+    }
+  }
+
+  function handleAcpChange(value: string) {
+    setAcpDraft(value);
+    if (value) {
+      setModelDraft("");
+    }
+  }
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (isCreatingCard || !titleDraft.trim()) {
+      return;
+    }
+
+    const parsedSkills = skillsDraft.map((skill) => skill.trim()).filter(Boolean);
+
+    setIsCreatingCard(true);
+
+    try {
+      const cardId = await createCard({
+        columnId: column._id,
+        title: titleDraft,
+        description: descriptionDraft,
+        agentId: agentDraft,
+        reviewerId: reviewerDraft,
+        priority: priorityDraft,
+        size: sizeDraft,
+        type: typeDraft,
+        acp: acpDraft,
+        model: modelDraft,
+        skills: parsedSkills,
+      });
+
+      onCreated(cardId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to add card");
+    } finally {
+      setIsCreatingCard(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-0 backdrop-blur-[1px] sm:items-center sm:p-4" onMouseDown={onClose}>
+      <div
+        className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl dark:bg-zinc-900 sm:h-[min(92vh,760px)] sm:w-[min(96vw,920px)] sm:rounded-2xl sm:border sm:border-zinc-200 dark:sm:border-zinc-800"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <form onSubmit={handleCreate} className="flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)] sm:pt-0">
+          <div className="hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain lg:grid lg:grid-cols-[minmax(0,1fr)_240px] lg:overflow-hidden">
+            <div className="hide-scrollbar shrink-0 space-y-5 p-4 pb-6 sm:p-5 lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-zinc-200 dark:border-zinc-800">
+              <div className="space-y-1">
+                <div className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Add card</div>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                  Creating in <span className="font-medium text-zinc-700 dark:text-zinc-200">{formatColumnName(column.name)}</span>
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Title</label>
+                <input
+                  autoFocus
+                  className={`${inputClass} h-10`}
+                  value={titleDraft}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  onKeyDown={handleEditorSubmitShortcut}
+                  placeholder="Card title"
+                  disabled={isCreatingCard}
+                />
+              </div>
+
+              <div>
+                <div className="mb-2">
+                  <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400">Description</label>
+                </div>
+                <textarea
+                  className={textareaClass}
+                  value={descriptionDraft}
+                  onChange={(event) => setDescriptionDraft(event.target.value)}
+                  onKeyDown={handleEditorSubmitShortcut}
+                  placeholder="Add a description..."
+                  disabled={isCreatingCard}
+                />
+              </div>
+            </div>
+
+            <aside className="hide-scrollbar shrink-0 space-y-3 border-t border-zinc-200 bg-zinc-50/60 p-4 pb-6 dark:border-zinc-800 dark:bg-zinc-950/60 lg:min-h-0 lg:overflow-y-auto lg:border-t-0">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Agent</label>
+                <AgentSelect value={agentDraft} options={agentOptions} onChange={setAgentDraft} />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Reviewer</label>
+                <AgentSelect value={reviewerDraft} options={agentOptions} onChange={setReviewerDraft} />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Priority</label>
+                <ChoiceChips value={priorityDraft} options={["Low", "Medium", "High"]} onChange={setPriorityDraft} />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Size</label>
+                <ChoiceChips value={sizeDraft} options={["S", "M", "L"]} onChange={setSizeDraft} />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Type</label>
+                <ChoiceChips value={typeDraft} options={cardTypeOptions} onChange={setTypeDraft} />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Model</label>
+                <ModelSelect value={modelDraft} options={modelOptions} onChange={handleModelChange} />
+                {modelDraft ? (
+                  <div className="mt-1 break-all text-[11px] text-zinc-500 dark:text-zinc-400">{modelDraft}</div>
+                ) : null}
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">ACP</label>
+                <ChoiceChips value={acpDraft} options={["codex", "cursor"]} onChange={handleAcpChange} />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Skills</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {availableSkillOptions.length === 0 ? (
+                    <span className="text-xs text-zinc-400 dark:text-zinc-500">No skills available</span>
+                  ) : (
+                    availableSkillOptions.map((skill) => {
+                      const selected = skillsDraft.some(
+                        (currentSkill) => currentSkill.toLowerCase() === skill.name.toLowerCase(),
+                      );
+
+                      return (
+                        <button
+                          key={skill.name}
+                          type="button"
+                          onClick={() => toggleSkill(skill.name)}
+                          className={`rounded-full border px-2 py-1 text-[11px] font-medium transition-colors ${
+                            selected
+                              ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+                              : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                          }`}
+                          disabled={isCreatingCard}
+                        >
+                          {skill.name}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 border-t border-zinc-200 bg-white/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 sm:px-6 sm:pb-3">
+            <button
+              type="button"
+              className="px-3 py-2 text-sm text-zinc-500 transition-colors hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-300"
+              onClick={onClose}
+              disabled={isCreatingCard}
+            >
+              Cancel
+            </button>
+            <button type="submit" className={primaryButtonClass} disabled={!titleDraft.trim() || isCreatingCard}>
+              {isCreatingCard ? "Adding…" : "Add card"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
