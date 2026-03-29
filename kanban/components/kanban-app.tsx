@@ -821,7 +821,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
   useEffect(() => {
     const baseTitle = "Kanban";
-    const nextTitle = selectedBoard?.name?.trim() ? `${selectedBoard.name} - ${baseTitle}` : baseTitle;
+    const nextTitle = selectedBoard?.name?.trim() ? `${baseTitle} - ${selectedBoard.name}` : baseTitle;
     document.title = nextTitle;
   }, [selectedBoard?.name]);
 
@@ -1270,7 +1270,26 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     return parent?._id ?? null;
   }
 
-  function applyOverMove(columns: ColumnModel[], cardId: Id<"cards">, overId: string) {
+  function shouldInsertAfterOverCard(
+    activeRect: { top: number; height: number } | null | undefined,
+    overRect: { top: number; height: number } | null | undefined,
+    overId: string,
+  ) {
+    if (overId.startsWith("column-") || !activeRect || !overRect) {
+      return false;
+    }
+
+    const activeCenterY = activeRect.top + activeRect.height / 2;
+    const overCenterY = overRect.top + overRect.height / 2;
+    return activeCenterY > overCenterY;
+  }
+
+  function applyOverMove(
+    columns: ColumnModel[],
+    cardId: Id<"cards">,
+    overId: string,
+    insertAfterOverCard = false,
+  ) {
     const activeContainerId = getContainerId(cardId, columns);
     const overContainerId = getContainerId(overId, columns);
 
@@ -1302,7 +1321,9 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
       ? overContainer.cards.length
       : overContainer.cards.findIndex((card) => card._id === (overId as Id<"cards">));
 
-    const insertIndex = overIndex >= 0 ? overIndex : overContainer.cards.length;
+    const insertIndex = overIndex >= 0
+      ? Math.min(overIndex + (insertAfterOverCard ? 1 : 0), overContainer.cards.length)
+      : overContainer.cards.length;
 
     overContainer.cards.splice(insertIndex, 0, {
       ...movingCard,
@@ -1327,10 +1348,15 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
     const cardId = String(event.active.id) as Id<"cards">;
     const overId = String(event.over.id);
+    const insertAfterOverCard = shouldInsertAfterOverCard(
+      event.active.rect.current.translated ?? event.active.rect.current.initial,
+      event.over.rect,
+      overId,
+    );
 
     setDragColumns((current) => {
       const working = cloneColumns(current ?? boardView.columns);
-      const changed = applyOverMove(working, cardId, overId);
+      const changed = applyOverMove(working, cardId, overId, insertAfterOverCard);
       if (!changed) return current;
 
       const previousSig = columnsSignature(current ?? boardView.columns);
@@ -1387,7 +1413,13 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
     if (!finalColumns && event.over) {
       const fallback = cloneColumns(boardView.columns);
-      const changed = applyOverMove(fallback, cardId, String(event.over.id));
+      const overId = String(event.over.id);
+      const insertAfterOverCard = shouldInsertAfterOverCard(
+        event.active.rect.current.translated ?? event.active.rect.current.initial,
+        event.over.rect,
+        overId,
+      );
+      const changed = applyOverMove(fallback, cardId, overId, insertAfterOverCard);
       if (changed) {
         finalColumns = fallback;
       }

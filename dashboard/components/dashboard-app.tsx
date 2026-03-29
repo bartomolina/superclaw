@@ -161,7 +161,7 @@ export default function App() {
   useEffect(() => {
     const pageLabel = navItems.find((item) => item.id === page)?.label;
     const baseTitle = "Dashboard";
-    document.title = pageLabel ? `${pageLabel} - ${baseTitle}` : baseTitle;
+    document.title = pageLabel ? `${baseTitle} - ${pageLabel}` : baseTitle;
   }, [navItems, page]);
 
   const fetchAll = useCallback(async () => {
