@@ -690,6 +690,31 @@ function useTheme() {
   return { dark, toggle: () => setDark((current) => !current) };
 }
 
+function boardOrderSignature(boards: BoardModel[] | null | undefined) {
+  return (boards ?? []).map((board) => String(board._id)).join("|");
+}
+
+function escapeSvgText(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function createBoardFaviconHref(boardName: string) {
+  const badge = Array.from(boardName.trim())[0]?.toUpperCase() ?? "🦞";
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+      <rect width="64" height="64" rx="16" fill="#09090b" />
+      <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="34" fill="#ffffff">${escapeSvgText(badge)}</text>
+    </svg>
+  `;
+
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const { dark, toggle: toggleTheme } = useTheme();
   const { isAuthenticated: isConvexAuthenticated } = useConvexAuth();
@@ -705,6 +730,10 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const deleteBoard = useMutation(api.boards.remove);
   const reorderBoards = useMutation(api.boards.reorder);
   const applyCardLayout = useMutation(api.cards.applyLayout);
+  const [optimisticBoards, setOptimisticBoards] = useState<BoardModel[] | null>(null);
+  const boardReorderQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const cardLayoutQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const latestCardLayoutRequestRef = useRef(0);
   const [selectedBoardId, setSelectedBoardId] = useState<Id<"boards"> | null>(null);
   const [newBoardName, setNewBoardName] = useState("");
   const [showNewBoardForm, setShowNewBoardForm] = useState(false);
@@ -733,19 +762,36 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const searchParams = useSearchParams();
   const boardParam = searchParams.get("board");
 
-  const effectiveSelectedBoardId = useMemo(() => {
-    if (!boards || boards.length === 0) return null;
+  const displayBoards = useMemo(() => {
+    if (!boards) return boards;
+    if (!optimisticBoards || optimisticBoards.length === 0) return boards;
 
-    if (boardParam && boards.some((board) => board._id === boardParam)) {
+    const latestById = new Map(boards.map((board) => [String(board._id), board]));
+    const optimisticIds = optimisticBoards.map((board) => String(board._id));
+
+    if (optimisticIds.length !== boards.length || optimisticIds.some((boardId) => !latestById.has(boardId))) {
+      return boards;
+    }
+
+    return optimisticIds.flatMap((boardId) => {
+      const board = latestById.get(boardId);
+      return board ? [board] : [];
+    });
+  }, [boards, optimisticBoards]);
+
+  const effectiveSelectedBoardId = useMemo(() => {
+    if (!displayBoards || displayBoards.length === 0) return null;
+
+    if (boardParam && displayBoards.some((board) => board._id === boardParam)) {
       return boardParam as Id<"boards">;
     }
 
-    if (selectedBoardId && boards.some((board) => board._id === selectedBoardId)) {
+    if (selectedBoardId && displayBoards.some((board) => board._id === selectedBoardId)) {
       return selectedBoardId;
     }
 
-    return boards[0]._id;
-  }, [boards, selectedBoardId, boardParam]);
+    return displayBoards[0]._id;
+  }, [displayBoards, selectedBoardId, boardParam]);
 
   const navigateToBoard = useCallback(
     (boardId: Id<"boards"> | null, mode: "push" | "replace" = "replace") => {
@@ -780,11 +826,11 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   ) as ActivityEventModel[] | undefined;
 
   const selectedBoard = useMemo(() => {
-    if (!boards || boards.length === 0) return null;
-    if (!effectiveSelectedBoardId) return boards[0] ?? null;
+    if (!displayBoards || displayBoards.length === 0) return null;
+    if (!effectiveSelectedBoardId) return displayBoards[0] ?? null;
 
-    return boards.find((board) => board._id === effectiveSelectedBoardId) ?? boards[0] ?? null;
-  }, [boards, effectiveSelectedBoardId]);
+    return displayBoards.find((board) => board._id === effectiveSelectedBoardId) ?? displayBoards[0] ?? null;
+  }, [displayBoards, effectiveSelectedBoardId]);
 
   const selectedBoardName = selectedBoard?.name ?? "Kanban";
   const selectedBoardUrl = selectedBoard?.url;
@@ -793,6 +839,29 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   );
   const isSuperuser = viewer?.isSuperuser === true;
   const isFullScreenModalOpen = Boolean(editingBoard || activeCardId);
+
+  useEffect(() => {
+    const baseTitle = "SuperClaw Kanban";
+    const nextTitle = selectedBoard?.name?.trim() ? `${selectedBoard.name} · ${baseTitle}` : baseTitle;
+    document.title = nextTitle;
+
+    let icon = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
+    if (!icon) {
+      icon = document.createElement("link");
+      icon.rel = "icon";
+      document.head.appendChild(icon);
+    }
+
+    icon.type = "image/svg+xml";
+    icon.href = createBoardFaviconHref(selectedBoard?.name ?? "Kanban");
+  }, [selectedBoard]);
+
+  useEffect(() => {
+    if (!optimisticBoards || !boards) return;
+    if (boardOrderSignature(optimisticBoards) !== boardOrderSignature(boards)) return;
+
+    setOptimisticBoards(null);
+  }, [boards, optimisticBoards]);
 
   useEffect(() => {
     if (!isMobileSidebarOpen) return;
@@ -840,21 +909,21 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   }, [isFullScreenModalOpen]);
 
   useEffect(() => {
-    if (!boards) return;
-    if (boards.length > 0) return;
+    if (!displayBoards) return;
+    if (displayBoards.length > 0) return;
 
     if (boardParam) {
       navigateToBoard(null, "replace");
     }
-  }, [boards, boardParam, navigateToBoard]);
+  }, [displayBoards, boardParam, navigateToBoard]);
 
   useEffect(() => {
-    if (!boards || boards.length === 0) return;
+    if (!displayBoards || displayBoards.length === 0) return;
     if (!effectiveSelectedBoardId) return;
     if (boardParam === effectiveSelectedBoardId) return;
 
     navigateToBoard(effectiveSelectedBoardId, "replace");
-  }, [boards, boardParam, effectiveSelectedBoardId, navigateToBoard]);
+  }, [displayBoards, boardParam, effectiveSelectedBoardId, navigateToBoard]);
 
   useEffect(() => {
     if (!isConvexAuthenticated || !effectiveSelectedBoardId) {
@@ -1155,23 +1224,51 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   }
 
   async function handleBoardReorder(sourceBoardId: Id<"boards">, targetBoardId: Id<"boards">) {
-    if (!boards || sourceBoardId === targetBoardId) return;
+    if (!displayBoards || sourceBoardId === targetBoardId) return;
 
-    const sourceBoard = boards.find((board) => board._id === sourceBoardId);
-    const targetBoard = boards.find((board) => board._id === targetBoardId);
+    const sourceBoard = displayBoards.find((board) => board._id === sourceBoardId);
+    const targetBoard = displayBoards.find((board) => board._id === targetBoardId);
 
     if (!sourceBoard?.isOwner || !targetBoard?.isOwner) {
       return;
     }
 
-    const orderedIds = boards.filter((board) => board.isOwner).map((board) => board._id);
+    const ownedBoards = displayBoards.filter((board) => board.isOwner);
+    const orderedIds = ownedBoards.map((board) => board._id);
     const sourceIndex = orderedIds.indexOf(sourceBoardId);
     const targetIndex = orderedIds.indexOf(targetBoardId);
 
     if (sourceIndex < 0 || targetIndex < 0) return;
 
-    const next = arrayMove(orderedIds, sourceIndex, targetIndex);
-    await reorderBoards({ boardIds: next });
+    const nextOrderedIds = arrayMove(orderedIds, sourceIndex, targetIndex);
+    const ownedBoardById = new Map(ownedBoards.map((board) => [String(board._id), board]));
+    let ownedIndex = 0;
+    const nextBoards = displayBoards.map((board) => {
+      if (!board.isOwner) {
+        return board;
+      }
+
+      const nextBoard = ownedBoardById.get(String(nextOrderedIds[ownedIndex]));
+      ownedIndex += 1;
+      return nextBoard ?? board;
+    });
+
+    setOptimisticBoards(nextBoards);
+
+    const run = boardReorderQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        await reorderBoards({ boardIds: nextOrderedIds });
+      });
+
+    boardReorderQueueRef.current = run;
+
+    try {
+      await run;
+    } catch (error) {
+      setOptimisticBoards(null);
+      toast.error(error instanceof Error ? error.message : "Failed to save board order");
+    }
   }
 
   function handleBoardDragStart(event: DragStartEvent) {
@@ -1343,8 +1440,23 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
     setActiveDragCardId(null);
 
-    void applyCardLayout(layoutPayload).catch(() => {
-      setDragColumns(null);
+    const requestId = latestCardLayoutRequestRef.current + 1;
+    latestCardLayoutRequestRef.current = requestId;
+
+    const run = cardLayoutQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        await applyCardLayout(layoutPayload);
+      });
+
+    cardLayoutQueueRef.current = run;
+
+    void run.catch((error) => {
+      if (latestCardLayoutRequestRef.current === requestId) {
+        setDragColumns(null);
+      }
+
+      toast.error(error instanceof Error ? error.message : "Failed to save card order");
     });
   }
 
@@ -1491,11 +1603,11 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
           <div className={`${isSidebarCollapsed ? "lg:hidden" : ""} flex h-full min-h-0 flex-col`}>
             <div className="hide-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-              {boards === undefined ? (
+              {displayBoards === undefined ? (
                 <div className="px-1 py-1 text-xs text-zinc-500 dark:text-zinc-400">Loading boards...</div>
               ) : null}
 
-              {boards && boards.length > 0 ? (
+              {displayBoards && displayBoards.length > 0 ? (
                 <DndContext
                   sensors={boardSensors}
                   collisionDetection={closestCorners}
@@ -1503,8 +1615,8 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                   onDragEnd={handleBoardDragEnd}
                   onDragCancel={handleBoardDragCancel}
                 >
-                  <SortableContext items={boards.map((board) => String(board._id))} strategy={verticalListSortingStrategy}>
-                    {boards.map((board) => (
+                  <SortableContext items={displayBoards.map((board) => String(board._id))} strategy={verticalListSortingStrategy}>
+                    {displayBoards.map((board) => (
                       <BoardSidebarItem
                         key={board._id}
                         board={board}
@@ -1523,7 +1635,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                 </DndContext>
               ) : null}
 
-              {boards && boards.length === 0 ? (
+              {displayBoards && displayBoards.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-zinc-300 px-3 py-4 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
                   No boards yet.
                 </div>
@@ -1642,11 +1754,11 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
         </aside>
 
         <main className="hide-scrollbar relative min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain bg-zinc-50 p-3 dark:bg-zinc-900 lg:p-4">
-          {!boards || (boards.length > 0 && boardView === undefined) ? (
+          {!displayBoards || (displayBoards.length > 0 && boardView === undefined) ? (
             <div className="px-1 py-2 text-sm text-zinc-500 dark:text-zinc-400">Loading board...</div>
           ) : null}
 
-          {boards?.length === 0 ? (
+          {displayBoards?.length === 0 ? (
             <EmptyState
               title="Create your first board"
               description="Once a board exists, you can add cards and start moving work between stages."
@@ -1774,7 +1886,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           key={activeCard._id}
           card={activeCard}
           columns={boardView.columns}
-          boards={boards ?? []}
+          boards={displayBoards ?? []}
           agentOptions={filterBoardAgentOptions(sidebarAgentOptions, boardView.board.allowedAgentIds)}
           skillOptions={sidebarSkillOptions}
           modelOptions={sidebarModelOptions}
