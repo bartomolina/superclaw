@@ -1796,9 +1796,9 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                   <DragOverlay>
                     {activeDragCard ? (
                       <div className="w-[220px] rounded-lg border border-zinc-200 bg-white px-3 py-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
-                        <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{activeDragCard.title}</div>
+                        <div className="break-words text-sm font-medium text-zinc-900 dark:text-zinc-100">{activeDragCard.title}</div>
                         {summarize(activeDragCard.description) ? (
-                          <div className="mt-1 whitespace-pre-line text-xs text-zinc-500 dark:text-zinc-400">
+                          <div className="mt-1 whitespace-pre-line break-words text-xs text-zinc-500 dark:text-zinc-400">
                             {summarize(activeDragCard.description)}
                           </div>
                         ) : null}
@@ -2597,11 +2597,11 @@ function KanbanCard({
             <span className="pointer-events-none absolute inset-0 rounded-[inherit] transition-shadow duration-200 shadow-[0_0_0_1px_rgba(56,189,248,0.2)] group-hover:shadow-[0_0_0_1px_rgba(56,189,248,0.44),0_0_24px_-16px_rgba(56,189,248,0.85)]" />
           </>
         ) : null}
-        <div className="relative">
+        <div className="relative min-w-0">
         <div className="flex items-start justify-between gap-2">
-          <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{card.title}</div>
+          <div className="break-words text-sm font-medium text-zinc-900 dark:text-zinc-100">{card.title}</div>
         </div>
-        {summary ? <div className="mt-1 whitespace-pre-line text-xs text-zinc-500 dark:text-zinc-400">{summary}</div> : null}
+        {summary ? <div className="mt-1 whitespace-pre-line break-words text-xs text-zinc-500 dark:text-zinc-400">{summary}</div> : null}
         {cardMetaTags.length > 0 || hasAssignee || hasReviewer ? (
           <div className="mt-2 flex items-start justify-between gap-2">
             {cardMetaTags.length > 0 ? (
