@@ -1,6 +1,5 @@
 import { ImageResponse } from "next/og";
 
-const APP_ORANGE = "#f97316";
 const EMOJI_FONT_STACK = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
 
 export const size = {
@@ -20,7 +19,7 @@ export default function Icon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: APP_ORANGE,
+          background: "transparent",
           fontSize: 300,
           lineHeight: 1,
           fontFamily: EMOJI_FONT_STACK,
