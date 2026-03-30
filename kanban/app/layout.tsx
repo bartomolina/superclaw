@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
+const LOBSTER_EMOJI_FAVICON =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A6%9E%3C/text%3E%3C/svg%3E";
+
 export const metadata: Metadata = {
   title: "Kanban",
   description: "Kanban board for the SuperClaw companion suite.",
@@ -15,8 +18,8 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
   },
   icons: {
-    icon: "/icon",
-    shortcut: "/icon",
+    icon: LOBSTER_EMOJI_FAVICON,
+    shortcut: LOBSTER_EMOJI_FAVICON,
     apple: "/apple-icon",
   },
 };
