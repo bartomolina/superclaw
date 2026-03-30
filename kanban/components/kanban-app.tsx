@@ -32,7 +32,7 @@ import { ExtensionAccessSheet } from "@/components/extension-access-sheet";
 import { InboxDebugSheet } from "@/components/inbox-debug-sheet";
 import { UserManagementSheet } from "@/components/user-management-sheet";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -819,7 +819,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const isSuperuser = viewer?.isSuperuser === true;
   const isFullScreenModalOpen = Boolean(editingBoard || activeCardId);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const baseTitle = "Kanban";
     const nextTitle = selectedBoard?.name?.trim() ? `${baseTitle} - ${selectedBoard.name}` : baseTitle;
     document.title = nextTitle;

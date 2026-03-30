@@ -3,7 +3,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Dashboard",
+  title: "Dashboard - Agents",
   description: "OpenClaw operations dashboard",
   applicationName: "Dashboard",
   icons: {
