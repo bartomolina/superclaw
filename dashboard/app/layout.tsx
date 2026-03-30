@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   applicationName: "Dashboard",
   icons: {
     icon: "/icon",
-    shortcut: "/favicon.ico",
+    shortcut: "/icon",
     apple: "/apple-icon",
   },
 };

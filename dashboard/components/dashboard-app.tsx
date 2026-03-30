@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { BarChart3, Gauge, Layers, LogOut, Moon, Puzzle, RefreshCw, Server, Sun, Terminal, Users, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 
@@ -35,6 +35,11 @@ function documentTitleForPage(page: Page) {
   return label ? `Dashboard - ${label}` : "Dashboard";
 }
 
+function syncDocumentTitle(page: Page) {
+  if (typeof document === "undefined") return;
+  document.title = documentTitleForPage(page);
+}
+
 export default function App() {
   const { dark, toggle: toggleTheme } = useTheme();
   const [authenticated, setAuthenticated] = useState(false);
@@ -50,9 +55,7 @@ export default function App() {
   );
   const setPage = (p: Page) => {
     setPageState(p);
-    if (typeof document !== "undefined") {
-      document.title = documentTitleForPage(p);
-    }
+    syncDocumentTitle(p);
     if (typeof window !== "undefined") {
       window.location.hash = p;
     }
@@ -108,12 +111,12 @@ export default function App() {
     );
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return;
 
     const syncPageFromHash = () => {
       const nextPage = pageFromHash(window.location.hash);
-      document.title = documentTitleForPage(nextPage);
+      syncDocumentTitle(nextPage);
       setPageState((current) => (current === nextPage ? current : nextPage));
     };
 
@@ -167,9 +170,9 @@ export default function App() {
     }
   }, [navItems, page]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const effectivePage = navItems.some((item) => item.id === page) ? page : "agents";
-    document.title = documentTitleForPage(effectivePage);
+    syncDocumentTitle(effectivePage);
   }, [navItems, page]);
 
   const fetchAll = useCallback(async () => {
