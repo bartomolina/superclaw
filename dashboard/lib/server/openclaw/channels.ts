@@ -7,9 +7,9 @@ import { optionalAgentId } from "@/lib/server/validate";
 import { readLocalConfig } from "@/lib/server/openclaw/config";
 import { OPENCLAW_HOME } from "@/lib/server/openclaw/constants";
 import { json } from "@/lib/server/openclaw/http";
-import { runtimeGatewayRequest } from "@/lib/server/openclaw/runtime-gateway";
+import { runOpenClawJson } from "@/lib/server/openclaw/cli";
 
-function readAllowFrom(channel: string, accountId: string) {
+function readStoredAllowFrom(channel: string, accountId: string) {
   try {
     const suffix = accountId === "default" ? "default" : accountId;
     const content = readFileSync(path.join(OPENCLAW_HOME, "credentials", `${channel}-${suffix}-allowFrom.json`), "utf8");
@@ -20,19 +20,29 @@ function readAllowFrom(channel: string, accountId: string) {
   }
 }
 
-export function mapChannelsByAgent(channelsData: any, sessionsData: any, configRaw: any, defaultAgentId: string | null) {
+function readConfigAllowFrom(channelId: string, accountId: string, configRaw: any) {
+  const channelConfig = configRaw.channels?.[channelId] || {};
+  const accountConfig = channelConfig.accounts?.[accountId] || {};
+  const topLevelAllowFrom = Array.isArray(channelConfig.allowFrom) ? channelConfig.allowFrom : [];
+  const accountAllowFrom = Array.isArray(accountConfig.allowFrom) ? accountConfig.allowFrom : null;
+
+  return (accountAllowFrom ?? topLevelAllowFrom).map((value: unknown) => String(value));
+}
+
+function mergeAllowedUsers(configIds: string[], storedIds: string[]) {
+  const merged = new Map<string, "config" | "stored" | "both">();
+
+  for (const id of configIds) merged.set(id, "config");
+  for (const id of storedIds) merged.set(id, merged.has(id) ? "both" : "stored");
+
+  return [...merged.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, source]) => ({ id, name: id, source }));
+}
+
+export function mapChannelsByAgent(channelsData: any, configRaw: any, defaultAgentId: string | null) {
   const bindings = configRaw.bindings || [];
   const accountsByAgent: Record<string, any[]> = {};
-  const sessionNamesByPeerId: Record<string, string> = {};
-
-  for (const session of sessionsData.sessions || []) {
-    if (session.origin?.provider && session.origin?.from && session.displayName) {
-      const peerId = String(session.origin.from).split(":").pop();
-      if (peerId && !sessionNamesByPeerId[peerId]) {
-        sessionNamesByPeerId[peerId] = String(session.displayName).replace(/\s*id:\d+$/, "");
-      }
-    }
-  }
 
   const channelAccounts = channelsData.channelAccounts || {};
   for (const [channelId, accounts] of Object.entries(channelAccounts)) {
@@ -44,8 +54,9 @@ export function mapChannelsByAgent(channelsData: any, sessionsData: any, configR
       const agentId = binding?.agentId || defaultAgentId || "main";
       if (!accountsByAgent[agentId]) accountsByAgent[agentId] = [];
 
-      const allowFrom = readAllowFrom(String(channelId), account.accountId);
-      const pairedUsers = allowFrom.map((id: string) => ({ id, name: sessionNamesByPeerId[id] || id }));
+      const configAllowFrom = readConfigAllowFrom(String(channelId), account.accountId, configRaw);
+      const storedAllowFrom = readStoredAllowFrom(String(channelId), account.accountId);
+      const pairedUsers = mergeAllowedUsers(configAllowFrom, storedAllowFrom);
 
       const accountConfig = configRaw.channels?.[channelId]?.accounts?.[account.accountId] || {};
       const topLevelGroups = account.accountId === "default" ? configRaw.channels?.[channelId]?.groups || {} : {};
@@ -71,7 +82,7 @@ export function mapChannelsByAgent(channelsData: any, sessionsData: any, configR
         name: label,
         detail: detailLabel,
         running: account.running ?? false,
-        mode: account.mode ?? null,
+        mode: account.mode || null,
         streaming: channelId === "telegram" ? streaming : null,
         pairedUsers,
         groups,
@@ -90,17 +101,11 @@ export async function handleAgentChannels(agentIdRaw: string) {
   const config = readLocalConfig();
   const defaultAgentId = config.agents?.defaults?.id || null;
 
-  const [channelsData, sessionsData] = await Promise.all([
-    runtimeGatewayRequest<any>("channels.status", {}, 5_000).catch((error) => {
-      warnings.push(`channels.status: ${error instanceof Error ? error.message : String(error)}`);
-      return { channelAccounts: {} };
-    }),
-    runtimeGatewayRequest<any>("sessions.list", {}, 5_000).catch((error) => {
-      warnings.push(`sessions.list: ${error instanceof Error ? error.message : String(error)}`);
-      return { sessions: [] };
-    }),
-  ]);
+  const channelsData = await runOpenClawJson<any>(["channels", "status", "--json"], { channelAccounts: {} }, { timeoutMs: 10_000 }).catch((error) => {
+    warnings.push(`channels.status: ${error instanceof Error ? error.message : String(error)}`);
+    return { channelAccounts: {} };
+  });
 
-  const accountsByAgent = mapChannelsByAgent(channelsData, sessionsData, config, defaultAgentId);
+  const accountsByAgent = mapChannelsByAgent(channelsData, config, defaultAgentId);
   return json({ channels: accountsByAgent[agentId] || [], warnings });
 }

@@ -35,6 +35,7 @@ export function ModelsPage({
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [addingModelKey, setAddingModelKey] = useState<string | null>(null);
   const [removingModelKey, setRemovingModelKey] = useState<string | null>(null);
+  const [removingFallbacks, setRemovingFallbacks] = useState(false);
   const [settingPrimary, setSettingPrimary] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
@@ -120,12 +121,42 @@ export function ModelsPage({
     }
   }
 
+  async function handleClearFallbacks() {
+    if (removingFallbacks || fallbacks.length === 0) return;
+
+    setRemovingFallbacks(true);
+    try {
+      const res = await fetch("/api/models/clear-fallbacks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Failed to clear fallback models");
+      await onRefresh();
+      toast.success(data.cleared > 0 ? `Cleared fallback status from ${data.cleared} model${data.cleared === 1 ? "" : "s"}` : "No fallback models to clear");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to clear fallback models");
+    } finally {
+      setRemovingFallbacks(false);
+    }
+  }
+
   const configuredKeys = new Set(configuredModels.map((m) => m.id));
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200 mb-3">Configured Models</h2>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">Configured Models</h2>
+          <button
+            onClick={handleClearFallbacks}
+            disabled={fallbacks.length === 0 || removingFallbacks}
+            className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs text-zinc-600 dark:text-zinc-400 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {removingFallbacks ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            {removingFallbacks ? "Clearing..." : `Clear fallbacks${fallbacks.length > 0 ? ` (${fallbacks.length})` : ""}`}
+          </button>
+        </div>
         <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl overflow-hidden shadow-sm dark:shadow-none">
           {configuredModels.length === 0 ? (
             <div className="p-5 text-sm text-zinc-400 dark:text-zinc-500">No models configured</div>

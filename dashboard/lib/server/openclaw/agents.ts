@@ -14,6 +14,7 @@ import { runOpenClaw, runOpenClawJson } from "@/lib/server/openclaw/cli";
 import { applyConfig, getConfigDocument, parseConfigRaw, readLocalConfig } from "@/lib/server/openclaw/config";
 import { OPENCLAW_HOME } from "@/lib/server/openclaw/constants";
 import { listCrons } from "@/lib/server/openclaw/crons";
+import { mapChannelsByAgent } from "@/lib/server/openclaw/channels";
 import {
   getAgentHeartbeatFile,
   getAgentIdentityFile,
@@ -312,6 +313,11 @@ async function buildAgentResponse(): Promise<AgentsListResponse> {
     };
   });
   const defaultModel = localConfig.agents?.defaults?.model ?? {};
+  const channelsData = await runOpenClawJson<any>(["channels", "status", "--json"], { channelAccounts: {} }, { timeoutMs: 10_000 }).catch((error) => {
+    addWarning(warnings, "openclaw channels status", error);
+    return { channelAccounts: {} };
+  });
+  const accountsByAgent = mapChannelsByAgent(channelsData, localConfig, defaultId || defaults.id || null);
 
   const agents: DashboardAgent[] = baseAgents.map((agent) => {
     const agentConfig = configuredAgents.find((entry: any) => entry.id === agent.id) || {};
@@ -345,7 +351,7 @@ async function buildAgentResponse(): Promise<AgentsListResponse> {
       isDefault,
       sandboxed,
       workspaceAccess: agentConfig.sandbox?.workspaceAccess ?? null,
-      channels: [],
+      channels: accountsByAgent[agent.id] || [],
       skills: [],
       models: models.length > 0 ? models : availableModels,
       heartbeat: {

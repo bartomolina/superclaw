@@ -15,8 +15,8 @@ export interface ChipSection {
   icon: typeof Cpu;
 }
 
-const DEFAULT_AGENT_FILE_NAMES = new Set(["AGENTS.md", "BOOTSTRAP.md", "HEARTBEAT.md", "MEMORY.md"]);
-const IDENTITY_FILE_NAMES = new Set(["IDENTITY.md", "SOUL.md", "USER.md", "TOOLS.md"]);
+const DEFAULT_AGENT_FILE_NAMES = new Set(["AGENTS.md", "BOOTSTRAP.md", "HEARTBEAT.md"]);
+const IDENTITY_FILE_NAMES = new Set(["IDENTITY.md", "SOUL.md", "USER.md", "TOOLS.md", "MEMORY.md"]);
 
 interface AgentChipsProps {
   agent: Agent;
@@ -116,11 +116,16 @@ export function AgentChips({ agent, uniqueSkills, sections, onRefreshData, onOpe
                     </div>
                     {(c.pairedUsers.length > 0 || c.groups.length > 0) && (
                       <div className="flex flex-wrap gap-1.5 mt-1 ml-0.5">
-                        {c.pairedUsers.map((u) => (
-                          <span key={u.id} className="text-[11px] px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-700/40 text-zinc-500 dark:text-zinc-400">
-                            {u.name}
-                          </span>
-                        ))}
+                        {c.pairedUsers.map((u) => {
+                          const sourceLabel = u.source === "both" ? "allow+stored" : u.source === "config" ? "allow" : u.source === "stored" ? "stored" : null;
+
+                          return (
+                            <span key={u.id} className="text-[11px] px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-700/40 text-zinc-500 dark:text-zinc-400">
+                              {u.name}
+                              {sourceLabel ? <span className="ml-1 text-[10px] text-zinc-400 dark:text-zinc-500">· {sourceLabel}</span> : null}
+                            </span>
+                          );
+                        })}
                         {c.groups.map((g) => {
                           const replyMode = g.requireMention ? "mention only" : "all messages";
                           const access = g.groupPolicy;

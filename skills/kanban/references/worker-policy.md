@@ -50,17 +50,29 @@ Deterministic worker call sequence:
 7. Use the provided `sessionId` with the normal tracked writes (`/comment`, `/transition`, `/session/finish`).
 8. Do not call `/tasks` during normal worker execution unless the user explicitly asks for debugging/raw inspection.
 
+Comment-thread interpretation:
+- Treat each card's comments as one chronological task thread, read oldest to newest.
+- A card may contain normal back-and-forth between the human and the agent; treat that as one ongoing task conversation, not as separate tasks.
+- Prioritize the latest unresolved human request, blocker, or review handoff.
+- If a newer comment clearly supersedes an older request, follow the newer request and address any still-open earlier point only if it remains relevant.
+- For tracked manual runs, if `targets[].comments` is present, treat that thread as the authoritative conversation context for that run.
+- If a card appears in `ideas` or `review` because the agent was not the last commenter, interpret that as the ball being back in the agent's court.
+
 ## 2) API endpoints
 
 Base URL: `https://<deployment>.convex.site/agent/kanban`
 
 - `GET /inbox`
-  - Preferred worker endpoint.
+  - Preferred worker endpoint for normal scheduled runs.
   - Returns grouped actionable items for the current agent, by board.
   - Includes:
     - `ideas`: cards where the agent is involved and was not the last commenter
     - `todos`: assignee cards in `TODO`
     - `review`: cards in `Review` where the agent is involved and was not the last commenter
+- `GET /session/targets?sessionId=<sessionId>`
+  - Preferred target source for tracked manual runs.
+  - Returns the authoritative card list for that run.
+  - If `targets[].comments` is present, treat it as the authoritative comment thread for the card during that run.
 - `GET /tasks?includeDone=1`
   - Raw/debug endpoint.
   - Returns tasks where the current agent is involved, with role and last-comment metadata.
@@ -126,7 +138,7 @@ Use these rules for autonomous cron-style runs:
 ### Review
 
 - The inbox only includes these when someone else commented last.
-- Read the latest context before acting.
+- Read the thread in order before acting, then respond to the latest unresolved human request or review handoff.
 - If the right move is a reply, leave one concise reply.
 - If the right move is implementation follow-up, transition `Review -> In Progress`, do the work, and return to `Review` when ready.
 - Keep review follow-up conservative even when multiple TODO cards are allowed in the same run.

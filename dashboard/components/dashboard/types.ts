@@ -1,4 +1,4 @@
-export type PairedUser = { id: string; name: string };
+export type PairedUser = { id: string; name: string; source?: "config" | "stored" | "both" };
 export type ChannelGroup = { id: string; requireMention: boolean; groupPolicy: string };
 export type Channel = {
   id: string;

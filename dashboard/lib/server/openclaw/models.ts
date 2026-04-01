@@ -12,21 +12,45 @@ let modelsCacheInFlight: Promise<Record<string, any[]>> | null = null;
 
 async function loadModelsCatalog() {
   const data = await runOpenClawJson<{ models?: Array<any> }>(["models", "list", "--all", "--json"], {}, { timeoutMs: 15_000 });
-  const byProvider: Record<string, any[]> = {};
+  const byProvider = new Map<string, Map<string, { key: string; name: string; input: string | null; contextWindow: number; available: boolean }>>();
 
   for (const model of data.models || []) {
-    const provider = String(model.key).split("/")[0];
-    byProvider[provider] = byProvider[provider] || [];
-    byProvider[provider].push({
-      key: model.key,
-      name: model.name,
-      input: model.input,
-      contextWindow: model.contextWindow,
-      available: model.available ?? true,
+    const key = String(model.key || "");
+    if (!key) continue;
+
+    const provider = key.split("/")[0];
+    if (!provider) continue;
+
+    if (!byProvider.has(provider)) byProvider.set(provider, new Map());
+    const providerModels = byProvider.get(provider)!;
+    const existing = providerModels.get(key);
+
+    if (!existing) {
+      providerModels.set(key, {
+        key,
+        name: model.name || key,
+        input: model.input || null,
+        contextWindow: Number(model.contextWindow) || 0,
+        available: model.available ?? true,
+      });
+      continue;
+    }
+
+    providerModels.set(key, {
+      key,
+      name: existing.name || model.name || key,
+      input: existing.input || model.input || null,
+      contextWindow: Math.max(existing.contextWindow, Number(model.contextWindow) || 0),
+      available: existing.available || Boolean(model.available ?? true),
     });
   }
 
-  return byProvider;
+  return Object.fromEntries(
+    Array.from(byProvider.entries()).map(([provider, models]) => [
+      provider,
+      Array.from(models.values()).sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key)),
+    ]),
+  );
 }
 
 export async function getModelsCatalog() {
@@ -171,6 +195,27 @@ export async function handleModelsRemove(req: NextRequest) {
 
   await applyConfig(JSON.stringify(raw, null, 2), config.hash);
   return json({ ok: true });
+}
+
+export async function handleModelsClearFallbacks() {
+  const config = await getConfigDocument();
+  const raw = parseConfigRaw(config.raw, {} as any);
+  const fallbackModels = Array.isArray(raw.agents?.defaults?.model?.fallbacks)
+    ? raw.agents.defaults.model.fallbacks.filter((modelKey: string) => Boolean(modelKey))
+    : [];
+
+  if (fallbackModels.length === 0) {
+    return json({ ok: true, cleared: 0 });
+  }
+
+  if (!raw.agents) raw.agents = {};
+  if (!raw.agents.defaults) raw.agents.defaults = {};
+  if (!raw.agents.defaults.model) raw.agents.defaults.model = {};
+
+  raw.agents.defaults.model.fallbacks = [];
+
+  await applyConfig(JSON.stringify(raw, null, 2), config.hash);
+  return json({ ok: true, cleared: fallbackModels.length });
 }
 
 export async function handleModelsSetPrimary(req: NextRequest) {

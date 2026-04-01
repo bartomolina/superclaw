@@ -142,6 +142,8 @@ export function CreateAgentForm({ onRefresh, open, onClose }: CreateAgentFormPro
   );
 }
 
+const DISALLOWED_CONFIG_SENTINELS = ["__OPENCLAW_KEEP__"];
+
 interface ConfigModalProps {
   onRefresh: () => Promise<void>;
 }
@@ -182,6 +184,12 @@ export function ConfigModal({ onRefresh }: ConfigModalProps) {
             successMessage="Saved config and restarted gateway."
             onSave={async (content) => {
               JSON5.parse(content);
+              const found = DISALLOWED_CONFIG_SENTINELS.find((sentinel) => content.includes(sentinel));
+              if (found) {
+                throw new Error(
+                  `Config still contains ${found}. Replace it with a real token or remove the field before saving.`
+                );
+              }
               const res = await fetch("/api/config", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json", ...authHeaders() },

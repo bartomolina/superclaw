@@ -1,10 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { runtimeGatewayRequest } from "@/lib/server/openclaw/runtime-gateway";
+import { runOpenClaw } from "@/lib/server/openclaw/cli";
 
 export type SkillOption = {
   name: string;
   emoji?: string;
   eligible?: boolean;
+};
+
+type SkillsListResponse = {
+  skills?: Array<{
+    name?: string;
+    emoji?: string;
+    eligible?: boolean;
+  }>;
 };
 
 const SKILL_OPTIONS_TTL_MS = 10_000;
@@ -16,20 +24,44 @@ let skillOptionsCache:
     }
   | null = null;
 
+function parseCliJson<T>(stdout: string, stderr: string, fallback: T): T {
+  const candidates = [stdout, stderr]
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .map((text) => {
+      const objectStart = text.indexOf("{");
+      if (objectStart >= 0) return text.slice(objectStart);
+
+      const arrayStart = text.indexOf("[");
+      return arrayStart >= 0 ? text.slice(arrayStart) : text;
+    });
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as T;
+    } catch {
+      // Try next candidate.
+    }
+  }
+
+  return fallback;
+}
+
 export async function fetchSkillOptions(): Promise<SkillOption[]> {
   const now = Date.now();
   if (skillOptionsCache && skillOptionsCache.expiresAt > now) {
     return skillOptionsCache.value;
   }
 
-  let status: any = {};
+  let data: SkillsListResponse = { skills: [] };
   try {
-    status = (await runtimeGatewayRequest<any>("skills.status", {}, 5_000)) || {};
+    const { stdout, stderr } = await runOpenClaw(["skills", "list", "--json"], { timeoutMs: 12_000 });
+    data = parseCliJson<SkillsListResponse>(stdout, stderr, { skills: [] });
   } catch {
     return [];
   }
 
-  const value = (status.skills ?? [])
+  const value = (data.skills ?? [])
     .filter((skill: any): skill is { name: string; emoji?: string; eligible?: boolean } =>
       typeof skill?.name === "string" && skill.name.trim().length > 0,
     )

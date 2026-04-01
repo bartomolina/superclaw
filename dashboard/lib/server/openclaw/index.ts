@@ -1,16 +1,18 @@
+export { handleAccountsList } from "@/lib/server/openclaw/accounts";
 export { isAuthorized, handleVerify } from "@/lib/server/openclaw/auth";
 export { gatewayCall, runOpenClaw, runOpenClawJson } from "@/lib/server/openclaw/cli";
 export { handleAgentChannels } from "@/lib/server/openclaw/channels";
-export { applyConfig, getConfigDocument, handleConfigGet, handleConfigPut, parseConfigRaw, readLocalConfig } from "@/lib/server/openclaw/config";
+export { handleConfigGet, handleConfigPut, parseConfigRaw, readLocalConfig, getConfigDocument, applyConfig } from "@/lib/server/openclaw/config";
+export { handleConvexDeployments } from "@/lib/server/openclaw/convex";
 export { handleCronModel, handleCronsList } from "@/lib/server/openclaw/crons";
 export { handleCaddyStatus } from "@/lib/server/openclaw/caddy";
 export { handleDebugWs, handleFeatures, isDebugRpcEnabled } from "@/lib/server/openclaw/debug";
 export { handleAgentFileGet, handleAgentFilePut, handleAgentFilesList, handleAvatar, parseAvatarFromIdentity } from "@/lib/server/openclaw/files";
 export { errorResponse, json, parseBody } from "@/lib/server/openclaw/http";
-export { handleModelsAdd, handleModelsCatalogProvider, handleModelsCatalogProviders, handleModelsGet, handleModelsRemove, handleModelsSetPrimary } from "@/lib/server/openclaw/models";
 export { handleKanbanWorkerStatus } from "@/lib/server/openclaw/kanban-runtime";
 export { handleMcpList } from "@/lib/server/openclaw/mcp";
-export { handleVercelDomains } from "@/lib/server/openclaw/vercel";
+export { handleModelsAdd, handleModelsCatalogProvider, handleModelsCatalogProviders, handleModelsClearFallbacks, handleModelsGet, handleModelsRemove, handleModelsSetPrimary } from "@/lib/server/openclaw/models";
+export { handleReposList } from "@/lib/server/openclaw/repos";
 export { handleAgentSkills, handleSkills } from "@/lib/server/openclaw/skills";
 export { getInstalledOpenClawVersion, handleGatewayStatus, handlePerformance, handleUsage } from "@/lib/server/openclaw/status";
 export {
@@ -22,4 +24,5 @@ export {
   handleCreateAgent,
   handleDeleteAgent,
 } from "@/lib/server/openclaw/agents";
+export { handleVercelDomains } from "@/lib/server/openclaw/vercel";
 export type { AgentsListResponse, DashboardAgent, DashboardModel } from "@/lib/server/openclaw/types";

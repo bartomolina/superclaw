@@ -1,34 +1,43 @@
 import path from "path";
 
+import { runCommand } from "@/lib/server/command";
 import { json } from "@/lib/server/openclaw/http";
-import { runOpenClawJson } from "@/lib/server/openclaw/cli";
 
-type RawMcpServer = {
-  type?: string;
-  url?: string;
+type McporterServer = {
+  name?: string;
+  transport?: string;
+  baseUrl?: string;
   command?: string;
   args?: string[];
-  headers?: Array<{ name?: string }>;
+  headers?: Record<string, string>;
   env?: Record<string, string>;
   cwd?: string;
   workingDirectory?: string;
+  source?: {
+    kind?: string;
+    path?: string;
+  };
 };
 
-function inferTransport(name: string, server: RawMcpServer) {
-  const type = typeof server.type === "string" ? server.type : "";
-  if (type) return type;
-  if (typeof server.url === "string" && server.url) return "http";
+const HOME_DIR = process.env.HOME || "/root";
+const OPENCLAW_HOME = path.join(HOME_DIR, ".openclaw");
+const MAIN_WORKSPACE = path.join(OPENCLAW_HOME, "workspace");
+const MCPORTER_BIN = "mcporter";
+
+function inferTransport(server: McporterServer) {
+  if (typeof server.transport === "string" && server.transport) return server.transport;
+  if (typeof server.baseUrl === "string" && server.baseUrl) return "http";
   if (typeof server.command === "string" && server.command) return "stdio";
-  return name;
+  return "unknown";
 }
 
-function summarizeTarget(server: RawMcpServer) {
-  if (typeof server.url === "string" && server.url) {
+function summarizeTarget(server: McporterServer) {
+  if (typeof server.baseUrl === "string" && server.baseUrl) {
     try {
-      const url = new URL(server.url);
+      const url = new URL(server.baseUrl);
       return url.host || url.origin;
     } catch {
-      return server.url;
+      return server.baseUrl;
     }
   }
 
@@ -39,19 +48,32 @@ function summarizeTarget(server: RawMcpServer) {
   return null;
 }
 
-export async function handleMcpList() {
-  // OpenClaw now owns MCP registry config via `openclaw mcp` / `mcp.servers`.
-  // Read through the CLI and return a sanitized dashboard summary only.
-  const data = await runOpenClawJson<Record<string, RawMcpServer>>(["mcp", "list", "--json"], {});
+function hasAuth(server: McporterServer) {
+  const headerKeys = Object.keys(server.headers || {}).filter((key) => key.toLowerCase() !== "accept");
+  return headerKeys.length > 0 || Object.keys(server.env || {}).length > 0;
+}
 
-  const servers = Object.entries(data)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, server]) => ({
-      name,
-      transport: inferTransport(name, server),
+export async function handleMcpList() {
+  // MCP servers are now managed through mcporter project config in the main OpenClaw workspace.
+  // Read through mcporter and return a sanitized dashboard summary only.
+  const { stdout } = await runCommand(MCPORTER_BIN, ["config", "list", "--json"], {
+    cwd: MAIN_WORKSPACE,
+    timeoutMs: 15_000,
+  });
+
+  const parsed = JSON.parse(stdout || "{}") as {
+    servers?: McporterServer[];
+  };
+
+  const servers = (parsed.servers || [])
+    .slice()
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+    .map((server) => ({
+      name: server.name || "unnamed",
+      transport: inferTransport(server),
       target: summarizeTarget(server),
-      url: typeof server.url === "string" ? server.url : null,
-      hasAuth: (server.headers?.length || 0) > 0 || Object.keys(server.env || {}).length > 0,
+      url: typeof server.baseUrl === "string" ? server.baseUrl : null,
+      hasAuth: hasAuth(server),
       workingDirectory: server.workingDirectory || server.cwd || null,
       argsCount: Array.isArray(server.args) ? server.args.length : 0,
     }));

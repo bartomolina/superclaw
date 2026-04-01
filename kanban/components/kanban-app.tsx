@@ -22,7 +22,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useConvexAuth, useMutation, useQueries, useQuery } from "convex/react";
-import { Chrome, Clock3, ExternalLink, Eye, EyeOff, Hash, Menu, Moon, Play, Send, Sun, UserRound, Users, X } from "lucide-react";
+import { Chrome, Clock3, ExternalLink, Eye, EyeOff, Hash, Menu, Moon, Play, Search, Send, Sun, UserRound, Users, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -32,7 +32,7 @@ import { ExtensionAccessSheet } from "@/components/extension-access-sheet";
 import { InboxDebugSheet } from "@/components/inbox-debug-sheet";
 import { UserManagementSheet } from "@/components/user-management-sheet";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -195,6 +195,13 @@ function summarize(text?: string) {
   const normalized = text?.replace(/\r\n?/g, "\n").trim();
   if (!normalized) return "";
   return normalized.length > 120 ? `${normalized.slice(0, 117).trimEnd()}...` : normalized;
+}
+
+function cardMatchesSearch(card: Pick<CardModel, "title" | "description">, query: string) {
+  if (query.length < 2) return true;
+
+  const haystack = `${card.title}\n${card.description ?? ""}`.toLowerCase();
+  return haystack.includes(query);
 }
 
 function maskEmail(email: string) {
@@ -735,6 +742,10 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [activeDragCardId, setActiveDragCardId] = useState<Id<"cards"> | null>(null);
   const [dragColumns, setDragColumns] = useState<ColumnModel[] | null>(null);
   const [editingBoard, setEditingBoard] = useState<BoardModel | null>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -813,17 +824,33 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
   const selectedBoardName = selectedBoard?.name ?? "Kanban";
   const selectedBoardUrl = selectedBoard?.url;
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const title = selectedBoard?.name?.trim()
+      ? `Kanban - ${selectedBoard.name}`
+      : "Kanban";
+
+    const applyTitle = () => {
+      document.title = title;
+    };
+
+    applyTitle();
+    const frameId = window.requestAnimationFrame(applyTitle);
+    const timeoutId = window.setTimeout(applyTitle, 150);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [selectedBoard?.name, pathname, searchParams]);
   const selectedBoardAgentPolicyKey = JSON.stringify(
     (boardView?.board.allowedAgentIds ?? selectedBoard?.allowedAgentIds ?? []).slice().sort(),
   );
   const isSuperuser = viewer?.isSuperuser === true;
   const isFullScreenModalOpen = Boolean(editingBoard || activeCardId);
 
-  useLayoutEffect(() => {
-    const baseTitle = "Kanban";
-    const nextTitle = selectedBoard?.name?.trim() ? `${baseTitle} - ${selectedBoard.name}` : baseTitle;
-    document.title = nextTitle;
-  }, [selectedBoard?.name]);
 
   useEffect(() => {
     if (!optimisticBoards || !boards) return;
@@ -831,6 +858,25 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
     setOptimisticBoards(null);
   }, [boards, optimisticBoards]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setSearchQuery(searchDraft.trim().toLowerCase());
+    }, 180);
+
+    return () => window.clearTimeout(timeout);
+  }, [searchDraft]);
+
+  useEffect(() => {
+    if (!isSearchOpen) return;
+
+    const timeout = window.setTimeout(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    }, 80);
+
+    return () => window.clearTimeout(timeout);
+  }, [isSearchOpen]);
 
   useEffect(() => {
     if (!isMobileSidebarOpen) return;
@@ -1025,7 +1071,16 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   }, [boardView, activeCardId]);
 
   const dndColumns = useMemo(() => dragColumns ?? boardView?.columns ?? [], [dragColumns, boardView]);
+  const hasSearchInput = searchDraft.trim().length > 0;
+  const isSearchActive = searchQuery.length >= 2;
+  const visibleColumns = useMemo(() => {
+    if (!isSearchActive) return dndColumns;
 
+    return (boardView?.columns ?? []).map((column) => ({
+      ...column,
+      cards: column.cards.filter((card) => cardMatchesSearch(card, searchQuery)),
+    }));
+  }, [boardView, dndColumns, isSearchActive, searchQuery]);
   const boardColumnsSig = useMemo(() => columnsSignature(boardView?.columns ?? []), [boardView]);
   const dragColumnsSig = useMemo(() => columnsSignature(dragColumns ?? []), [dragColumns]);
   const runningAgentIdsForBoard = useMemo(() => {
@@ -1085,6 +1140,16 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     const timeout = window.setTimeout(() => setDragColumns(null), 0);
     return () => window.clearTimeout(timeout);
   }, [activeDragCardId, dragColumns, dragColumnsSig, boardColumnsSig]);
+
+  useEffect(() => {
+    if (!isSearchActive) return;
+    if (activeDragCardId) {
+      setActiveDragCardId(null);
+    }
+    if (dragColumns) {
+      setDragColumns(null);
+    }
+  }, [activeDragCardId, dragColumns, isSearchActive]);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -1462,7 +1527,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   }
 
   return (
-    <div className="flex h-[100dvh] min-h-[100dvh] max-h-[100dvh] flex-col overflow-hidden overscroll-none bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <div className="flex h-[100dvh] min-h-[100dvh] max-h-[100dvh] flex-col overflow-hidden overscroll-none bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <header className="sticky top-0 z-20 h-12 border-b border-zinc-200 bg-white/90 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-950/90">
         <div className="flex h-full w-full">
           <div
@@ -1520,6 +1585,66 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
             </div>
 
             <div className="flex items-center gap-1">
+              {isSearchOpen ? (
+                <div className="flex h-8 items-center gap-1 rounded-full border border-zinc-200 bg-white/95 pl-2 pr-1 shadow-sm shadow-zinc-950/5 transition dark:border-zinc-800 dark:bg-zinc-950/95">
+                  <Search className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+                  <input
+                    ref={searchInputRef}
+                    value={searchDraft}
+                    onChange={(event) => setSearchDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        if (searchDraft.trim()) {
+                          setSearchDraft("");
+                          setSearchQuery("");
+                        } else {
+                          setIsSearchOpen(false);
+                        }
+                      }
+                    }}
+                    placeholder="Search cards"
+                    aria-label="Search cards in this board"
+                    className="h-full w-28 bg-transparent text-[16px] text-zinc-900 outline-none placeholder:text-zinc-400 sm:w-56 sm:text-sm dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                  />
+                  {hasSearchInput ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchDraft("");
+                        setSearchQuery("");
+                        searchInputRef.current?.focus();
+                      }}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800/70 dark:hover:text-zinc-200"
+                      title="Clear search"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsSearchOpen(false)}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800/70 dark:hover:text-zinc-200"
+                      title="Close search"
+                      aria-label="Close search"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsSearchOpen(true)}
+                  className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-300"
+                  title="Search cards"
+                  aria-label="Search cards"
+                >
+                  <Search className="h-4 w-4" />
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => setIsExtensionAccessOpen(true)}
@@ -1774,38 +1899,42 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                   description="This board has no fixed columns. Delete it and recreate the board."
                 />
               ) : (
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCorners}
-                  onDragStart={handleCardDragStart}
-                  onDragOver={handleCardDragOver}
-                  onDragEnd={handleCardDragEnd}
-                  onDragCancel={handleCardDragCancel}
-                >
-                  <div className="flex min-w-max items-start gap-2.5 pb-16 pr-3">
-                    {dndColumns.map((column) => (
-                      <KanbanColumn
-                        key={column._id}
-                        column={column}
-                        accentClass={getColumnTone(column.name)}
-                        onOpenCard={(cardId) => setActiveCardId(cardId)}
-                      />
-                    ))}
-                  </div>
+                <>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCorners}
+                    onDragStart={handleCardDragStart}
+                    onDragOver={handleCardDragOver}
+                    onDragEnd={handleCardDragEnd}
+                    onDragCancel={handleCardDragCancel}
+                  >
+                    <div className="flex min-w-max items-start gap-2.5 pb-16 pr-3">
+                      {visibleColumns.map((column) => (
+                        <KanbanColumn
+                          key={column._id}
+                          column={column}
+                          accentClass={getColumnTone(column.name)}
+                          onOpenCard={(cardId) => setActiveCardId(cardId)}
+                          draggable={!isSearchActive}
+                          hideComposer={isSearchActive}
+                        />
+                      ))}
+                    </div>
 
-                  <DragOverlay>
-                    {activeDragCard ? (
-                      <div className="w-[220px] rounded-lg border border-zinc-200 bg-white px-3 py-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
-                        <div className="break-words text-sm font-medium text-zinc-900 dark:text-zinc-100">{activeDragCard.title}</div>
-                        {summarize(activeDragCard.description) ? (
-                          <div className="mt-1 whitespace-pre-line break-words text-xs text-zinc-500 dark:text-zinc-400">
-                            {summarize(activeDragCard.description)}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </DragOverlay>
-                </DndContext>
+                    <DragOverlay>
+                      {!isSearchActive && activeDragCard ? (
+                        <div className="w-[220px] rounded-lg border border-zinc-200 bg-white px-3 py-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+                          <div className="break-words text-sm font-medium text-zinc-900 dark:text-zinc-100">{activeDragCard.title}</div>
+                          {summarize(activeDragCard.description) ? (
+                            <div className="mt-1 whitespace-pre-line break-words text-xs text-zinc-500 dark:text-zinc-400">
+                              {summarize(activeDragCard.description)}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </DragOverlay>
+                  </DndContext>
+                </>
               )}
             </div>
           ) : null}
@@ -1899,7 +2028,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           }}
         />
       ) : null}
-    </div>
+      </div>
   );
 }
 
@@ -2316,10 +2445,14 @@ function KanbanColumn({
   column,
   accentClass,
   onOpenCard,
+  draggable,
+  hideComposer,
 }: {
   column: ColumnModel;
   accentClass: string;
   onOpenCard: (cardId: Id<"cards">) => void;
+  draggable: boolean;
+  hideComposer?: boolean;
 }) {
   const createCard = useMutation(api.cards.create);
   const { setNodeRef, isOver } = useDroppable({
@@ -2369,6 +2502,11 @@ function KanbanColumn({
         <h3 className={`text-xs font-semibold uppercase tracking-[0.14em] ${accentClass}`}>
           {formatColumnName(column.name)}
         </h3>
+        {hideComposer ? (
+          <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300">
+            {column.cards.length}
+          </span>
+        ) : null}
       </header>
 
       <SortableContext items={column.cards.map((card) => String(card._id))} strategy={verticalListSortingStrategy}>
@@ -2379,10 +2517,11 @@ function KanbanColumn({
               card={card}
               columnId={column._id}
               onOpenCard={onOpenCard}
+              draggable={draggable}
             />
           ))}
 
-          {!showComposer ? (
+          {hideComposer ? null : !showComposer ? (
             <button
               type="button"
               onClick={() => setShowComposer(true)}
@@ -2432,15 +2571,18 @@ function KanbanCard({
   card,
   columnId,
   onOpenCard,
+  draggable,
 }: {
   card: CardModel;
   columnId: Id<"columns">;
   onOpenCard: (cardId: Id<"cards">) => void;
+  draggable: boolean;
 }) {
   const deleteCard = useMutation(api.cards.remove);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(card._id),
     data: { type: "card", columnId },
+    disabled: !draggable,
   });
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
@@ -2584,17 +2726,17 @@ function KanbanCard({
         onClick={() => onOpenCard(card._id)}
         onContextMenu={handleContextMenu}
         style={{ transform: CSS.Transform.toString(transform), transition }}
-        className={`group relative w-full touch-pan-y select-none [-webkit-touch-callout:none] [-webkit-user-select:none] cursor-grab active:cursor-grabbing overflow-hidden rounded-xl border bg-white px-3 py-2 text-left transition duration-200 dark:bg-zinc-900 ${
+        className={`group relative w-full touch-pan-y select-none [-webkit-touch-callout:none] [-webkit-user-select:none] ${draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} overflow-hidden rounded-xl border bg-white px-3 py-2 text-left transition duration-200 dark:bg-zinc-900 ${
           isActive
-            ? "border-transparent shadow-none hover:shadow-[0_8px_20px_-20px_rgba(56,189,248,0.55)]"
+            ? "border-transparent shadow-[0_10px_26px_-22px_rgba(56,189,248,0.5)] hover:shadow-[0_12px_30px_-20px_rgba(56,189,248,0.7)]"
             : "border-zinc-200 hover:border-zinc-300 hover:shadow-sm dark:border-zinc-800 dark:hover:border-zinc-700"
         } ${isDragging ? "opacity-0" : ""}`}
       >
         {isActive ? (
           <>
-            <span className="pointer-events-none absolute inset-[-140%] animate-[spin_3.2s_linear_infinite] opacity-85 transition-opacity duration-200 group-hover:opacity-100 bg-[conic-gradient(from_0deg,rgba(56,189,248,0)_0deg,rgba(56,189,248,0)_255deg,rgba(56,189,248,0.98)_300deg,rgba(110,231,255,1)_326deg,rgba(16,185,129,0.88)_344deg,rgba(56,189,248,0)_360deg)]" />
+            <span className="pointer-events-none absolute inset-[-140%] animate-[spin_2.6s_linear_infinite] opacity-95 transition-opacity duration-200 group-hover:opacity-100 bg-[conic-gradient(from_0deg,rgba(56,189,248,0)_0deg,rgba(56,189,248,0)_245deg,rgba(56,189,248,1)_292deg,rgba(110,231,255,1)_322deg,rgba(16,185,129,0.92)_346deg,rgba(56,189,248,0)_360deg)]" />
             <span className="pointer-events-none absolute inset-[1px] rounded-[calc(theme(borderRadius.xl)-1px)] bg-white dark:bg-zinc-900" />
-            <span className="pointer-events-none absolute inset-0 rounded-[inherit] transition-shadow duration-200 shadow-[0_0_0_1px_rgba(56,189,248,0.2)] group-hover:shadow-[0_0_0_1px_rgba(56,189,248,0.44),0_0_24px_-16px_rgba(56,189,248,0.85)]" />
+            <span className="pointer-events-none absolute inset-0 rounded-[inherit] transition-shadow duration-200 shadow-[0_0_0_1px_rgba(56,189,248,0.34),0_0_18px_-16px_rgba(56,189,248,0.7)] group-hover:shadow-[0_0_0_1px_rgba(56,189,248,0.56),0_0_28px_-14px_rgba(56,189,248,0.95)]" />
           </>
         ) : null}
         <div className="relative min-w-0">

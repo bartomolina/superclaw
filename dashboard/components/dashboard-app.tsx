@@ -35,11 +35,6 @@ function documentTitleForPage(page: Page) {
   return label ? `Dashboard - ${label}` : "Dashboard";
 }
 
-function syncDocumentTitle(page: Page) {
-  if (typeof document === "undefined") return;
-  document.title = documentTitleForPage(page);
-}
-
 export default function App() {
   const { dark, toggle: toggleTheme } = useTheme();
   const [authenticated, setAuthenticated] = useState(false);
@@ -55,7 +50,6 @@ export default function App() {
   );
   const setPage = (p: Page) => {
     setPageState(p);
-    syncDocumentTitle(p);
     if (typeof window !== "undefined") {
       window.location.hash = p;
     }
@@ -70,11 +64,28 @@ export default function App() {
   const [restarting, setRestarting] = useState(false);
 
   const hydrateRuntimeData = useCallback(async (mapped: Agent[]) => {
+    async function fetchWithRetry(url: string, fallback: any, retries = 1) {
+      let lastError: unknown = null;
+
+      for (let attempt = 0; attempt <= retries; attempt += 1) {
+        try {
+          return await authFetch(url);
+        } catch (error) {
+          lastError = error;
+          if (attempt >= retries) break;
+          await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        }
+      }
+
+      console.warn(`dashboard fetch failed: ${url}`, lastError);
+      return fallback;
+    }
+
     const enrichment = await Promise.all(
       mapped.map(async (agent) => {
         const [channelsData, skillsData] = await Promise.all([
-          authFetch(`/api/agents/${agent.id}/channels`).catch(() => ({ channels: [] })),
-          authFetch(`/api/agents/${agent.id}/skills`).catch(() => ({ skills: [] })),
+          fetchWithRetry(`/api/agents/${agent.id}/channels`, { channels: [] }, 2),
+          fetchWithRetry(`/api/agents/${agent.id}/skills`, { skills: [] }, 1),
         ]);
 
         return {
@@ -86,7 +97,7 @@ export default function App() {
             running: c.running ?? false,
             mode: c.mode || null,
             streaming: c.streaming || null,
-            pairedUsers: (c.pairedUsers || []).map((u: any) => ({ id: u.id, name: u.name || u.id })),
+            pairedUsers: (c.pairedUsers || []).map((u: any) => ({ id: u.id, name: u.name || u.id, source: u.source })),
             groups: (c.groups || []).map((g: any) => ({ id: g.id, requireMention: g.requireMention ?? true, groupPolicy: g.groupPolicy ?? "allowlist" })),
           })),
           skills: (skillsData.skills || []).map((s: any) => ({
@@ -116,7 +127,6 @@ export default function App() {
 
     const syncPageFromHash = () => {
       const nextPage = pageFromHash(window.location.hash);
-      syncDocumentTitle(nextPage);
       setPageState((current) => (current === nextPage ? current : nextPage));
     };
 
@@ -170,10 +180,25 @@ export default function App() {
     }
   }, [navItems, page]);
 
-  useLayoutEffect(() => {
-    const effectivePage = navItems.some((item) => item.id === page) ? page : "agents";
-    syncDocumentTitle(effectivePage);
-  }, [navItems, page]);
+  const effectivePage = navItems.some((item) => item.id === page) ? page : "agents";
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const title = documentTitleForPage(effectivePage);
+    const applyTitle = () => {
+      document.title = title;
+    };
+
+    applyTitle();
+    const frameId = window.requestAnimationFrame(applyTitle);
+    const timeoutId = window.setTimeout(applyTitle, 150);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [effectivePage]);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -218,7 +243,16 @@ export default function App() {
         sandboxed: a.sandboxed ?? false,
         workspaceAccess: a.workspaceAccess ?? null,
         isDefault: a.isDefault ?? false,
-        channels: [],
+        channels: (a.channels || []).map((c: any) => ({
+          id: c.id,
+          name: c.name || c.id,
+          detail: c.detail || null,
+          running: c.running ?? false,
+          mode: c.mode || null,
+          streaming: c.streaming || null,
+          pairedUsers: (c.pairedUsers || []).map((u: any) => ({ id: u.id, name: u.name || u.id, source: u.source })),
+          groups: (c.groups || []).map((g: any) => ({ id: g.id, requireMention: g.requireMention ?? true, groupPolicy: g.groupPolicy ?? "allowlist" })),
+        })),
         skills: [],
         models: (a.models || []).map((m: any) => ({
           id: m.id,
@@ -350,7 +384,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-200 transition-colors">
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-200 transition-colors">
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-zinc-200 dark:border-zinc-800/60 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -461,6 +495,6 @@ export default function App() {
           )}
         </main>
       </div>
-    </div>
+      </div>
   );
 }

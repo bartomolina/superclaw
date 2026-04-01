@@ -101,7 +101,8 @@ pnpm dev
 - Kanban agent option/avatar loading now uses server-side OpenClaw adapters under `lib/server/openclaw/`.
 - Agent list comes from `openclaw agents list --json`.
 - Agent avatar resolution uses local OpenClaw config + workspace filesystem.
-- Runtime-backed skill data uses a singleton server-side Gateway client with a short cache.
+- Skill options come from `openclaw skills list --json` with a short server-side cache.
+- The skills parser must tolerate warnings where OpenClaw emits JSON on `stderr` instead of `stdout`.
 - Card modals reuse app-level agent and skill option state instead of refetching those lists on every open.
 
 ## Agent automation API (v1)

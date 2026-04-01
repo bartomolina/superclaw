@@ -17,6 +17,16 @@ export function getInstalledOpenClawVersion() {
   }
 }
 
+async function probeGatewayOnlineWithCli() {
+  try {
+    const { stdout, stderr } = await runCommand("openclaw", ["gateway", "status"], { timeoutMs: 8_000 });
+    const text = `${stdout}\n${stderr}`;
+    return /RPC probe:\s*ok/i.test(text);
+  } catch {
+    return false;
+  }
+}
+
 export async function handleGatewayStatus() {
   const version = getInstalledOpenClawVersion();
 
@@ -24,7 +34,8 @@ export async function handleGatewayStatus() {
     await runtimeGatewayRequest("system-presence", {}, 5_000);
     return json({ online: true, version });
   } catch {
-    return json({ online: false, version });
+    const online = await probeGatewayOnlineWithCli();
+    return json({ online, version });
   }
 }
 
@@ -92,7 +103,7 @@ export async function handlePerformance() {
     await runtimeGatewayRequest("system-presence", {}, 5_000);
     gatewayUp = true;
   } catch {
-    gatewayUp = false;
+    gatewayUp = await probeGatewayOnlineWithCli();
   }
 
   return json({
