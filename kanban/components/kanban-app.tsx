@@ -2858,6 +2858,7 @@ function CardModal({
   const [skillsDraft, setSkillsDraft] = useState<string[]>(card.skills ?? []);
   const [commentDraft, setCommentDraft] = useState("");
   const [isSavingComment, setIsSavingComment] = useState(false);
+  const [isSavingDescription, setIsSavingDescription] = useState(false);
   const [isSavingCard, setIsSavingCard] = useState(false);
   const [isDeletingCard, setIsDeletingCard] = useState(false);
 
@@ -2922,6 +2923,9 @@ function CardModal({
   const cardIdTitle = String(card._id);
   const sessionTitle = card.lastSessionId ? card.lastSessionId : "No worker run recorded yet";
   const sessionChatUrl = buildSessionChatUrl(card.lastSessionId, card.lastSessionAgentId ?? card.agentId);
+  const normalizedSavedDescription = (card.description ?? "").trim();
+  const normalizedDescriptionDraft = descriptionDraft.trim();
+  const hasDescriptionChanges = normalizedDescriptionDraft !== normalizedSavedDescription;
 
   async function copyValue(value: string, label: string) {
     try {
@@ -2985,6 +2989,35 @@ function CardModal({
 
   async function handleCommentSend() {
     await submitComment();
+  }
+
+  async function handleDescriptionSave() {
+    if (!hasDescriptionChanges || isSavingDescription || isSavingCard || isDeletingCard) {
+      return;
+    }
+
+    setIsSavingDescription(true);
+
+    try {
+      await updateCard({
+        cardId: card._id,
+        title: card.title,
+        description: descriptionDraft,
+        agentId: card.agentId ?? "",
+        reviewerId: card.reviewerId ?? "",
+        priority: card.priority ?? "",
+        size: card.size ?? "",
+        type: card.type ?? "",
+        acp: card.acp ?? "",
+        model: card.model ?? "",
+        skills: card.skills ?? [],
+      });
+      toast.success("Description updated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update description");
+    } finally {
+      setIsSavingDescription(false);
+    }
   }
 
   async function handleCommentKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
@@ -3184,11 +3217,23 @@ function CardModal({
               </div>
 
               <div>
-                <div className="mb-2">
+                <div className="mb-2 flex items-center justify-between gap-3">
                   <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400">Description</label>
+                  <div className="relative h-4 min-w-[64px]">
+                    {hasDescriptionChanges ? (
+                      <button
+                        type="button"
+                        className="absolute right-0 top-1/2 inline-flex h-5 -translate-y-1/2 items-center justify-center rounded border border-zinc-300 bg-white/90 px-1.5 text-[10px] font-medium leading-none text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                        onClick={() => void handleDescriptionSave()}
+                        disabled={isSavingDescription || isSavingCard || isDeletingCard}
+                      >
+                        {isSavingDescription ? "Updating…" : "Update"}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 <textarea
-                  className={textareaClass}
+                  className={`${textareaClass} min-h-40`}
                   value={descriptionDraft}
                   onChange={(event) => setDescriptionDraft(event.target.value)}
                   onKeyDown={handleEditorSubmitShortcut}
@@ -3381,7 +3426,7 @@ function CardModal({
               type="button"
               className="text-sm text-zinc-500 transition hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:text-rose-400"
               onClick={handleDelete}
-              disabled={isSavingCard || isDeletingCard}
+              disabled={isSavingDescription || isSavingCard || isDeletingCard}
             >
               {isDeletingCard ? "Deleting…" : "Delete card"}
             </button>
@@ -3390,11 +3435,15 @@ function CardModal({
                 type="button"
                 className="px-3 py-2 text-sm text-zinc-500 transition-colors hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-300"
                 onClick={onClose}
-                disabled={isSavingCard || isDeletingCard}
+                disabled={isSavingDescription || isSavingCard || isDeletingCard}
               >
                 Cancel
               </button>
-              <button type="submit" className={primaryButtonClass} disabled={!titleDraft.trim() || isSavingCard || isDeletingCard}>
+              <button
+                type="submit"
+                className={primaryButtonClass}
+                disabled={!titleDraft.trim() || isSavingDescription || isSavingCard || isDeletingCard}
+              >
                 {isSavingCard ? "Saving…" : "Save"}
               </button>
             </div>
