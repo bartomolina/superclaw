@@ -14,7 +14,7 @@ type GatewayClientCtor = new (opts: Record<string, unknown>) => GatewayClientLik
 
 type OpenClawGatewayModule = {
   GatewayClient: GatewayClientCtor;
-  loadOrCreateDeviceIdentity: () => unknown;
+  version: string;
 };
 
 type Deferred<T> = {
@@ -33,49 +33,6 @@ function createDeferred<T>(): Deferred<T> {
   return { promise, resolve, reject };
 }
 
-async function importOpenClawGatewayModule(): Promise<OpenClawGatewayModule> {
-  const packageDir = path.dirname(OPENCLAW_PACKAGE_JSON);
-  const distDir = path.join(packageDir, "dist");
-  const entries = fs.readdirSync(distDir).filter((entry) => entry.endsWith(".js")).sort();
-
-  const preferredPrefixes = ["method-scopes-", "reply-"];
-  const candidates = [
-    ...preferredPrefixes.flatMap((prefix) => entries.filter((entry) => entry.startsWith(prefix))),
-    ...entries.filter((entry) => !preferredPrefixes.some((prefix) => entry.startsWith(prefix))),
-  ];
-
-  if (candidates.length === 0) {
-    throw new Error(`Could not find an OpenClaw gateway bundle under ${distDir}`);
-  }
-
-  const dynamicImport = new Function("modulePath", "return import(modulePath);") as (modulePath: string) => Promise<Record<string, unknown>>;
-  const errors: string[] = [];
-
-  for (const entry of candidates) {
-    try {
-      const importPath = pathToFileURL(path.join(distDir, entry)).href;
-      const mod = await dynamicImport(importPath);
-      const GatewayClient = Object.values(mod).find(
-        (value): value is GatewayClientCtor => typeof value === "function" && value.name === "GatewayClient",
-      );
-      const loadOrCreateDeviceIdentity = Object.values(mod).find(
-        (value): value is OpenClawGatewayModule["loadOrCreateDeviceIdentity"] =>
-          typeof value === "function" && value.name === "loadOrCreateDeviceIdentity",
-      );
-
-      if (GatewayClient && loadOrCreateDeviceIdentity) {
-        return { GatewayClient, loadOrCreateDeviceIdentity };
-      }
-
-      errors.push(`${entry}: missing GatewayClient/loadOrCreateDeviceIdentity exports`);
-    } catch (error) {
-      errors.push(`${entry}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  throw new Error(`Could not resolve OpenClaw GatewayClient internals from installed package (${errors.slice(0, 5).join("; ")})`);
-}
-
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
   let timer: NodeJS.Timeout | null = null;
 
@@ -90,10 +47,35 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
   });
 }
 
+async function importOpenClawGatewayModule(): Promise<OpenClawGatewayModule> {
+  const packageDir = path.dirname(OPENCLAW_PACKAGE_JSON);
+  const runtimeEntry = path.join(packageDir, "dist", "plugin-sdk", "gateway-runtime.js");
+
+  if (!fs.existsSync(runtimeEntry)) {
+    throw new Error(`Could not find OpenClaw gateway runtime at ${runtimeEntry}`);
+  }
+
+  const packageJsonRaw = fs.readFileSync(OPENCLAW_PACKAGE_JSON, "utf8");
+  const packageJson = JSON.parse(packageJsonRaw) as { version?: string };
+  const dynamicImport = new Function("modulePath", "return import(modulePath);") as (
+    modulePath: string,
+  ) => Promise<Record<string, unknown>>;
+  const mod = await dynamicImport(pathToFileURL(runtimeEntry).href);
+  const GatewayClient = mod.GatewayClient;
+
+  if (typeof GatewayClient !== "function") {
+    throw new Error(`OpenClaw gateway runtime at ${runtimeEntry} does not export GatewayClient`);
+  }
+
+  return {
+    GatewayClient: GatewayClient as GatewayClientCtor,
+    version: packageJson.version || "unknown",
+  };
+}
+
 class RuntimeGatewayClient {
   private modulePromise: Promise<OpenClawGatewayModule> | null = null;
   private client: GatewayClientLike | null = null;
-  private started = false;
   private connected = false;
   private ready = createDeferred<void>();
   private lastConnectError: Error | null = null;
@@ -120,24 +102,20 @@ class RuntimeGatewayClient {
 
     if (this.client) return this.client;
 
-    const { GatewayClient, loadOrCreateDeviceIdentity } = await this.loadModule();
-    const deviceIdentity = loadOrCreateDeviceIdentity();
+    const { GatewayClient, version } = await this.loadModule();
 
     this.resetReady();
     this.lastConnectError = null;
-    this.started = true;
-
     this.client = new GatewayClient({
       token: GATEWAY_TOKEN,
       clientName: "gateway-client",
       clientDisplayName: "SuperClaw Dashboard",
-      clientVersion: "2026.3.12",
+      clientVersion: version,
       platform: process.platform,
       mode: "backend",
       role: "operator",
       scopes: ["operator.admin"],
       caps: ["tool-events"],
-      deviceIdentity,
       minProtocol: 3,
       maxProtocol: 3,
       onHelloOk: () => {

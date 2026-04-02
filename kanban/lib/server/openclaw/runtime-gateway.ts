@@ -1,8 +1,7 @@
+import { GATEWAY_TOKEN, OPENCLAW_PACKAGE_JSON } from "@/lib/server/openclaw/constants";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-
-import { GATEWAY_TOKEN } from "@/lib/server/openclaw/constants";
 
 type GatewayClientLike = {
   start(): void;
@@ -14,7 +13,7 @@ type GatewayClientCtor = new (opts: Record<string, unknown>) => GatewayClientLik
 
 type OpenClawGatewayModule = {
   GatewayClient: GatewayClientCtor;
-  loadOrCreateDeviceIdentity: () => unknown;
+  version: string;
 };
 
 type Deferred<T> = {
@@ -22,8 +21,6 @@ type Deferred<T> = {
   resolve: (value: T | PromiseLike<T>) => void;
   reject: (reason?: unknown) => void;
 };
-
-const OPENCLAW_PACKAGE_JSON = process.env.OPENCLAW_PACKAGE_JSON || "/usr/lib/node_modules/openclaw/package.json";
 
 function createDeferred<T>(): Deferred<T> {
   let resolve!: Deferred<T>["resolve"];
@@ -33,32 +30,6 @@ function createDeferred<T>(): Deferred<T> {
     reject = rej;
   });
   return { promise, resolve, reject };
-}
-
-async function importOpenClawGatewayModule(): Promise<OpenClawGatewayModule> {
-  const packageDir = path.dirname(OPENCLAW_PACKAGE_JSON);
-  const distDir = path.join(packageDir, "dist");
-  const candidates = fs.readdirSync(distDir).filter((entry) => entry.startsWith("reply-") && entry.endsWith(".js")).sort();
-  const entry = candidates[0];
-
-  if (!entry) {
-    throw new Error(`Could not find an OpenClaw gateway bundle under ${distDir}`);
-  }
-
-  const importPath = pathToFileURL(path.join(distDir, entry)).href;
-  const dynamicImport = new Function("modulePath", "return import(modulePath);") as (modulePath: string) => Promise<Record<string, unknown>>;
-  const mod = await dynamicImport(importPath);
-  const GatewayClient = Object.values(mod).find((value): value is GatewayClientCtor => typeof value === "function" && value.name === "GatewayClient");
-  const loadOrCreateDeviceIdentity = Object.values(mod).find(
-    (value): value is OpenClawGatewayModule["loadOrCreateDeviceIdentity"] =>
-      typeof value === "function" && value.name === "loadOrCreateDeviceIdentity",
-  );
-
-  if (!GatewayClient || !loadOrCreateDeviceIdentity) {
-    throw new Error("Could not resolve OpenClaw GatewayClient internals from installed package");
-  }
-
-  return { GatewayClient, loadOrCreateDeviceIdentity };
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
@@ -73,6 +44,32 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
   return Promise.race([promise, timeoutPromise]).finally(() => {
     if (timer) clearTimeout(timer);
   });
+}
+
+async function importOpenClawGatewayModule(): Promise<OpenClawGatewayModule> {
+  const packageDir = path.dirname(OPENCLAW_PACKAGE_JSON);
+  const runtimeEntry = path.join(packageDir, "dist", "plugin-sdk", "gateway-runtime.js");
+
+  if (!fs.existsSync(runtimeEntry)) {
+    throw new Error(`Could not find OpenClaw gateway runtime at ${runtimeEntry}`);
+  }
+
+  const packageJsonRaw = fs.readFileSync(OPENCLAW_PACKAGE_JSON, "utf8");
+  const packageJson = JSON.parse(packageJsonRaw) as { version?: string };
+  const dynamicImport = new Function("modulePath", "return import(modulePath);") as (
+    modulePath: string,
+  ) => Promise<Record<string, unknown>>;
+  const mod = await dynamicImport(pathToFileURL(runtimeEntry).href);
+  const GatewayClient = mod.GatewayClient;
+
+  if (typeof GatewayClient !== "function") {
+    throw new Error(`OpenClaw gateway runtime at ${runtimeEntry} does not export GatewayClient`);
+  }
+
+  return {
+    GatewayClient: GatewayClient as GatewayClientCtor,
+    version: packageJson.version || "unknown",
+  };
 }
 
 class RuntimeGatewayClient {
@@ -104,7 +101,7 @@ class RuntimeGatewayClient {
 
     if (this.client) return this.client;
 
-    const { GatewayClient, loadOrCreateDeviceIdentity } = await this.loadModule();
+    const { GatewayClient, version } = await this.loadModule();
 
     this.resetReady();
     this.lastConnectError = null;
@@ -112,13 +109,12 @@ class RuntimeGatewayClient {
       token: GATEWAY_TOKEN,
       clientName: "gateway-client",
       clientDisplayName: "SuperClaw Kanban",
-      clientVersion: "2026.3.12",
+      clientVersion: version,
       platform: process.platform,
       mode: "backend",
       role: "operator",
       scopes: ["operator.admin"],
       caps: ["tool-events"],
-      deviceIdentity: loadOrCreateDeviceIdentity(),
       minProtocol: 3,
       maxProtocol: 3,
       onHelloOk: () => {

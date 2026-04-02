@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 
 const DEFAULT_GATEWAY_URL = "ws://127.0.0.1:18789";
 const DEFAULT_OPENCLAW_PACKAGE_JSON = process.env.OPENCLAW_PACKAGE_JSON || "/usr/lib/node_modules/openclaw/package.json";
@@ -96,15 +97,18 @@ function resolveWsClient() {
   return requireFromOpenClaw("ws");
 }
 
-async function loadOpenClawModule() {
+async function loadOpenClawGatewayRuntime() {
   const packageDir = path.dirname(DEFAULT_OPENCLAW_PACKAGE_JSON);
-  const distDir = path.join(packageDir, "dist");
-  const candidates = fs.readdirSync(distDir).filter((entry) => entry.startsWith("reply-") && entry.endsWith(".js"));
-  const entry = candidates[0];
-  if (!entry) {
-    throw new Error(`Could not find OpenClaw dist entry under ${distDir}`);
+  const runtimeEntry = path.join(packageDir, "dist", "plugin-sdk", "gateway-runtime.js");
+  if (!fs.existsSync(runtimeEntry)) {
+    throw new Error(`Could not find OpenClaw gateway runtime under ${runtimeEntry}`);
   }
-  return await import(path.join(distDir, entry));
+  const packageJson = JSON.parse(fs.readFileSync(DEFAULT_OPENCLAW_PACKAGE_JSON, "utf8"));
+  const runtime = await import(pathToFileURL(runtimeEntry).href);
+  return {
+    GatewayClient: runtime.GatewayClient,
+    version: packageJson.version || "unknown",
+  };
 }
 
 function formatElapsed(startedAt) {
@@ -113,9 +117,9 @@ function formatElapsed(startedAt) {
 
 async function runOfficialClientProbe({ gatewayUrl, token, clientId, mode, scopes, caps, methods }) {
   const startedAt = performance.now();
-  const openclawModule = await loadOpenClawModule();
-  const GatewayClient = openclawModule.tc;
-  const deviceIdentity = openclawModule.Xl();
+  const openclawGatewayRuntime = await loadOpenClawGatewayRuntime();
+  const GatewayClient = openclawGatewayRuntime.GatewayClient;
+  const clientVersion = openclawGatewayRuntime.version;
 
   if (typeof GatewayClient !== "function") {
     throw new Error("OpenClaw GatewayClient export is unavailable");
@@ -138,13 +142,12 @@ async function runOfficialClientProbe({ gatewayUrl, token, clientId, mode, scope
       token,
       clientName: clientId,
       clientDisplayName: "Codex Gateway Probe",
-      clientVersion: "2026.3.12",
+      clientVersion,
       platform: process.platform,
       mode,
       role: "operator",
       scopes: scopes.length > 0 ? scopes : ["operator.admin"],
       caps,
-      deviceIdentity,
       minProtocol: 3,
       maxProtocol: 3,
       onHelloOk: async (hello) => {
