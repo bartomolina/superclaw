@@ -56,7 +56,7 @@ export function AgentsPage({ agents, defaultPrimary, onModelChange, onRefresh, o
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">Agents</h1>
         <div className="flex items-center gap-2">
-          <ConfigModal onRefresh={onRefresh} />
+          <ConfigModal />
           <button
             onClick={() => setShowCreate((prev) => !prev)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"

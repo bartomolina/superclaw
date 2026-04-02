@@ -18,8 +18,11 @@ It provides a web UI to inspect and manage agents, models, skills, config files,
 ## Runtime model
 
 - Durable/local state uses CLI/filesystem-backed adapters where possible.
-- Live/runtime state uses a singleton server-side Gateway client for fast status, channels, and skills reads.
+- Live/runtime state uses a singleton server-side Gateway client for fast status and channel reads.
+- Per-agent effective skills on the Agents page use Gateway reads; the top-level Skills page uses CLI-backed inventory data for faster loading.
 - The browser still talks only to the dashboard app; it does not connect directly to the Gateway WebSocket.
+- Ops surfaces detected systemd services for the local host.
+- If the dashboard is exposed externally, prefer **Cloudflare Tunnel** via `cloudflared.service`.
 
 ## Prerequisites
 
@@ -50,7 +53,6 @@ Optional:
 - `OPENCLAW_HOME`: OpenClaw home directory (default `~/.openclaw`)
 - `OPENCLAW_PACKAGE_JSON`: Override installed OpenClaw package metadata path if needed
 - `GEMINI_API_KEY`: Enables avatar generation when creating an agent with description
-- `UV_PATH`: Path prefix for `uv` binary (default `~/.local/bin`)
 - `DEBUG_RPC_ENABLED`: Enables raw debug RPC endpoint `/api/debug/ws` (default disabled)
 
 ## Scripts

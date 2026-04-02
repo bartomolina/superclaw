@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "fs";
+import { homedir } from "os";
 import path from "path";
 
 import { runCommand } from "@/lib/server/command";
@@ -18,7 +19,7 @@ export type RepoSummary = {
   active: boolean;
 };
 
-const HOME_DIR = process.env.HOME || "/root";
+const HOME_DIR = process.env.HOME || homedir();
 const OPENCLAW_HOME = path.join(HOME_DIR, ".openclaw");
 const MAIN_WORKSPACE = path.join(OPENCLAW_HOME, "workspace");
 const FIND_GIT_REPOS_SCRIPT = [

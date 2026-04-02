@@ -86,8 +86,8 @@ async function readVercelAccount(): Promise<AccountProvider | null> {
     return {
       id: "vercel",
       label: "Vercel",
-      value: login,
-      detail: null,
+      value: null,
+      detail: login,
     };
   } catch (error) {
     if (commandMissing(error)) return null;

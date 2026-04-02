@@ -48,7 +48,7 @@ Keep shared product-level docs at the repo root. Keep implementation details clo
 ## Runtime conventions
 
 - Document fixed ports centrally before adding/changing them.
-- Document pm2 process names centrally before adding/changing them.
+- Document systemd unit names centrally before adding/changing them.
 - Keep env examples checked in (`.env.example`, `.env.local.example`) when relevant.
 - Prefer server-side OpenClaw/Gateway integration over exposing secrets to the browser.
 - Avoid adding new infrastructure/services unless the user explicitly wants them.

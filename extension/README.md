@@ -21,5 +21,4 @@ pnpm zip
 ## Notes
 
 - It connects to the local Kanban app.
-- It is not managed by pm2.
 - Install it as an unpacked extension or from a built artifact.

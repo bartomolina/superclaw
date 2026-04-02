@@ -9,17 +9,17 @@ Default local URLs:
 - Dashboard: `http://127.0.0.1:4000`
 - Kanban: `http://127.0.0.1:4100`
 
-Default pm2 names:
-- `superclaw-dashboard`
-- `convex`
-- `superclaw-kanban`
+Recommended systemd unit names:
+- `superclaw-dashboard.service`
+- `superclaw-convex.service`
+- `superclaw-kanban.service`
 
 ## Prerequisites
 
 You should already have:
 - OpenClaw
 - Node.js + pnpm
-- pm2
+- systemd
 - a Convex project/deployment for Kanban
 - a Resend API key for Kanban magic-link email
 
@@ -34,10 +34,27 @@ cp .env.example .env
 Set at least:
 - `GATEWAY_TOKEN`
 
-Start it:
+Create the service:
 
 ```bash
-pm2 start bash --name superclaw-dashboard --cwd ~/.openclaw/workspace/apps/superclaw/dashboard -- -lc 'pnpm exec next dev --hostname 127.0.0.1 --port 4000'
+sudo tee /etc/systemd/system/superclaw-dashboard.service >/dev/null <<'EOF'
+[Unit]
+Description=SuperClaw Dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.openclaw/workspace/apps/superclaw/dashboard
+Environment=HOME=%h
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:%h/.local/bin:%h/.local/share/pnpm
+ExecStart=/usr/bin/pnpm exec next dev --hostname 127.0.0.1 --port 4000
+Restart=always
+RestartSec=5
+User=%u
+
+[Install]
+WantedBy=multi-user.target
+EOF
 ```
 
 ## 2) Kanban
@@ -52,7 +69,7 @@ Set local env values in `.env.local`:
 - `CONVEX_DEPLOYMENT`
 - `NEXT_PUBLIC_CONVEX_URL`
 - `NEXT_PUBLIC_CONVEX_SITE_URL`
-- `NEXT_PUBLIC_SITE_URL=http://127.0.0.1:4100`
+- `NEXT_PUBLIC_SITE_URL=http://127.0.0.1:4100` for single-machine local-only setup, or your private/internal host/IP for non-public access from other devices
 - `GATEWAY_TOKEN`
 
 ### Convex
@@ -71,31 +88,79 @@ pnpm exec convex env set AUTH_FROM_EMAIL "SuperClaw <noreply@mail.your-domain.co
 pnpm exec convex env set KANBAN_AGENT_SHARED_TOKEN "$(openssl rand -hex 24)"
 ```
 
+`AUTH_FROM_EMAIL` is strongly recommended for any real/shared install. If omitted, Kanban falls back to `SuperClaw <onboarding@resend.dev>`, which Resend only allows for limited self-email testing.
+
 Optional:
 
 ```bash
-pnpm exec convex env set TRUSTED_ORIGINS "http://127.0.0.1:4100,http://localhost:4100"
 pnpm exec convex env set MAGIC_LINK_EMAIL_COOLDOWN_MS 120000
 pnpm exec convex env set MAGIC_LINK_GLOBAL_COOLDOWN_MS 5000
 ```
 
-Start Convex sync:
+`SITE_URL` is the canonical auth origin used in magic-link emails.
+Leave `TRUSTED_ORIGINS` unset by default.
+If you intentionally want alternate private/internal origins (for example `http://my-host:4100` or `http://100.x.y.z:4100`) to work too, add only those extras to `TRUSTED_ORIGINS`.
+
+Create the Convex sync service:
 
 ```bash
-pm2 start bash --name convex --cwd ~/.openclaw/workspace/apps/superclaw/kanban -- -lc 'pnpm exec convex dev'
+sudo tee /etc/systemd/system/superclaw-convex.service >/dev/null <<'EOF'
+[Unit]
+Description=SuperClaw Convex Sync
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.openclaw/workspace/apps/superclaw/kanban
+Environment=HOME=%h
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:%h/.local/bin:%h/.local/share/pnpm
+ExecStart=/usr/bin/pnpm exec convex dev
+Restart=always
+RestartSec=5
+User=%u
+
+[Install]
+WantedBy=multi-user.target
+EOF
 ```
 
-Start Kanban:
+Create the Kanban service:
 
 ```bash
-pm2 start bash --name superclaw-kanban --cwd ~/.openclaw/workspace/apps/superclaw/kanban -- -lc 'pnpm exec next dev --hostname 127.0.0.1 --port 4100'
+sudo tee /etc/systemd/system/superclaw-kanban.service >/dev/null <<'EOF'
+[Unit]
+Description=SuperClaw Kanban
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.openclaw/workspace/apps/superclaw/kanban
+Environment=HOME=%h
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:%h/.local/bin:%h/.local/share/pnpm
+ExecStart=/usr/bin/pnpm exec next dev --hostname 127.0.0.1 --port 4100
+Restart=always
+RestartSec=5
+User=%u
+
+[Install]
+WantedBy=multi-user.target
+EOF
 ```
 
-## 3) Save pm2 state
+Kanban exposure modes:
+- **single-machine local dev:** keep `ExecStart ... --hostname 127.0.0.1 --port 4100`, keep tunnel ingress off, and keep `NEXT_PUBLIC_SITE_URL` / `SITE_URL` on the same local origin
+- **private internal/Tailscale access:** bind Kanban to your internal IP instead of `127.0.0.1`, keep tunnel ingress off, and set both `NEXT_PUBLIC_SITE_URL` and `SITE_URL` to that internal origin
+- **shared/public mode:** add Cloudflare Tunnel ingress for the public hostname and set both `NEXT_PUBLIC_SITE_URL` and `SITE_URL` to that public URL so magic-link emails point to the right place
+
+Changing only the service bind host or only the tunnel is not enough when magic-link auth is enabled; the canonical URL env vars must match the intended access mode too.
+If you want multiple private/internal ways to reach the same private Kanban, keep one canonical `SITE_URL` and put only the extra allowed internal origins in `TRUSTED_ORIGINS`. Otherwise leave it unset.
+
+## 3) Enable and start services
 
 ```bash
-pm2 save
-pm2 status
+sudo systemctl daemon-reload
+sudo systemctl enable --now superclaw-dashboard.service superclaw-convex.service superclaw-kanban.service
+sudo systemctl status superclaw-dashboard.service superclaw-convex.service superclaw-kanban.service
 ```
 
 Then open:
@@ -172,5 +237,5 @@ pnpm zip
 
 - This guide is for **fresh installs only**.
 - Default setup is local-only.
-- Reverse proxy / public URLs can come later.
+- If you need public exposure later, prefer **Cloudflare Tunnel** via `cloudflared.service`.
 - If you want an agent to do the install, use [`AGENT_INSTALL.md`](./AGENT_INSTALL.md).

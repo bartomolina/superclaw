@@ -3,18 +3,23 @@ import { readFileSync } from "fs";
 import path from "path";
 
 import JSON5 from "json5";
-import { NextRequest } from "next/server";
 
-import { ApiError } from "@/lib/server/errors";
-import { requiredString } from "@/lib/server/validate";
 import { gatewayCall } from "@/lib/server/openclaw/cli";
 import { OPENCLAW_HOME } from "@/lib/server/openclaw/constants";
-import { json, parseBody } from "@/lib/server/openclaw/http";
+import { json } from "@/lib/server/openclaw/http";
 
 export type ConfigDocument = {
   raw: string;
   hash: string;
 };
+
+function stringifyConfigFallback(value: unknown) {
+  try {
+    return JSON.stringify(value ?? {}, null, 2);
+  } catch {
+    return "{}";
+  }
+}
 
 export function parseConfigRaw<T>(raw: string, fallback: T): T {
   try {
@@ -34,10 +39,16 @@ export function readLocalConfig() {
 }
 
 export async function getConfigDocument(): Promise<ConfigDocument> {
-  const config = (await gatewayCall<{ raw?: string; hash?: string }>("config.get", {})) || {};
+  const config =
+    (await gatewayCall<{
+      parsed?: unknown;
+      hash?: string;
+    }>("config.get", {})) || {};
+
+  const raw = stringifyConfigFallback(config.parsed);
 
   return {
-    raw: typeof config.raw === "string" ? config.raw : "{}",
+    raw,
     hash: typeof config.hash === "string" ? config.hash : "",
   };
 }
@@ -51,23 +62,3 @@ export async function handleConfigGet() {
   return json({ raw: config.raw, hash: config.hash });
 }
 
-const DISALLOWED_CONFIG_SENTINELS = ["__OPENCLAW_KEEP__"];
-
-function assertNoDisallowedConfigSentinels(raw: string) {
-  const found = DISALLOWED_CONFIG_SENTINELS.find((sentinel) => raw.includes(sentinel));
-  if (!found) return;
-
-  throw new ApiError(
-    `Config contains ${found}. That placeholder should never be saved into openclaw.json — replace it with a real token or remove the field before saving.`,
-    400
-  );
-}
-
-export async function handleConfigPut(req: NextRequest) {
-  const body = await parseBody(req);
-  const raw = requiredString(body.raw, "raw", 2_000_000);
-  const baseHash = requiredString(body.baseHash, "baseHash", 256);
-  assertNoDisallowedConfigSentinels(raw);
-  await applyConfig(raw, baseHash);
-  return json({ ok: true });
-}

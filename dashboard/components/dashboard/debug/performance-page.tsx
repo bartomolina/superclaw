@@ -10,7 +10,6 @@ import { fmt, fmtUptime } from "./utils";
 export function PerformancePage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const refresh = () => {
     setLoading(true);
@@ -33,11 +32,6 @@ export function PerformancePage() {
 
   useEffect(() => {
     const i = setInterval(refresh, 10000);
-    return () => clearInterval(i);
-  }, []);
-
-  useEffect(() => {
-    const i = setInterval(() => setNowMs(Date.now()), 10000);
     return () => clearInterval(i);
   }, []);
 
@@ -116,26 +110,6 @@ export function PerformancePage() {
         </div>
       </div>
 
-      {data.pm2.length > 0 && (
-        <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-3">Processes</h2>
-          <div className="space-y-2">
-            {data.pm2.map((p: any) => (
-              <div key={p.name} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${p.status === "online" ? "bg-emerald-400" : "bg-red-400"}`} />
-                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{p.name}</span>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-zinc-400">
-                  <span>CPU {p.cpu}%</span>
-                  <span>MEM {fmt(p.memory)}</span>
-                  {p.uptime && <span>Up {fmtUptime((nowMs - p.uptime) / 1000)}</span>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

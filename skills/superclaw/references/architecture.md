@@ -22,14 +22,15 @@ Default assumptions unless the user explicitly asks otherwise:
 - run on the same machine as OpenClaw
 - local-first
 - dev mode is acceptable and often preferred
-- long-running processes managed by `pm2`
+- long-running services managed by `systemd`
+- when external exposure is needed, prefer `cloudflared.service` / Cloudflare Tunnel
 - fixed ports:
   - Dashboard: `4000`
   - Kanban: `4100`
-- canonical pm2 names:
-  - `superclaw-dashboard`
-  - `convex`
-  - `superclaw-kanban`
+- canonical service names:
+  - `superclaw-dashboard.service`
+  - `superclaw-convex.service`
+  - `superclaw-kanban.service`
 
 ## Repo layout
 
@@ -65,7 +66,7 @@ When changing skill behavior, keep the repo copies and the active copies in sync
 If you change any of these, update the root docs too:
 - install path
 - ports
-- pm2 names
+- service names
 - required env vars
 - skill sync/install steps
 - public/local access assumptions

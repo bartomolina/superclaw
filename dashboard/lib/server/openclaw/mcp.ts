@@ -1,4 +1,5 @@
 import path from "path";
+import { homedir } from "os";
 
 import { runCommand } from "@/lib/server/command";
 import { json } from "@/lib/server/openclaw/http";
@@ -19,7 +20,7 @@ type McporterServer = {
   };
 };
 
-const HOME_DIR = process.env.HOME || "/root";
+const HOME_DIR = process.env.HOME || homedir();
 const OPENCLAW_HOME = path.join(HOME_DIR, ".openclaw");
 const MAIN_WORKSPACE = path.join(OPENCLAW_HOME, "workspace");
 const MCPORTER_BIN = "mcporter";

@@ -13,7 +13,6 @@ The extension sends UI feedback into SuperClaw Kanban.
 
 - built locally
 - installed manually in the browser
-- not managed by `pm2`
 - depends on the Kanban side remaining compatible with the extension's API expectations
 
 ## Working rules

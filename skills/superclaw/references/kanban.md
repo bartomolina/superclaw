@@ -14,8 +14,8 @@ It combines:
 
 - App path: `apps/superclaw/kanban/`
 - Canonical local port: `4100`
-- Canonical pm2 process: `superclaw-kanban`
-- Convex sync process: `convex`
+- Canonical app service: `superclaw-kanban.service`
+- Convex sync service: `superclaw-convex.service`
 
 Stack:
 - Next.js App Router
@@ -39,8 +39,17 @@ Important Convex env keys:
 - `SITE_URL`
 - `SUPERUSER_EMAIL`
 - `RESEND_API_KEY`
-- `AUTH_FROM_EMAIL`
+- `AUTH_FROM_EMAIL` (recommended for real/shared email delivery; if omitted, Kanban falls back to `SuperClaw <onboarding@resend.dev>` for limited self-email testing)
 - `KANBAN_AGENT_SHARED_TOKEN`
+
+Important exposure rule:
+- keep the Kanban bind host, optional Cloudflare Tunnel ingress, `NEXT_PUBLIC_SITE_URL`, and Convex `SITE_URL` aligned
+- changing only the service bind host or only the tunnel is not enough when magic-link auth is enabled
+- private internal/Tailscale mode should use an internal origin for both `NEXT_PUBLIC_SITE_URL` and `SITE_URL`
+- shared/public mode should use the public hostname for both `NEXT_PUBLIC_SITE_URL` and `SITE_URL`
+- `SITE_URL` is the canonical auth origin; leave `TRUSTED_ORIGINS` unset by default
+- only set `TRUSTED_ORIGINS` if you intentionally want multiple private/internal origins for the same Kanban
+- use placeholders in docs/skills for private/internal hosts and IPs (for example `http://my-host:4100` or `http://100.x.y.z:4100`) instead of hardcoding user-specific values
 
 ## Agent automation runtime
 

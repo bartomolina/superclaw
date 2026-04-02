@@ -19,7 +19,7 @@ Then read only the references that match the task:
 ## Rules
 
 1. Treat `apps/superclaw/` as one companion suite, not unrelated projects.
-2. Keep root docs (`README.md`, `INSTALL.md`, `AGENT_INSTALL.md`) in sync when architecture, install flow, runtime, ports, or pm2 names change.
+2. Keep root docs (`README.md`, `INSTALL.md`, `AGENT_INSTALL.md`) in sync when architecture, install flow, runtime, ports, or service names change.
 3. Keep repo skill copies under `apps/superclaw/skills/` aligned with active copies under `~/.openclaw/skills/` when skill behavior changes.
 4. Prefer editing the checked-out repo directly; do not create worktrees, side clones, or alternate repos unless explicitly asked.
 5. If the task is a narrow Kanban worker run (pick up inbox work, leave comments, transition cards), prefer the dedicated `kanban` skill.

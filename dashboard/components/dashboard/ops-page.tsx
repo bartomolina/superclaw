@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { RefreshCw, Server } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 import { authFetch } from "@/components/dashboard/auth";
 import { StateMessage } from "@/components/dashboard/state-message";
@@ -9,7 +9,7 @@ import { fmtUptime } from "@/components/dashboard/debug/utils";
 
 type KanbanWorkerStatus = {
   ready: boolean;
-  host: {
+  workerEnv: {
     configured: boolean;
     baseUrl: string | null;
     hasToken: boolean;
@@ -20,16 +20,6 @@ type KanbanWorkerStatus = {
     hasToken: boolean;
     enabled: boolean;
     mode: string;
-  };
-  derived: {
-    available: boolean;
-    baseUrl: string | null;
-    hasToken: boolean;
-  };
-  checks: {
-    hostMatchesDerived: boolean | null;
-    sandboxMatchesHost: boolean | null;
-    sandboxMatchesDerived: boolean | null;
   };
   warnings?: string[];
 };
@@ -44,7 +34,7 @@ type McpServer = {
   argsCount: number;
 };
 
-type CaddyStatus = {
+type CloudflaredStatus = {
   service: {
     active: string | null;
     enabled: string | null;
@@ -52,34 +42,28 @@ type CaddyStatus = {
   config: {
     path: string | null;
     exists: boolean;
-    size: number;
-    sites: string[];
+    tunnel: string | null;
+    credentialsFile: string | null;
+    routes: Array<{
+      hostname: string;
+      service: string;
+    }>;
   };
 };
 
 type PerformanceData = {
-  pm2: Array<{
+  systemd: Array<{
     name: string;
-    status: string | null;
-    cpu: number;
-    memory: number;
+    unit: string;
+    description: string | null;
+    active: string | null;
+    subState: string | null;
+    enabled: string | null;
+    mainPid: number;
     uptime: number | null;
     command?: string | null;
-  }>;
-};
-
-type VercelDomainsData = {
-  authenticated: boolean;
-  domains: Array<{
-    name: string;
-    registrar: string | null;
-    records: Array<{
-      host: string;
-      type: string;
-      value: string;
-      pointsHere: boolean;
-      reason: string | null;
-    }>;
+    workingDirectory: string | null;
+    fragmentPath: string | null;
   }>;
 };
 
@@ -126,7 +110,14 @@ type ReposData = {
   }>;
 };
 
-const PREFERRED_PM2_ORDER = ["superclaw-dashboard", "superclaw-kanban", "convex"];
+const PREFERRED_SYSTEMD_ORDER = [
+  "superclaw-dashboard.service",
+  "superclaw-convex.service",
+  "superclaw-kanban.service",
+  "anto-home.service",
+  "cloudflared.service",
+  "openclaw-gateway.service",
+];
 
 function pill(label: string, tone: "neutral" | "success" | "warning") {
   const classes =
@@ -205,56 +196,33 @@ function envSummary(baseUrl: string | null, hasToken: boolean) {
   };
 }
 
-function pm2StatusLabel(status: string | null, uptime: number | null) {
+function systemdStatusLabel(active: string | null, subState: string | null, uptime: number | null) {
   const uptimeText = uptime ? fmtUptime(Math.max(0, (Date.now() - uptime) / 1000)) : null;
-  if (!status) return uptimeText || "—";
+  const parts: string[] = [];
 
-  const normalized = status.toLowerCase();
-  const base = normalized === "online" ? "Online" : normalized.charAt(0).toUpperCase() + normalized.slice(1);
-  return uptimeText ? `${base} ${uptimeText}` : base;
+  if (active) {
+    parts.push(active.charAt(0).toUpperCase() + active.slice(1));
+  }
+
+  if (subState && subState !== active) {
+    parts.push(subState);
+  }
+
+  if (uptimeText) {
+    parts.push(uptimeText);
+  }
+
+  return parts.join(" ") || "—";
 }
 
-function sortPm2Processes(processes: PerformanceData["pm2"]) {
-  return [...processes].sort((a, b) => {
-    const aIndex = PREFERRED_PM2_ORDER.indexOf(a.name);
-    const bIndex = PREFERRED_PM2_ORDER.indexOf(b.name);
+function sortSystemdServices(services: PerformanceData["systemd"]) {
+  return [...services].sort((a, b) => {
+    const aIndex = PREFERRED_SYSTEMD_ORDER.indexOf(a.unit);
+    const bIndex = PREFERRED_SYSTEMD_ORDER.indexOf(b.unit);
     const aRank = aIndex === -1 ? Number.POSITIVE_INFINITY : aIndex;
     const bRank = bIndex === -1 ? Number.POSITIVE_INFINITY : bIndex;
 
     if (aRank !== bRank) return aRank - bRank;
-    return a.name.localeCompare(b.name);
-  });
-}
-
-function getVercelHosts(domain: VercelDomainsData["domains"][number]) {
-  const byHost = new Map<string, { host: string; pointsHere: boolean }>();
-
-  for (const record of domain.records) {
-    const existing = byHost.get(record.host);
-    if (!existing) {
-      byHost.set(record.host, { host: record.host, pointsHere: record.pointsHere });
-      continue;
-    }
-
-    if (record.pointsHere) existing.pointsHere = true;
-  }
-
-  return Array.from(byHost.values()).sort((a, b) => {
-    if (a.pointsHere !== b.pointsHere) return a.pointsHere ? -1 : 1;
-    return a.host.localeCompare(b.host);
-  });
-}
-
-function sortVercelDomains(domains: VercelDomainsData["domains"]) {
-  return [...domains].sort((a, b) => {
-    const aHasIpMatch = a.records.some((record) => record.pointsHere && (record.type === "A" || record.type === "AAAA"));
-    const bHasIpMatch = b.records.some((record) => record.pointsHere && (record.type === "A" || record.type === "AAAA"));
-    if (aHasIpMatch !== bHasIpMatch) return aHasIpMatch ? -1 : 1;
-
-    const aHasAnyMatch = a.records.some((record) => record.pointsHere);
-    const bHasAnyMatch = b.records.some((record) => record.pointsHere);
-    if (aHasAnyMatch !== bHasAnyMatch) return aHasAnyMatch ? -1 : 1;
-
     return a.name.localeCompare(b.name);
   });
 }
@@ -295,10 +263,9 @@ export function OpsPage() {
   const [data, setData] = useState<KanbanWorkerStatus | null>(null);
   const [accounts, setAccounts] = useState<AccountsData | null>(null);
   const [convex, setConvex] = useState<ConvexData | null>(null);
+  const [cloudflared, setCloudflared] = useState<CloudflaredStatus | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
-  const [caddy, setCaddy] = useState<CaddyStatus | null>(null);
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
-  const [vercel, setVercel] = useState<VercelDomainsData | null>(null);
   const [repos, setRepos] = useState<ReposData | null>(null);
   const [expandedConvex, setExpandedConvex] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
@@ -317,18 +284,15 @@ export function OpsPage() {
         authFetch("/api/convex")
           .catch(() => ({ deployments: [] }))
           .then((convexData) => setConvex(convexData)),
+        authFetch("/api/cloudflared")
+          .catch(() => ({ service: { active: null, enabled: null }, config: { path: null, exists: false, tunnel: null, credentialsFile: null, routes: [] } }))
+          .then((cloudflaredData) => setCloudflared(cloudflaredData)),
         authFetch("/api/mcp")
           .catch(() => ({ servers: [] }))
           .then((mcp) => setMcpServers(mcp.servers || [])),
-        authFetch("/api/caddy")
-          .catch(() => ({ service: { active: null, enabled: null }, config: { path: null, exists: false, size: 0, sites: [] } }))
-          .then((caddyData) => setCaddy(caddyData)),
         authFetch("/api/performance")
-          .catch(() => ({ pm2: [] }))
+          .catch(() => ({ systemd: [] }))
           .then((perf) => setPerformance(perf)),
-        authFetch("/api/vercel")
-          .catch(() => ({ authenticated: false, domains: [] }))
-          .then((vercelData) => setVercel(vercelData)),
         authFetch("/api/repos")
           .catch(() => ({ repos: [] }))
           .then((reposData) => setRepos(reposData)),
@@ -352,26 +316,24 @@ export function OpsPage() {
   if (loading && !data) return <StateMessage>Loading ops...</StateMessage>;
   if (!data) return <StateMessage tone="error">Failed to load ops</StateMessage>;
 
-  const openClawEnv = envSummary(data.host.baseUrl, data.host.hasToken);
+  const openClawEnv = envSummary(data.workerEnv.baseUrl, data.workerEnv.hasToken);
   const showSandboxEnv = data.sandboxDefaults.enabled || data.sandboxDefaults.configured || data.sandboxDefaults.hasToken || Boolean(data.sandboxDefaults.baseUrl);
   const sandboxEnv = envSummary(data.sandboxDefaults.baseUrl, data.sandboxDefaults.hasToken);
 
   const accountProviders = accounts?.providers || [];
   const convexDeployments = convex?.deployments || [];
-  const pm2Processes = sortPm2Processes(performance?.pm2 || []);
-  const vercelDomains = sortVercelDomains(vercel?.domains || []);
-  const vercelHostCount = vercelDomains.reduce((sum, domain) => sum + getVercelHosts(domain).length, 0);
+  const systemdServices = sortSystemdServices(performance?.systemd || []);
   const repoList = repos?.repos || [];
 
   const loadingAccounts = loading && !accounts;
+  const loadingCloudflared = loading && !cloudflared;
   const loadingConvex = loading && !convex;
   const loadingMcp = loading && mcpServers.length === 0;
-  const loadingCaddy = loading && !caddy;
   const loadingPerformance = loading && !performance;
-  const loadingVercel = loading && !vercel;
   const loadingRepos = loading && !repos;
   const agentRepos = repoList.filter((repo) => repo.kind === "agent" && repo.active && (repo.hasCommits || repo.dirty === true));
   const otherRepos = repoList.filter((repo) => repo.kind === "other");
+  const visibleRepoCount = otherRepos.length + agentRepos.length;
 
   return (
     <div className="space-y-4">
@@ -402,7 +364,7 @@ export function OpsPage() {
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {loadingAccounts ? (
-              <div className="px-5 py-4 text-sm text-zinc-400">Loading...</div>
+              <div className="px-5 py-4 text-sm text-zinc-400">Loading accounts...</div>
             ) : accountProviders.length === 0 ? (
               <div className="px-5 py-4 text-sm text-zinc-400">None detected</div>
             ) : (
@@ -433,7 +395,7 @@ export function OpsPage() {
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {loadingConvex ? (
-              <div className="px-5 py-4 text-sm text-zinc-400">Loading...</div>
+              <div className="px-5 py-4 text-sm text-zinc-400">Loading Convex deployments...</div>
             ) : convexDeployments.length === 0 ? (
               <div className="px-5 py-4 text-sm text-zinc-400">None found</div>
             ) : (
@@ -478,7 +440,7 @@ export function OpsPage() {
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {loadingMcp ? (
-              <div className="px-5 py-4 text-sm text-zinc-400">Loading mcporter config...</div>
+              <div className="px-5 py-4 text-sm text-zinc-400">Loading MCP servers...</div>
             ) : mcpServers.length === 0 ? (
               <div className="px-5 py-4 text-sm text-zinc-400">None configured in mcporter</div>
             ) : (
@@ -501,93 +463,67 @@ export function OpsPage() {
       </div>
 
       <div className="space-y-2">
-        <SectionTitle title={`Caddy (${caddy?.config.sites?.length || 0})`} />
+        <SectionTitle title={`Cloudflare Tunnel (${cloudflared?.config.routes?.length || 0})`} />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
-            {loadingCaddy ? (
-              <div className="px-5 py-4 text-sm text-zinc-400">Loading...</div>
-            ) : caddy?.config.sites?.length ? (
-              caddy.config.sites.map((site) => (
-                <div key={site} className="px-5 py-3 text-sm text-zinc-600 dark:text-zinc-400">
-                  <ExternalLink value={site} />
-                </div>
-              ))
+            {loadingCloudflared ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">Loading Cloudflare Tunnel...</div>
+            ) : !cloudflared?.config.exists ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">No local cloudflared config found</div>
             ) : (
-              <div className="px-5 py-4 text-sm text-zinc-400">No sites found</div>
+              <>
+                {cloudflared.config.routes.length === 0 ? (
+                  <div className="px-5 py-4 text-sm text-zinc-400">No hostnames configured</div>
+                ) : (
+                  cloudflared.config.routes.map((route) => (
+                    <DetailRow
+                      key={`${route.hostname}-${route.service}`}
+                      label={<ExternalLink value={route.hostname} />}
+                      detail={<span className="break-all font-mono text-xs text-zinc-400 dark:text-zinc-500">{route.service}</span>}
+                    />
+                  ))
+                )}
+              </>
             )}
           </div>
         </div>
       </div>
 
       <div className="space-y-2">
-        <SectionTitle title={`Vercel DNS (${vercelHostCount})`} />
-        <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
-            {loadingVercel ? (
-              <div className="px-5 py-4 text-sm text-zinc-400">Loading...</div>
-            ) : !vercel?.authenticated ? (
-              <div className="px-5 py-4 text-sm text-zinc-400">Not authenticated</div>
-            ) : vercelDomains.length === 0 ? (
-              <div className="px-5 py-4 text-sm text-zinc-400">None</div>
-            ) : (
-              vercelDomains.map((domain) => {
-                const hosts = getVercelHosts(domain);
-
-                return (
-                  <DetailRow
-                    key={domain.name}
-                    label={<ExternalLink value={domain.name} />}
-                    detail={
-                      hosts.length > 0 ? (
-                        <div className="space-y-2">
-                          {hosts.map((host) => (
-                            <div key={host.host} className="flex items-start gap-2">
-                              <div className="mt-0.5 shrink-0 text-zinc-400 dark:text-zinc-500">
-                                {host.pointsHere ? <Server size={13} className="text-emerald-500" /> : <span className="inline-block h-[13px] w-[13px]" />}
-                              </div>
-                              <div className="min-w-0">
-                                <ExternalLink value={host.host} />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : undefined
-                    }
-                  />
-                );
-              })
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <SectionTitle title={`PM2 (${pm2Processes.length})`} />
+        <SectionTitle title={`systemd (${systemdServices.length})`} />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {loadingPerformance ? (
-              <div className="px-5 py-4 text-sm text-zinc-400">Loading...</div>
-            ) : pm2Processes.length === 0 ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">Loading systemd services...</div>
+            ) : systemdServices.length === 0 ? (
               <div className="px-5 py-4 text-sm text-zinc-400">None</div>
             ) : (
-              pm2Processes.map((process) => {
+              systemdServices.map((service) => {
                 const dotClass =
-                  process.status === "online"
+                  service.active === "active"
                     ? "bg-emerald-400"
-                    : process.status === "stopped" || process.status === "errored"
+                    : service.active === "failed" || service.active === "inactive"
                       ? "bg-red-400"
                       : "bg-zinc-300 dark:bg-zinc-600";
 
+                const metadata: string[] = [];
+                if (service.workingDirectory) metadata.push(`cwd: ${service.workingDirectory}`);
+                else if (service.fragmentPath) metadata.push(`unit: ${service.fragmentPath}`);
+
+                if (service.mainPid > 0) metadata.push(`pid ${service.mainPid}`);
+
                 return (
-                  <div key={process.name} className="flex items-start justify-between gap-3 px-5 py-3">
+                  <div key={service.unit} className="flex items-start justify-between gap-3 px-5 py-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 text-sm text-zinc-800 dark:text-zinc-200">
                         <span className={`h-2 w-2 rounded-full ${dotClass}`} />
-                        <span>{process.name}</span>
+                        <span>{service.name}</span>
+                        {service.description ? <span className="min-w-0 truncate text-xs text-zinc-400 dark:text-zinc-500">{service.description}</span> : null}
                       </div>
-                      {process.command ? <div className="mt-0.5 break-all font-mono text-xs text-zinc-400 dark:text-zinc-500">{process.command}</div> : null}
+                      {service.command ? <div className="mt-1 break-all font-mono text-xs text-zinc-400 dark:text-zinc-500">{service.command}</div> : null}
+                      {metadata.length > 0 ? <div className="mt-1 break-all text-xs text-zinc-400 dark:text-zinc-500">{metadata.join(" · ")}</div> : null}
                     </div>
-                    <div className="shrink-0 text-xs text-zinc-400 dark:text-zinc-500">{pm2StatusLabel(process.status, process.uptime)}</div>
+                    <div className="shrink-0 text-xs text-zinc-400 dark:text-zinc-500">{systemdStatusLabel(service.active, service.subState, service.uptime)}</div>
                   </div>
                 );
               })
@@ -597,10 +533,10 @@ export function OpsPage() {
       </div>
 
       <div className="space-y-2">
-        <SectionTitle title={`Repos (${repoList.length})`} />
+        <SectionTitle title={`Repos (${visibleRepoCount})`} />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           {loadingRepos ? (
-            <div className="px-5 py-4 text-sm text-zinc-400">Loading...</div>
+            <div className="px-5 py-4 text-sm text-zinc-400">Loading repos...</div>
           ) : repoList.length === 0 ? (
             <div className="px-5 py-4 text-sm text-zinc-400">None found</div>
           ) : (

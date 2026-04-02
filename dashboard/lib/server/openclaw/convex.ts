@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "fs";
+import { homedir } from "os";
 import path from "path";
 
 import { runCommand } from "@/lib/server/command";
@@ -18,7 +19,7 @@ type ConvexDeployment = {
   source: string | null;
 };
 
-const HOME_DIR = process.env.HOME || "/root";
+const HOME_DIR = process.env.HOME || homedir();
 const OPENCLAW_HOME = path.join(HOME_DIR, ".openclaw");
 const CONVEX_ENV_FILE_FIND_SCRIPT = [
   `find ${JSON.stringify(OPENCLAW_HOME)} -maxdepth 7`,

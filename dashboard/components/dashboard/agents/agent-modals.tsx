@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import JSON5 from "json5";
 import { Settings } from "lucide-react";
 import { toast } from "sonner";
 
@@ -142,22 +141,14 @@ export function CreateAgentForm({ onRefresh, open, onClose }: CreateAgentFormPro
   );
 }
 
-const DISALLOWED_CONFIG_SENTINELS = ["__OPENCLAW_KEEP__"];
-
-interface ConfigModalProps {
-  onRefresh: () => Promise<void>;
-}
-
-export function ConfigModal({ onRefresh }: ConfigModalProps) {
+export function ConfigModal() {
   const [showConfig, setShowConfig] = useState(false);
   const [configRaw, setConfigRaw] = useState("");
-  const [configHash, setConfigHash] = useState("");
 
   async function openConfig() {
     try {
       const data = await authFetch("/api/config");
       setConfigRaw(data.raw || "{}");
-      setConfigHash(data.hash);
       setShowConfig(true);
     } catch {
       toast.error("Failed to load config");
@@ -169,7 +160,7 @@ export function ConfigModal({ onRefresh }: ConfigModalProps) {
       <button
         onClick={openConfig}
         className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-        title="View config"
+        title="View config (read-only)"
       >
         <Settings size={16} />
       </button>
@@ -179,26 +170,6 @@ export function ConfigModal({ onRefresh }: ConfigModalProps) {
           <FileViewerModal
             file={{ name: "openclaw.json", content: configRaw, path: "~/.openclaw/openclaw.json" }}
             onClose={() => setShowConfig(false)}
-            editable
-            saveLabel="Save & Restart"
-            successMessage="Saved config and restarted gateway."
-            onSave={async (content) => {
-              JSON5.parse(content);
-              const found = DISALLOWED_CONFIG_SENTINELS.find((sentinel) => content.includes(sentinel));
-              if (found) {
-                throw new Error(
-                  `Config still contains ${found}. Replace it with a real token or remove the field before saving.`
-                );
-              }
-              const res = await fetch("/api/config", {
-                method: "PUT",
-                headers: { "Content-Type": "application/json", ...authHeaders() },
-                body: JSON.stringify({ raw: content, baseHash: configHash }),
-              });
-              const d = await res.json();
-              if (!d.ok) throw new Error(d.error || "Failed to save");
-              await onRefresh();
-            }}
           />,
           document.body
         )}

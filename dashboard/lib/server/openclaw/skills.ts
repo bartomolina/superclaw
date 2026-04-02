@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ApiError } from "@/lib/server/errors";
 import { optionalAgentId } from "@/lib/server/validate";
 import { gatewayCall, runOpenClaw } from "@/lib/server/openclaw/cli";
@@ -29,10 +28,6 @@ type SkillsListResponse = {
 
 type SkillsStatusResponse = {
   skills?: SkillRecord[];
-};
-
-type AgentListRecord = {
-  id?: string;
 };
 
 function normalizeSkill(skill: SkillRecord) {
@@ -132,30 +127,6 @@ export async function handleSkills() {
     combinedSkills.push(...(data.skills || []));
   } catch (error) {
     warnings.push(`openclaw skills list --json: ${error instanceof Error ? error.message : String(error)}`);
-  }
-
-  try {
-    const { stdout, stderr } = await runOpenClaw(["agents", "list", "--json"], { timeoutMs: 15_000 });
-    const agents = parseCliJson<AgentListRecord[]>(stdout, stderr, []).filter((agent) => typeof agent.id === "string" && agent.id.trim());
-
-    const skillResults = await Promise.all(
-      agents.map(async (agent) => {
-        const agentId = agent.id!.trim();
-        try {
-          const data = (await gatewayCall<SkillsStatusResponse>("skills.status", { agentId })) || {};
-          return (data.skills || []).filter((skill) => skill.eligible);
-        } catch (error) {
-          warnings.push(`skills.status(${agentId}): ${error instanceof Error ? error.message : String(error)}`);
-          return [] as SkillRecord[];
-        }
-      }),
-    );
-
-    for (const skills of skillResults) {
-      combinedSkills.push(...skills);
-    }
-  } catch (error) {
-    warnings.push(`openclaw agents list --json: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   return json({

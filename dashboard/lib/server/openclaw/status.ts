@@ -1,8 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import { readdirSync } from "fs";
 import { readFileSync } from "fs";
-import path from "path";
 
 import { runCommand } from "@/lib/server/command";
+import { OPENCLAW_HOME } from "@/lib/server/openclaw/constants";
 import { OPENCLAW_PACKAGE_JSON } from "@/lib/server/openclaw/constants";
 import { json } from "@/lib/server/openclaw/http";
 import { runtimeGatewayRequest } from "@/lib/server/openclaw/runtime-gateway";
@@ -44,20 +44,124 @@ export async function handleUsage() {
   return json(data);
 }
 
-function summarizePm2Command(processEntry: any) {
-  const execPath = typeof processEntry.pm2_env?.pm_exec_path === "string" ? processEntry.pm2_env.pm_exec_path : "";
-  const execName = execPath ? path.basename(execPath) : "";
-  const args = Array.isArray(processEntry.pm2_env?.args) ? processEntry.pm2_env.args.filter((value: unknown) => typeof value === "string") : [];
+const SYSTEMD_CORE_UNITS = new Set(["cloudflared.service", "openclaw-gateway.service"]);
+const WORKSPACE_ROOT = `${OPENCLAW_HOME}/workspace`;
 
-  if ((execName === "bash" || execName === "sh") && args.length >= 2 && (args[0] === "-c" || args[0] === "-lc")) {
-    return args[1] as string;
+function parseSystemdProperties(stdout: string) {
+  const props: Record<string, string> = {};
+
+  for (const line of stdout.split("\n")) {
+    const idx = line.indexOf("=");
+    if (idx === -1) continue;
+    const key = line.slice(0, idx);
+    const value = line.slice(idx + 1);
+    props[key] = value;
   }
 
-  if (execName && args.length > 0) {
-    return `${execName} ${args.join(" ")}`;
+  return props;
+}
+
+function collectSystemdCandidateUnits() {
+  const units = new Set<string>();
+
+  try {
+    for (const entry of readdirSync("/etc/systemd/system")) {
+      if (entry.endsWith(".service")) units.add(entry);
+    }
+  } catch {
+    // Ignore missing/unreadable dir.
   }
 
-  return execName || null;
+  for (const unit of SYSTEMD_CORE_UNITS) units.add(unit);
+  return Array.from(units);
+}
+
+function summarizeSystemdExecStart(value: string | undefined) {
+  if (!value) return null;
+
+  const argvMatch = value.match(/argv\[\]=(.+?)(?:\s+;\s+ignore_errors=|$)/);
+  const command = (argvMatch?.[1] || value).trim();
+  if (!command) return null;
+
+  return command
+    .replace(/(--token)\s+\S+/g, "$1 [redacted]")
+    .replace(/(Authorization=Bearer\s+)\S+/gi, "$1[redacted]")
+    .replace(/([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|KEY)=)\S+/gi, "$1[redacted]");
+}
+
+function parseSystemdTimestamp(value: string | undefined) {
+  if (!value || value === "n/a") return null;
+  const ts = Date.parse(value);
+  return Number.isFinite(ts) ? ts : null;
+}
+
+async function readSystemdServices() {
+  const candidates = collectSystemdCandidateUnits();
+
+  const services = await Promise.all(
+    candidates.map(async (unit) => {
+      try {
+        const { stdout } = await runCommand(
+          "systemctl",
+          [
+            "show",
+            unit,
+            "-p",
+            "Id",
+            "-p",
+            "Description",
+            "-p",
+            "LoadState",
+            "-p",
+            "UnitFileState",
+            "-p",
+            "ActiveState",
+            "-p",
+            "SubState",
+            "-p",
+            "MainPID",
+            "-p",
+            "ExecMainStartTimestamp",
+            "-p",
+            "FragmentPath",
+            "-p",
+            "WorkingDirectory",
+            "-p",
+            "ExecStart",
+          ],
+          { timeoutMs: 5_000 },
+        );
+
+        const props = parseSystemdProperties(stdout);
+        if (!props.Id || props.LoadState === "not-found") return null;
+
+        const workingDirectory = props.WorkingDirectory || null;
+        const fragmentPath = props.FragmentPath || null;
+        const isWorkspaceService = Boolean(workingDirectory && workingDirectory.startsWith(WORKSPACE_ROOT));
+        const isCoreUnit = SYSTEMD_CORE_UNITS.has(props.Id);
+
+        if (!isWorkspaceService && !isCoreUnit) return null;
+
+        return {
+          name: props.Id.replace(/\.service$/, ""),
+          unit: props.Id,
+          description: props.Description || null,
+          active: props.ActiveState || null,
+          subState: props.SubState || null,
+          enabled: props.UnitFileState || null,
+          mainPid: Number.parseInt(props.MainPID || "0", 10) || 0,
+          uptime: parseSystemdTimestamp(props.ExecMainStartTimestamp),
+          command: summarizeSystemdExecStart(props.ExecStart),
+          workingDirectory,
+          fragmentPath,
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return services.filter(Boolean);
 }
 
 export async function handlePerformance() {
@@ -83,20 +187,7 @@ export async function handlePerformance() {
     // Disk metrics unavailable.
   }
 
-  let pm2Processes: any[] = [];
-  try {
-    const { stdout } = await runCommand("pm2", ["jlist"], { timeoutMs: 5_000 });
-    pm2Processes = JSON.parse(stdout || "[]").map((processEntry: any) => ({
-      name: processEntry.name,
-      status: processEntry.pm2_env?.status,
-      cpu: processEntry.monit?.cpu,
-      memory: processEntry.monit?.memory,
-      uptime: processEntry.pm2_env?.pm_uptime,
-      command: summarizePm2Command(processEntry),
-    }));
-  } catch {
-    // PM2 may not be installed.
-  }
+  const systemdServices = await readSystemdServices();
 
   let gatewayUp = false;
   try {
@@ -111,7 +202,7 @@ export async function handlePerformance() {
     memory: { total: totalMem, free: freeMem, used: totalMem - freeMem },
     disk: { total: diskTotal, used: diskUsed, free: diskFree },
     uptime,
-    pm2: pm2Processes,
+    systemd: systemdServices,
     gateway: { online: gatewayUp },
   });
 }

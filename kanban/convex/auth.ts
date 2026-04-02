@@ -9,7 +9,7 @@ import authConfig from "./auth.config";
 
 const siteUrl = process.env.SITE_URL;
 const resendApiKey = process.env.RESEND_API_KEY;
-const authFromEmail = process.env.AUTH_FROM_EMAIL || "SuperClaw <noreply@mail.bartomolina.io>";
+const authFromEmail = process.env.AUTH_FROM_EMAIL || "SuperClaw <onboarding@resend.dev>";
 const trustedOriginsEnv = process.env.TRUSTED_ORIGINS || "";
 const superuserEmail = normalizeEmail(process.env.SUPERUSER_EMAIL);
 const magicLinkEmailCooldownMs = parseCooldownMs(process.env.MAGIC_LINK_EMAIL_COOLDOWN_MS, 120_000);

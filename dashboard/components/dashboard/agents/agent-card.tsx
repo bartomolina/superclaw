@@ -33,12 +33,13 @@ function formatKanbanMissing(items: string[]) {
 }
 
 function formatWorkspacePath(workspace: string) {
-  if (workspace.startsWith("/root/")) {
-    return `~/${workspace.slice("/root/".length)}`;
+  if (/^\/(?:root|home\/[^/]+|Users\/[^/]+)$/.test(workspace)) {
+    return "~";
   }
 
-  if (workspace === "/root") {
-    return "~";
+  const homePrefix = workspace.match(/^\/(?:root|home\/[^/]+|Users\/[^/]+)\//);
+  if (homePrefix) {
+    return `~/${workspace.slice(homePrefix[0].length)}`;
   }
 
   return workspace;

@@ -16,7 +16,7 @@ It covers areas like:
 
 - App path: `apps/superclaw/dashboard/`
 - Canonical local port: `4000`
-- Canonical pm2 process: `superclaw-dashboard`
+- Canonical service: `superclaw-dashboard.service`
 
 ## Runtime shape
 
@@ -24,6 +24,7 @@ It covers areas like:
 - server-side OpenClaw adapter layer under `lib/server/openclaw/`
 - browser talks to the dashboard app, not directly to the Gateway WebSocket
 - required env includes `GATEWAY_TOKEN`
+- external exposure should prefer Cloudflare Tunnel via `cloudflared.service`
 
 ## Working rules
 
@@ -37,8 +38,8 @@ It covers areas like:
 
 ## Quick reference
 
-Typical local dev start:
+Typical local dev command inside the systemd unit:
 
 ```bash
-pm2 start bash --name superclaw-dashboard --cwd ~/.openclaw/workspace/apps/superclaw/dashboard -- -lc 'pnpm exec next dev --hostname 127.0.0.1 --port 4000'
+pnpm exec next dev --hostname 127.0.0.1 --port 4000
 ```

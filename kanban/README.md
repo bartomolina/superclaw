@@ -85,6 +85,45 @@ pnpm exec convex dev
 pnpm dev
 ```
 
+For a persistent host service instead of dev mode:
+
+```bash
+pnpm build
+pnpm start --hostname 127.0.0.1 --port 4100
+```
+
+### Canonical URL and exposure mode
+
+Kanban has three separate knobs that need to stay aligned:
+- the bind host in `superclaw-kanban.service`
+- the optional Cloudflare Tunnel ingress entry
+- the canonical app URL used by auth (`NEXT_PUBLIC_SITE_URL` in Next + `SITE_URL` in Convex)
+
+Recommended modes:
+
+1. **Single-machine local dev**
+   - bind Kanban to `127.0.0.1`
+   - keep tunnel ingress off
+   - set `NEXT_PUBLIC_SITE_URL` and `SITE_URL` to the same local origin
+
+2. **Private internal/Tailscale access**
+   - bind Kanban to an internal IP (for example a Tailscale IP like `100.x.y.z`)
+   - keep tunnel ingress off
+   - set `NEXT_PUBLIC_SITE_URL` and `SITE_URL` to that same internal origin (for example `http://100.x.y.z:4100`)
+
+3. **Shared/public mode**
+   - keep Kanban bound somewhere the local tunnel process can reach
+   - add Cloudflare Tunnel ingress for the public hostname
+   - set `NEXT_PUBLIC_SITE_URL` and `SITE_URL` to the public URL used in magic-link emails
+
+If magic-link emails point at the wrong place, the thing you usually forgot to change is `SITE_URL` (and its matching `NEXT_PUBLIC_SITE_URL`), not just the bind host or tunnel.
+
+`SITE_URL` should be the one canonical origin for auth emails and redirects.
+Leave `TRUSTED_ORIGINS` unset by default.
+If you intentionally want Kanban reachable via multiple private/internal origins (for example both a machine hostname like `http://my-host:4100` and an internal/Tailscale IP), keep `SITE_URL` on the canonical URL and add only the extra alternates to `TRUSTED_ORIGINS`.
+
+`AUTH_FROM_EMAIL` is strongly recommended for any real/shared install. If omitted, Kanban falls back to `SuperClaw <onboarding@resend.dev>`, which Resend only allows for limited self-email testing.
+
 7) Open `NEXT_PUBLIC_SITE_URL` and sign in with magic link.
 
 ## Auth status
@@ -203,7 +242,7 @@ When moving from dev to shared/prod:
 - `SITE_URL` (Convex env)
 
 2) Use verified sender domain in Resend:
-- `AUTH_FROM_EMAIL="SuperClaw <noreply@mail.your-domain.com>"`
+- `AUTH_FROM_EMAIL="SuperClaw <noreply@mail.your-domain.com>"` (recommended for any real/shared install; otherwise Kanban falls back to `SuperClaw <onboarding@resend.dev>` for limited self-email testing)
 
 3) Set production Convex env values (same keys as dev).
 
@@ -233,8 +272,11 @@ pnpm build
 - **"Could not send magic link" + Resend 403 domain not verified**
   - Verify the sender domain in Resend.
   - Ensure `AUTH_FROM_EMAIL` uses that verified domain.
+  - If `AUTH_FROM_EMAIL` is unset, remember the fallback is `SuperClaw <onboarding@resend.dev>`, which only works for limited self-email testing.
 
 - **Invalid origin**
-  - Ensure `SITE_URL` matches the actual app origin.
-  - Add additional origins in `TRUSTED_ORIGINS` only if you intentionally support multiple URLs for the same app.
-URLs.
+  - Ensure `SITE_URL` matches the canonical app origin you actually want to use.
+  - `SITE_URL` is the canonical auth origin used for magic-link emails.
+  - Leave `TRUSTED_ORIGINS` unset by default.
+  - Only add values to `TRUSTED_ORIGINS` if you intentionally support multiple private/internal URLs for the same app.
+  - Typical examples are alternate private/internal origins such as a machine hostname (`http://my-host:4100`) or an internal/Tailscale IP.

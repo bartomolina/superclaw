@@ -17,8 +17,7 @@ function getSkillSourceLabel(skill: any) {
 
 function getActiveSkillGroupId(skill: any) {
   if (skill.bundled || skill.source === "openclaw-extra") return "openclaw";
-  if (skill.source === "openclaw-workspace") return "agent-specific";
-  return "global-custom";
+  return "custom";
 }
 
 export function SkillsPage() {
@@ -60,14 +59,9 @@ export function SkillsPage() {
       skills: filtered.filter((s) => getActiveSkillGroupId(s) === "openclaw"),
     },
     {
-      id: "global-custom",
-      label: "Custom (global)",
-      skills: filtered.filter((s) => getActiveSkillGroupId(s) === "global-custom"),
-    },
-    {
-      id: "agent-specific",
-      label: "Custom (agent-specific)",
-      skills: filtered.filter((s) => getActiveSkillGroupId(s) === "agent-specific"),
+      id: "custom",
+      label: "Custom",
+      skills: filtered.filter((s) => getActiveSkillGroupId(s) === "custom"),
     },
   ].filter((group) => group.skills.length > 0);
 
@@ -75,9 +69,12 @@ export function SkillsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">Skills</h1>
-        <span className="text-xs text-zinc-400">{skills.length} total</span>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">Skills</h1>
+          <p className="mt-1 text-xs text-zinc-400">Per-agent effective skills are shown on the Agents page.</p>
+        </div>
+        <span className="text-xs text-zinc-400 shrink-0">{skills.length} total</span>
       </div>
 
       <input

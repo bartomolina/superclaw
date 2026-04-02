@@ -15,7 +15,8 @@ Keep it simple and opinionated:
 - canonical path: `~/.openclaw/workspace/apps/superclaw/`
 - run locally on the same machine as OpenClaw
 - run in **dev mode** for hot reload
-- manage processes with **pm2**
+- manage long-running services with **systemd**
+- when public exposure is needed, prefer **Cloudflare Tunnel** via `cloudflared.service`
 - use fixed local ports:
   - Dashboard: `4000`
   - Kanban: `4100`
@@ -23,12 +24,38 @@ Keep it simple and opinionated:
 
 SuperClaw assumes OpenClaw is already installed and working.
 
-## Fixed pm2 names
+## Recommended systemd unit names
 
 Use these names:
-- `superclaw-dashboard`
-- `convex`
-- `superclaw-kanban`
+- `superclaw-dashboard.service`
+- `superclaw-convex.service`
+- `superclaw-kanban.service`
+
+## Kanban exposure modes
+
+Kanban has three separate knobs that need to stay aligned:
+- the bind host in `superclaw-kanban.service`
+- the optional Cloudflare Tunnel ingress entry
+- the canonical app URL used by auth (`NEXT_PUBLIC_SITE_URL` + Convex `SITE_URL`)
+
+Recommended modes:
+
+1. **Single-machine local dev**
+   - bind Kanban to `127.0.0.1`
+   - keep tunnel ingress off
+   - set `NEXT_PUBLIC_SITE_URL` and `SITE_URL` to the same local origin
+
+2. **Private internal/Tailscale access**
+   - bind Kanban to an internal IP (for example a Tailscale IP)
+   - keep tunnel ingress off
+   - set `NEXT_PUBLIC_SITE_URL` and `SITE_URL` to that same internal origin
+
+3. **Shared/public mode**
+   - keep Kanban bound somewhere the local tunnel process can reach
+   - add Cloudflare Tunnel ingress for the public hostname
+   - set `NEXT_PUBLIC_SITE_URL` and `SITE_URL` to the public URL used in magic-link emails
+
+If auth emails point at the wrong place, the usual fix is updating `SITE_URL` and `NEXT_PUBLIC_SITE_URL`, not just the service bind host or tunnel.
 
 ## Skills
 

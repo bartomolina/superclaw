@@ -2,10 +2,10 @@ export { handleAccountsList } from "@/lib/server/openclaw/accounts";
 export { isAuthorized, handleVerify } from "@/lib/server/openclaw/auth";
 export { gatewayCall, runOpenClaw, runOpenClawJson } from "@/lib/server/openclaw/cli";
 export { handleAgentChannels } from "@/lib/server/openclaw/channels";
-export { handleConfigGet, handleConfigPut, parseConfigRaw, readLocalConfig, getConfigDocument, applyConfig } from "@/lib/server/openclaw/config";
+export { handleCloudflaredStatus } from "@/lib/server/openclaw/cloudflared";
+export { handleConfigGet, parseConfigRaw, readLocalConfig, getConfigDocument, applyConfig } from "@/lib/server/openclaw/config";
 export { handleConvexDeployments } from "@/lib/server/openclaw/convex";
 export { handleCronModel, handleCronsList } from "@/lib/server/openclaw/crons";
-export { handleCaddyStatus } from "@/lib/server/openclaw/caddy";
 export { handleDebugWs, handleFeatures, isDebugRpcEnabled } from "@/lib/server/openclaw/debug";
 export { handleAgentFileGet, handleAgentFilePut, handleAgentFilesList, handleAvatar, parseAvatarFromIdentity } from "@/lib/server/openclaw/files";
 export { errorResponse, json, parseBody } from "@/lib/server/openclaw/http";
@@ -24,5 +24,4 @@ export {
   handleCreateAgent,
   handleDeleteAgent,
 } from "@/lib/server/openclaw/agents";
-export { handleVercelDomains } from "@/lib/server/openclaw/vercel";
 export type { AgentsListResponse, DashboardAgent, DashboardModel } from "@/lib/server/openclaw/types";
