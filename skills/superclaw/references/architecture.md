@@ -37,7 +37,6 @@ Default assumptions unless the user explicitly asks otherwise:
 ```text
 apps/superclaw/
 ├── README.md
-├── INSTALL.md
 ├── AGENT_INSTALL.md
 ├── dashboard/
 ├── kanban/
@@ -73,5 +72,4 @@ If you change any of these, update the root docs too:
 
 Root docs to keep aligned:
 - `README.md`
-- `INSTALL.md`
 - `AGENT_INSTALL.md`

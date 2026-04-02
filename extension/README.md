@@ -1,8 +1,17 @@
 # SuperClaw Extension
 
-Browser extension for sending UI feedback into SuperClaw Kanban.
+Extension for sending UI feedback into SuperClaw Kanban.
 
-## Local build
+For suite-level setup, see:
+- `../README.md`
+- `../AGENT_INSTALL.md`
+
+## Basics
+
+- path: `apps/superclaw/extension/`
+- build output: `.output/chrome-mv3/`
+
+## Commands
 
 ```bash
 pnpm install
@@ -10,10 +19,7 @@ pnpm build
 pnpm test
 ```
 
-Build output:
-- `.output/chrome-mv3/`
-
-Optional zip:
+Optional:
 
 ```bash
 pnpm zip
@@ -21,5 +27,6 @@ pnpm zip
 
 ## Notes
 
-- It connects to the local Kanban app.
+- The extension talks to Kanban, not directly to OpenClaw.
+- Default local Kanban URL is `http://127.0.0.1:4100`.
 - Install it as an unpacked extension or from a built artifact.
