@@ -1,7 +1,7 @@
 import { storage } from "wxt/utils/storage";
 
 export const kanbanBaseUrl = storage.defineItem<string>("local:kanbanBaseUrl", {
-  fallback: "http://localhost:3000",
+  fallback: "http://127.0.0.1:4100",
 });
 
 export const extensionCredential = storage.defineItem<string>("local:extensionCredential", {

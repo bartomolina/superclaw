@@ -61,13 +61,13 @@ Optional local env:
 
 ```bash
 pnpm exec convex env set BETTER_AUTH_SECRET "$(openssl rand -base64 32)"
-pnpm exec convex env set SITE_URL http://localhost:3000
+pnpm exec convex env set SITE_URL http://127.0.0.1:4100
 pnpm exec convex env set SUPERUSER_EMAIL you@example.com
 pnpm exec convex env set RESEND_API_KEY <your_resend_api_key>
 pnpm exec convex env set AUTH_FROM_EMAIL "SuperClaw <noreply@mail.your-domain.com>"
 pnpm exec convex env set KANBAN_AGENT_SHARED_TOKEN "$(openssl rand -hex 24)"
 # optional (extra local/testing origins):
-pnpm exec convex env set TRUSTED_ORIGINS "http://127.0.0.1:3000,http://localhost:3000"
+pnpm exec convex env set TRUSTED_ORIGINS "http://localhost:4100"
 # optional (magic-link throttling):
 pnpm exec convex env set MAGIC_LINK_EMAIL_COOLDOWN_MS 120000
 pnpm exec convex env set MAGIC_LINK_GLOBAL_COOLDOWN_MS 5000
