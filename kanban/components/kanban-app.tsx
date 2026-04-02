@@ -36,6 +36,16 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import {
+  buildSessionChatUrl,
+  cardMatchesSearch,
+  describeCardRunState,
+  formatColumnName,
+  getColumnTone,
+  getRunTone,
+  maskEmail,
+  summarize,
+} from "@/lib/kanban/card-formatting";
 
 type BoardModel = {
   _id: Id<"boards">;
@@ -156,7 +166,6 @@ type ModelOption = {
 };
 
 type ChoiceOption = string | { value: string; label: string; title?: string };
-type CardRunStatus = NonNullable<CardModel["lastRunStatus"]>;
 
 const cardTypeOptions: ChoiceOption[] = [
   { value: "feature", label: "🧩", title: "Feature" },
@@ -169,143 +178,6 @@ const inputClass =
 const textareaClass = `${inputClass} min-h-32 resize-y`;
 const primaryButtonClass =
   "inline-flex items-center justify-center rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200";
-
-const columnToneByName: Record<string, string> = {
-  ideas: "text-violet-700 dark:text-violet-300",
-  todo: "text-zinc-700 dark:text-zinc-200",
-  inprogress: "text-sky-700 dark:text-sky-300",
-  review: "text-amber-700 dark:text-amber-300",
-  done: "text-emerald-700 dark:text-emerald-300",
-};
-
-function normalizeColumnName(columnName: string) {
-  return columnName.toLowerCase().replace(/\s+/g, "");
-}
-
-function getColumnTone(columnName: string) {
-  const normalized = normalizeColumnName(columnName);
-  return columnToneByName[normalized] || "text-zinc-700 dark:text-zinc-200";
-}
-
-function formatColumnName(columnName: string) {
-  return normalizeColumnName(columnName) === "todo" ? "TODO" : columnName;
-}
-
-function summarize(text?: string) {
-  const normalized = text?.replace(/\r\n?/g, "\n").trim();
-  if (!normalized) return "";
-  return normalized.length > 120 ? `${normalized.slice(0, 117).trimEnd()}...` : normalized;
-}
-
-function cardMatchesSearch(card: Pick<CardModel, "title" | "description">, query: string) {
-  if (query.length < 2) return true;
-
-  const haystack = `${card.title}\n${card.description ?? ""}`.toLowerCase();
-  return haystack.includes(query);
-}
-
-function maskEmail(email: string) {
-  const trimmedEmail = email.trim();
-  if (!trimmedEmail) return "••••••••";
-  return "••••••••";
-}
-
-function buildSessionKey(sessionId?: string, agentId?: string) {
-  const normalizedSessionId = sessionId?.trim();
-  const normalizedAgentId = agentId?.trim();
-
-  if (!normalizedSessionId || !normalizedAgentId) {
-    return null;
-  }
-
-  const expectedPrefix = `kanban-manual-${normalizedAgentId}-`;
-  if (!normalizedSessionId.startsWith(expectedPrefix)) {
-    return null;
-  }
-
-  const runUuid = normalizedSessionId.slice(expectedPrefix.length).trim();
-  if (!runUuid) {
-    return null;
-  }
-
-  return `agent:${normalizedAgentId}:kanban-manual:${runUuid}`;
-}
-
-function buildSessionChatUrl(sessionId?: string, agentId?: string) {
-  const sessionKey = buildSessionKey(sessionId, agentId);
-  if (!sessionKey) {
-    return null;
-  }
-
-  return `http://localhost:18789/chat?session=${encodeURIComponent(sessionKey)}`;
-}
-
-function formatRelativeActivityTime(timestamp: number) {
-  const elapsedMs = Math.max(0, Date.now() - timestamp);
-
-  if (elapsedMs < 60_000) {
-    return "just now";
-  }
-
-  if (elapsedMs < 3_600_000) {
-    return `${Math.max(1, Math.floor(elapsedMs / 60_000))}m ago`;
-  }
-
-  if (elapsedMs < 86_400_000) {
-    return `${Math.max(1, Math.floor(elapsedMs / 3_600_000))}h ago`;
-  }
-
-  return `${Math.max(1, Math.floor(elapsedMs / 86_400_000))}d ago`;
-}
-
-function formatRunStatusLabel(status?: CardRunStatus) {
-  if (status === "running") return "Running";
-  if (status === "done") return "Done";
-  if (status === "failed") return "Failed";
-  if (status === "aborted") return "Aborted";
-  return "Idle";
-}
-
-function getRunTone(status?: CardRunStatus) {
-  if (status === "running") {
-    return "text-sky-600 dark:text-sky-300";
-  }
-
-  if (status === "done") {
-    return "text-emerald-600 dark:text-emerald-300";
-  }
-
-  if (status === "failed") {
-    return "text-rose-600 dark:text-rose-300";
-  }
-
-  if (status === "aborted") {
-    return "text-amber-600 dark:text-amber-300";
-  }
-
-  return "text-zinc-500 dark:text-zinc-400";
-}
-
-function describeCardRunState(card: CardModel) {
-  const status = card.isRunning ? "running" : card.lastRunStatus;
-
-  if (!status || !card.lastSessionId) {
-    return "";
-  }
-
-  const details = [formatRunStatusLabel(status)];
-
-  if (card.lastSessionAgentId) {
-    details.push(card.lastSessionAgentId);
-  }
-
-  if (typeof card.lastSessionUpdatedAt === "number") {
-    details.push(formatRelativeActivityTime(card.lastSessionUpdatedAt));
-  }
-
-  details.push(card.lastSessionId);
-  return details.join(" · ");
-}
 
 
 function resolveAgentName(agentId?: string) {

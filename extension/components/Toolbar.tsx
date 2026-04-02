@@ -23,6 +23,7 @@ import {
   annotationsToMarkdown,
   type ElementMeta,
 } from "@/utils/element-identification";
+import { buildAnnotationSubmissionPayload } from "@/utils/annotation-payload";
 import { getThemeColors, resolveIsDark } from "@/utils/theme";
 import { theme as themeStorage } from "@/utils/storage";
 
@@ -236,26 +237,15 @@ export function Toolbar() {
     let created = 0;
     let errors = 0;
     for (const a of annotations) {
-      const payload = {
-        url: window.location.href,
-        title: document.title,
+      const payload = buildAnnotationSubmissionPayload({
+        pageUrl: window.location.href,
+        pageTitle: document.title,
         boardId: a.boardId,
         columnId: a.columnId,
         agentId: a.agentId,
-        annotations: [
-          {
-            selector: a.meta.selector,
-            component: a.meta.component,
-            text: a.meta.text,
-            tag: a.meta.tag,
-            classes: a.meta.classes.join(" "),
-            rect: a.meta.rect,
-            styles: a.meta.styles,
-            note: a.note,
-            priority: null,
-          },
-        ],
-      };
+        meta: a.meta,
+        note: a.note,
+      });
       try {
         const res = await browser.runtime.sendMessage({
           type: "SUBMIT_ANNOTATIONS",
@@ -300,26 +290,15 @@ export function Toolbar() {
     agentId: string,
   ) => {
     if (!annotatingMeta) return;
-    const payload = {
-      url: window.location.href,
-      title: document.title,
+    const payload = buildAnnotationSubmissionPayload({
+      pageUrl: window.location.href,
+      pageTitle: document.title,
       boardId,
       columnId,
       agentId,
-      annotations: [
-        {
-          selector: annotatingMeta.selector,
-          component: annotatingMeta.component,
-          text: annotatingMeta.text,
-          tag: annotatingMeta.tag,
-          classes: annotatingMeta.classes.join(" "),
-          rect: annotatingMeta.rect,
-          styles: annotatingMeta.styles,
-          note,
-          priority: null,
-        },
-      ],
-    };
+      meta: annotatingMeta,
+      note,
+    });
     const res = await browser.runtime.sendMessage({
       type: "SUBMIT_ANNOTATIONS",
       payload,

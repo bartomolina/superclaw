@@ -267,6 +267,13 @@ pnpm lint
 pnpm build
 ```
 
+From the suite root you can also run:
+
+```bash
+cd ..
+pnpm test
+```
+
 ## Troubleshooting
 
 - **"Could not send magic link" + Resend 403 domain not verified**
