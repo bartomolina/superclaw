@@ -8,6 +8,45 @@ import { authFetch } from "@/components/dashboard/auth";
 import { StateMessage } from "@/components/dashboard/state-message";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 
+type DailyUsageRow = {
+  date: string;
+  tokens: number;
+  cost: number;
+  messages: number;
+  toolCalls: number;
+  errors: number;
+};
+
+function shiftUtcDate(dateString: string, days: number) {
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function getUtcToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function buildDenseDailyUsage(rows: DailyUsageRow[], startDate: string, endDate: string) {
+  const byDate = new Map(rows.map((row) => [row.date, row]));
+  const result: DailyUsageRow[] = [];
+
+  for (let date = startDate; date <= endDate; date = shiftUtcDate(date, 1)) {
+    result.push(
+      byDate.get(date) ?? {
+        date,
+        tokens: 0,
+        cost: 0,
+        messages: 0,
+        toolCalls: 0,
+        errors: 0,
+      },
+    );
+  }
+
+  return result;
+}
+
 export function UsagePage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -25,12 +64,11 @@ export function UsagePage() {
   if (loading) return <StateMessage>Loading usage data...</StateMessage>;
   if (!data?.aggregates) return <StateMessage>No usage data available</StateMessage>;
 
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - range);
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
-  const filterDaily = (arr: any[]) => arr.filter((d: any) => d.date >= cutoffStr);
+  const endDate = getUtcToday();
+  const startDate = shiftUtcDate(endDate, -(range - 1));
+  const filterDaily = (arr: any[]) => arr.filter((d: any) => d.date >= startDate && d.date <= endDate);
   const allDaily = data.aggregates.daily || [];
-  const daily = filterDaily(allDaily);
+  const daily = buildDenseDailyUsage(filterDaily(allDaily), startDate, endDate);
   const filteredModelDaily = filterDaily(data.aggregates.modelDaily || []);
   const filteredByAgent = (data.aggregates.byAgent || []).map((a: any) => {
     const agentSessions = (data.sessions || []).filter((s: any) => s.agentId === a.agentId);
@@ -38,7 +76,7 @@ export function UsagePage() {
       (sum: number, s: any) =>
         sum +
         (s.usage?.dailyBreakdown || [])
-          .filter((d: any) => d.date >= cutoffStr)
+          .filter((d: any) => d.date >= startDate && d.date <= endDate)
           .reduce((ds: number, d: any) => ds + d.cost, 0),
       0
     );
@@ -46,7 +84,7 @@ export function UsagePage() {
       (sum: number, s: any) =>
         sum +
         (s.usage?.dailyBreakdown || [])
-          .filter((d: any) => d.date >= cutoffStr)
+          .filter((d: any) => d.date >= startDate && d.date <= endDate)
           .reduce((ds: number, d: any) => ds + d.tokens, 0),
       0
     );
