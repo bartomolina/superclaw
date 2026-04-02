@@ -15,10 +15,13 @@ import {
 
 test("formatting helpers cover canonical kanban display cases", () => {
   assert.equal(formatColumnName("todo"), "TODO");
+  assert.equal(formatColumnName("ideas"), "Ideas");
+  assert.equal(formatColumnName("inprogress"), "In Progress");
   assert.match(getColumnTone("Review"), /amber/);
   assert.equal(summarize("  hello world  "), "hello world");
   assert.equal(maskEmail("person@example.com"), "••••••••");
   assert.equal(cardMatchesSearch({ title: "Ship dashboard", description: "Refactor shared adapters" }, "adapter"), true);
+  assert.equal(cardMatchesSearch({ title: "Ship dashboard", description: "Refactor shared adapters" }, "Dashboard"), true);
   assert.equal(cardMatchesSearch({ title: "Ship dashboard" }, "kanban"), false);
 });
 

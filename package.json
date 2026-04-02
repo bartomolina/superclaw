@@ -5,6 +5,6 @@
   "scripts": {
     "lint": "pnpm --dir dashboard lint && pnpm --dir kanban lint",
     "build": "pnpm --dir dashboard build && pnpm --dir kanban build && pnpm --dir extension build",
-    "test": "node --experimental-specifier-resolution=node --test kanban/lib/kanban/*.test.ts extension/utils/*.test.ts"
+    "test": "node --test kanban/lib/kanban/*.test.ts extension/utils/*.test.ts"
   }
 }

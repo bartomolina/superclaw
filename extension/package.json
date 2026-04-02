@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
-    "test": "node --experimental-specifier-resolution=node --test utils/*.test.ts",
+    "test": "node --test utils/*.test.ts",
     "zip": "wxt zip",
     "postinstall": "wxt prepare"
   },

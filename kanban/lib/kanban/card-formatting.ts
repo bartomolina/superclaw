@@ -31,7 +31,15 @@ export function getColumnTone(columnName: string) {
 }
 
 export function formatColumnName(columnName: string) {
-  return normalizeColumnName(columnName) === "todo" ? "TODO" : columnName;
+  const normalized = normalizeColumnName(columnName);
+
+  if (normalized === "todo") return "TODO";
+  if (normalized === "ideas") return "Ideas";
+  if (normalized === "inprogress") return "In Progress";
+  if (normalized === "review") return "Review";
+  if (normalized === "done") return "Done";
+
+  return columnName.trim();
 }
 
 export function summarize(text?: string) {
@@ -41,15 +49,16 @@ export function summarize(text?: string) {
 }
 
 export function cardMatchesSearch(card: SearchableCard, query: string) {
-  if (query.length < 2) return true;
+  const normalizedQuery = query.trim().toLowerCase();
+  if (normalizedQuery.length < 2) return true;
 
   const haystack = `${card.title}\n${card.description ?? ""}`.toLowerCase();
-  return haystack.includes(query);
+  return haystack.includes(normalizedQuery);
 }
 
 export function maskEmail(email: string) {
-  const trimmedEmail = email.trim();
-  if (!trimmedEmail) return "••••••••";
+  void email;
+  // Always fully redact email addresses in the UI.
   return "••••••••";
 }
 
