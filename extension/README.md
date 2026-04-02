@@ -7,6 +7,7 @@ Browser extension for sending UI feedback into SuperClaw Kanban.
 ```bash
 pnpm install
 pnpm build
+pnpm test
 ```
 
 Build output:

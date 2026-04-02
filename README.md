@@ -7,6 +7,18 @@ It has three parts:
 - **Kanban** — task board and agent workflow UI
 - **Extension** — send UI feedback into Kanban
 
+## Suite commands
+
+From the repo root (`apps/superclaw/`):
+
+```bash
+pnpm test
+pnpm lint
+pnpm build
+```
+
+These run the app-level utility tests plus the suite-wide lint/build checks.
+
 ## Default install model
 
 Keep it simple and opinionated:
