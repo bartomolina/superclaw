@@ -54,6 +54,7 @@ Typical values to ask for:
 - `SUPERUSER_EMAIL`
 - `RESEND_API_KEY`
 - `AUTH_FROM_EMAIL` (required for real/shared email delivery; optional for self-email testing fallback)
+- `GEMINI_API_KEY` (optional, for dashboard avatar generation during agent creation)
 - Convex login/project selection if the CLI needs user interaction
 
 ### Do not improvise
@@ -88,6 +89,13 @@ cp .env.example .env
 
 Required env:
 - `GATEWAY_TOKEN`
+
+Optional env:
+- `OPENCLAW_HOME`
+- `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) for dashboard avatar generation during agent creation
+- `DEBUG_RPC_ENABLED`
+
+If the user wants dashboard avatar generation, set the Gemini/Google API key in `dashboard/.env` before starting `superclaw-dashboard.service`.
 
 Create the service with:
 
