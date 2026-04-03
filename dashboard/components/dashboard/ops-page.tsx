@@ -95,6 +95,16 @@ type ConvexData = {
   }>;
 };
 
+type AcpData = {
+  enabled: boolean;
+  pluginEnabled: boolean;
+  backend: string | null;
+  defaultAgent: string | null;
+  allowedAgents: string[];
+  customAgents: string[];
+  selectableAgents: string[];
+};
+
 type ReposData = {
   repos: Array<{
     name: string;
@@ -263,6 +273,7 @@ export function OpsPage() {
   const [data, setData] = useState<KanbanWorkerStatus | null>(null);
   const [accounts, setAccounts] = useState<AccountsData | null>(null);
   const [convex, setConvex] = useState<ConvexData | null>(null);
+  const [acp, setAcp] = useState<AcpData | null>(null);
   const [cloudflared, setCloudflared] = useState<CloudflaredStatus | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
@@ -284,6 +295,9 @@ export function OpsPage() {
         authFetch("/api/convex")
           .catch(() => ({ deployments: [] }))
           .then((convexData) => setConvex(convexData)),
+        authFetch("/api/acp")
+          .catch(() => ({ enabled: false, pluginEnabled: false, backend: null, defaultAgent: null, allowedAgents: [], customAgents: [], selectableAgents: [] }))
+          .then((acpData) => setAcp(acpData)),
         authFetch("/api/cloudflared")
           .catch(() => ({ service: { active: null, enabled: null }, config: { path: null, exists: false, tunnel: null, credentialsFile: null, routes: [] } }))
           .then((cloudflaredData) => setCloudflared(cloudflaredData)),
@@ -328,6 +342,7 @@ export function OpsPage() {
   const loadingAccounts = loading && !accounts;
   const loadingCloudflared = loading && !cloudflared;
   const loadingConvex = loading && !convex;
+  const loadingAcp = loading && !acp;
   const loadingMcp = loading && mcpServers.length === 0;
   const loadingPerformance = loading && !performance;
   const loadingRepos = loading && !repos;
@@ -430,6 +445,39 @@ export function OpsPage() {
                   />
                 );
               })
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <SectionTitle title={`ACP (${acp?.selectableAgents.length || 0})`} />
+        <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+            {loadingAcp ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">Loading ACP config...</div>
+            ) : !acp ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">ACP config unavailable</div>
+            ) : (
+              <>
+                <DetailRow
+                  label="Backend"
+                  value={acp.backend ?? "—"}
+                  detail={acp.enabled ? (acp.pluginEnabled ? "ACP enabled" : "ACP enabled, but the acpx plugin is disabled") : "ACP disabled"}
+                />
+                <DetailRow
+                  label="Default agent"
+                  detail={acp.defaultAgent ?? "None configured"}
+                />
+                <DetailRow
+                  label="Selectable agents"
+                  detail={acp.selectableAgents.length > 0 ? acp.selectableAgents.join(", ") : "None detected from the current ACP config"}
+                />
+                <DetailRow
+                  label="Allowlist"
+                  detail={acp.allowedAgents.length > 0 ? acp.allowedAgents.join(", ") : "No ACP allowlist configured"}
+                />
+              </>
             )}
           </div>
         </div>

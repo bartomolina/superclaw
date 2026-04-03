@@ -1,4 +1,4 @@
-# SuperClaw Agent Install Runbook
+# SuperClaw Install Runbook
 
 Use this when an OpenClaw agent is asked to install SuperClaw.
 

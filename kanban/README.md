@@ -4,7 +4,7 @@ Kanban is the board and workflow app in the SuperClaw suite.
 
 For suite-level setup, see:
 - `../README.md`
-- `../AGENT_INSTALL.md`
+- `../INSTALL.md`
 
 ## Basics
 
