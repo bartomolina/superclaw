@@ -165,6 +165,12 @@ type ModelOption = {
   isPrimary?: boolean;
 };
 
+type AcpOption = {
+  id: string;
+  label: string;
+  isDefault?: boolean;
+};
+
 type ChoiceOption = string | { value: string; label: string; title?: string };
 
 const cardTypeOptions: ChoiceOption[] = [
@@ -608,6 +614,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [isSidebarAgentsLoading, setIsSidebarAgentsLoading] = useState(false);
   const [sidebarSkillOptions, setSidebarSkillOptions] = useState<SkillOption[]>([]);
   const [sidebarModelOptions, setSidebarModelOptions] = useState<ModelOption[]>([]);
+  const [sidebarAcpOptions, setSidebarAcpOptions] = useState<AcpOption[]>([]);
   const [runningAgentId, setRunningAgentId] = useState<string | null>(null);
   const [activeCardId, setActiveCardId] = useState<Id<"cards"> | null>(null);
   const [activeBoardId, setActiveBoardId] = useState<Id<"boards"> | null>(null);
@@ -817,6 +824,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
       setIsSidebarAgentsLoading(false);
       setSidebarAgentOptions([]);
       setSidebarModelOptions([]);
+      setSidebarAcpOptions([]);
       return;
     }
 
@@ -826,16 +834,18 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
     async function loadSidebarOptions() {
       try {
-        const [agentsResponse, skillsResponse, modelsResponse] = await Promise.all([
+        const [agentsResponse, skillsResponse, modelsResponse, acpResponse] = await Promise.all([
           fetch(`/api/agents?boardId=${encodeURIComponent(String(effectiveSelectedBoardId))}`, { cache: "no-store" }).catch(() => null),
           fetch("/api/skills", { cache: "no-store" }).catch(() => null),
           fetch("/api/models", { cache: "no-store" }).catch(() => null),
+          fetch("/api/acp", { cache: "no-store" }).catch(() => null),
         ]);
         if (cancelled) return;
 
         const agentsData = agentsResponse && agentsResponse.ok ? ((await agentsResponse.json()) as { agents?: AgentOption[] }) : null;
         const skillsData = skillsResponse && skillsResponse.ok ? ((await skillsResponse.json()) as { skills?: SkillOption[] }) : null;
         const modelsData = modelsResponse && modelsResponse.ok ? ((await modelsResponse.json()) as { models?: ModelOption[] }) : null;
+        const acpData = acpResponse && acpResponse.ok ? ((await acpResponse.json()) as { acp?: AcpOption[] }) : null;
         if (cancelled) return;
 
         const normalizedAgents = (agentsData?.agents ?? [])
@@ -865,9 +875,23 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
             return a.label.localeCompare(b.label);
           });
 
+        const normalizedAcp = (acpData?.acp ?? [])
+          .filter((option) => option?.id && option?.label)
+          .map((option) => ({
+            id: String(option.id),
+            label: String(option.label),
+            isDefault: option.isDefault === true,
+          }))
+          .sort((a, b) => {
+            if (a.isDefault && !b.isDefault) return -1;
+            if (!a.isDefault && b.isDefault) return 1;
+            return a.label.localeCompare(b.label);
+          });
+
         setSidebarAgentOptions(normalizedAgents);
         setSidebarSkillOptions(normalizedSkills);
         setSidebarModelOptions(normalizedModels);
+        setSidebarAcpOptions(normalizedAcp);
       } catch {
         // Ignore sidebar option loading failures.
       } finally {
@@ -1892,6 +1916,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           agentOptions={filterBoardAgentOptions(sidebarAgentOptions, boardView.board.allowedAgentIds)}
           skillOptions={sidebarSkillOptions}
           modelOptions={sidebarModelOptions}
+          acpOptions={sidebarAcpOptions}
           onClose={() => {
             if (document.activeElement instanceof HTMLElement) {
               document.activeElement.blur();
@@ -2689,6 +2714,7 @@ function CardModal({
   agentOptions,
   skillOptions,
   modelOptions,
+  acpOptions,
   onClose,
 }: {
   card: CardModel;
@@ -2697,6 +2723,7 @@ function CardModal({
   agentOptions: AgentOption[];
   skillOptions: SkillOption[];
   modelOptions: ModelOption[];
+  acpOptions: AcpOption[];
   onClose: () => void;
 }) {
   const updateCard = useMutation(api.cards.update);
@@ -2725,7 +2752,7 @@ function CardModal({
   const [typeDraft, setTypeDraft] = useState(
     card.type === "feature" || card.type === "bug" || card.type === "cosmetic" ? card.type : "",
   );
-  const [acpDraft, setAcpDraft] = useState(card.acp === "codex" || card.acp === "cursor" ? card.acp : "");
+  const [acpDraft, setAcpDraft] = useState(card.acp?.trim() ?? "");
   const [modelDraft, setModelDraft] = useState(card.model?.trim() ?? "");
   const [skillsDraft, setSkillsDraft] = useState<string[]>(card.skills ?? []);
   const [commentDraft, setCommentDraft] = useState("");
@@ -2785,6 +2812,23 @@ function CardModal({
       return true;
     });
   }, [skillOptions]);
+
+  const availableAcpOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const normalizedCurrent = acpDraft.trim();
+    const baseOptions = [...acpOptions];
+
+    if (normalizedCurrent && !baseOptions.some((option) => option.id.trim() === normalizedCurrent)) {
+      baseOptions.push({ id: normalizedCurrent, label: normalizedCurrent });
+    }
+
+    return baseOptions.filter((option) => {
+      const key = option.id.trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [acpDraft, acpOptions]);
 
   const currentBoard = useMemo(
     () => boards.find((board) => board._id === card.boardId) ?? null,
@@ -3215,7 +3259,15 @@ function CardModal({
 
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">ACP</label>
-                <ChoiceChips value={acpDraft} options={["codex", "cursor"]} onChange={handleAcpChange} />
+                {availableAcpOptions.length === 0 ? (
+                  <div className="text-xs text-zinc-400 dark:text-zinc-500">No ACP agents detected from the current config.</div>
+                ) : (
+                  <ChoiceChips
+                    value={acpDraft}
+                    options={availableAcpOptions.map((option) => ({ value: option.id, label: option.label }))}
+                    onChange={handleAcpChange}
+                  />
+                )}
               </div>
 
               <div>
