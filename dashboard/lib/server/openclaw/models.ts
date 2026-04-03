@@ -11,7 +11,7 @@ let modelsCacheTime = 0;
 let modelsCacheInFlight: Promise<Record<string, any[]>> | null = null;
 
 async function loadModelsCatalog() {
-  const data = await runOpenClawJson<{ models?: Array<any> }>(["models", "list", "--all", "--json"], {}, { timeoutMs: 15_000 });
+  const data = await runOpenClawJson<{ models?: Array<any> }>(["models", "list", "--all", "--json"], {}, { timeoutMs: 60_000 });
   const byProvider = new Map<string, Map<string, { key: string; name: string; input: string | null; contextWindow: number; available: boolean }>>();
 
   for (const model of data.models || []) {
@@ -122,6 +122,13 @@ export function inferAvailableModels(providerMap: Record<string, any>) {
 export async function handleModelsGet() {
   const config = readLocalConfig();
   const providerMap = config.models?.providers || {};
+  const configuredProviders = Object.entries(providerMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([providerId, provider]: [string, any]) => ({
+      id: providerId,
+      configuredModelCount: Array.isArray(provider?.models) ? provider.models.length : 0,
+      authMode: typeof provider?.auth === "string" ? provider.auth : null,
+    }));
   const configuredModels = Object.keys(config.agents?.defaults?.models || {}).map((key) => {
     const provider = key.split("/")[0];
     const name = key.split("/").pop() || key;
@@ -133,6 +140,7 @@ export async function handleModelsGet() {
   });
 
   return json({
+    configuredProviders,
     configuredModels: configuredModels.length > 0 ? configuredModels : inferAvailableModels(providerMap),
     defaultModel: {
       primary: config.agents?.defaults?.model?.primary ?? null,

@@ -21,6 +21,7 @@ export type Skill = {
 };
 export type AgentFile = { name: string; path: string; missing: boolean; size: number; updatedAtMs: number };
 export type Model = { id: string; name: string; provider: string };
+export type ProviderSummary = { id: string; configuredModelCount: number; authMode: string | null };
 export type Cron = {
   id: string;
   name: string;

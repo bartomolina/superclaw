@@ -6,13 +6,15 @@ import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { authFetch, authHeaders } from "@/components/dashboard/auth";
-import { type Model, type RunRestartOperation } from "@/components/dashboard/types";
+import { type Model, type ProviderSummary, type RunRestartOperation } from "@/components/dashboard/types";
 
 export function ModelsPage({
+  configuredProviders,
   configuredModels,
   defaultModel,
   runRestartOperation,
 }: {
+  configuredProviders: ProviderSummary[];
   configuredModels: Model[];
   defaultModel: { primary: string | null; fallbacks: string[] };
   runRestartOperation: RunRestartOperation;
@@ -33,6 +35,8 @@ export function ModelsPage({
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [providerModels, setProviderModels] = useState<any[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [loadingProviders, setLoadingProviders] = useState(true);
+  const [providersError, setProvidersError] = useState(false);
   const [addingModelKey, setAddingModelKey] = useState<string | null>(null);
   const [removingModelKey, setRemovingModelKey] = useState<string | null>(null);
   const [removingFallbacks, setRemovingFallbacks] = useState(false);
@@ -40,9 +44,15 @@ export function ModelsPage({
   const [search, setSearch] = useState("");
 
   useEffect(() => {
+    setLoadingProviders(true);
+    setProvidersError(false);
     authFetch("/api/models/catalog")
       .then((d) => setProviders(d.providers || []))
-      .catch(() => {});
+      .catch(() => {
+        setProviders([]);
+        setProvidersError(true);
+      })
+      .finally(() => setLoadingProviders(false));
   }, []);
 
   async function loadProviderModels(provider: string) {
@@ -241,25 +251,57 @@ export function ModelsPage({
       </div>
 
       <div>
+        <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200 mb-3">Configured Providers</h2>
+        <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl overflow-hidden shadow-sm dark:shadow-none p-5">
+          {configuredProviders.length === 0 ? (
+            <div className="text-sm text-zinc-400 dark:text-zinc-500">No providers configured in local config</div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {configuredProviders.map((provider) => (
+                <div
+                  key={provider.id}
+                  className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 px-3 py-2"
+                >
+                  <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{provider.id}</div>
+                  <div className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                    {provider.configuredModelCount} configured model{provider.configuredModelCount === 1 ? "" : "s"}
+                    {provider.authMode ? ` · ${provider.authMode}` : ""}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div>
         <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200 mb-3">Add from Catalog</h2>
         <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl overflow-hidden shadow-sm dark:shadow-none p-5 space-y-4">
           <div>
             <label className="text-[11px] text-zinc-400 uppercase tracking-wider font-medium mb-2 block">Provider</label>
-            <div className="flex flex-wrap gap-1.5">
-              {providers.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => loadProviderModels(p.id)}
-                  className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
-                    selectedProvider === p.id
-                      ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-transparent"
-                      : "bg-zinc-50 dark:bg-zinc-950 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                  }`}
-                >
-                  {p.id} ({p.count})
-                </button>
-              ))}
-            </div>
+            {loadingProviders ? (
+              <div className="text-sm text-zinc-400 dark:text-zinc-500">Loading provider catalog…</div>
+            ) : providersError ? (
+              <div className="text-sm text-zinc-400 dark:text-zinc-500">Provider catalog unavailable right now.</div>
+            ) : providers.length === 0 ? (
+              <div className="text-sm text-zinc-400 dark:text-zinc-500">No catalog providers returned.</div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {providers.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => loadProviderModels(p.id)}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+                      selectedProvider === p.id
+                        ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-transparent"
+                        : "bg-zinc-50 dark:bg-zinc-950 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    {p.id} ({p.count})
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {selectedProvider && (
