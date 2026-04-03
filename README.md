@@ -46,6 +46,10 @@ By default, the apps are meant to run alongside OpenClaw in **dev mode**. The id
 
 ## Install and use
 
+If you need some guidance on how to set up OpenClaw before installing SuperClaw, check [`OPENCLAW_SETUP.md`](./OPENCLAW_SETUP.md).
+
+Then follow [`INSTALL.md`](./INSTALL.md), or point your OpenClaw agent at it and have it run the setup for you.
+
 SuperClaw installs into your main OpenClaw workspace:
 
 ```text
@@ -60,8 +64,4 @@ SuperClaw installs into your main OpenClaw workspace:
     └── kanban/
 ```
 
-Before installing, check [`OPENCLAW_SETUP.md`](./OPENCLAW_SETUP.md) for the recommended base OpenClaw environment around the suite.
-
-Then follow [`INSTALL.md`](./INSTALL.md), or point your OpenClaw agent at it and have it run the setup for you.
-
-The default flow runs the apps in dev mode and treats this repo as a base you can adapt to your own needs after the initial install.
+The default flow runs the apps in dev mode. Ideally, you use this repo as a starting point and adapt it into your own setup for your own needs.
