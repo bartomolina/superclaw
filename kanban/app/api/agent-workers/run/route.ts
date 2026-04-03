@@ -26,10 +26,18 @@ type ManualRunSession = {
 type RunTarget = {
   cardId: string;
   title: string;
+  description?: string;
   columnName: string;
   inboxReason: string;
+  source?: string;
+  assigneeId?: string;
+  reviewerId?: string;
+  priority?: string;
+  size?: string;
+  type?: string;
   acp?: string;
   model?: string;
+  skills?: string[];
   executionHint?: string;
 };
 
@@ -57,10 +65,20 @@ function buildWorkerMessage({
     targets.length > 0
       ? targets
           .map((target) => {
+            const parts = [target.cardId, target.columnName, target.inboxReason, target.title];
+
+            if (target.priority?.trim()) parts.push(`priority=${target.priority.trim()}`);
+            if (target.size?.trim()) parts.push(`size=${target.size.trim()}`);
+            if (target.type?.trim()) parts.push(`type=${target.type.trim()}`);
+            if (target.source?.trim()) parts.push(`source=${target.source.trim()}`);
+            if (Array.isArray(target.skills) && target.skills.length > 0) {
+              parts.push(`skills=${target.skills.join(", ")}`);
+            }
+
             const executionHint = target.executionHint?.trim();
-            return executionHint
-              ? `- ${target.cardId} | ${target.columnName} | ${target.inboxReason} | ${target.title} | ${executionHint}`
-              : `- ${target.cardId} | ${target.columnName} | ${target.inboxReason} | ${target.title}`;
+            if (executionHint) parts.push(executionHint);
+
+            return `- ${parts.join(" | ")}`;
           })
           .join("\n")
       : "- none";

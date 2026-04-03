@@ -102,9 +102,9 @@ Base URL:
 - `https://<deployment>.convex.site/agent/kanban`
 
 Endpoints:
-- `GET /inbox`
-- `GET /session/targets?sessionId=...` (tracked manual runs)
-- `GET /tasks?includeDone=1`
+- `GET /inbox` — grouped actionable items plus card execution metadata (`description`, `source`, assignee/reviewer ids, `priority`, `size`, `type`, `acp`, `model`, `skills`, comment state)
+- `GET /session/targets?sessionId=...` (tracked manual runs) — authoritative tracked target list with the same execution metadata plus comments
+- `GET /tasks?includeDone=1` — raw/debug task list with role data, card execution metadata, and last-comment state
 - `POST /comment`
 - `POST /transition`
 - `POST /session/finish`

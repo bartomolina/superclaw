@@ -65,6 +65,7 @@ Base URL: `https://<deployment>.convex.site/agent/kanban`
 - `GET /inbox`
   - Preferred worker endpoint for normal scheduled runs.
   - Returns grouped actionable items for the current agent, by board.
+  - Task entries include the core card metadata needed by workers and debuggers: `title`, `description`, `source`, `assigneeId`, `reviewerId`, `priority`, `size`, `type`, `acp`, `model`, `skills`, `executionHint`, role data, and comment state.
   - Includes:
     - `ideas`: cards where the agent is involved and was not the last commenter
     - `todos`: assignee cards in `TODO`
@@ -72,10 +73,11 @@ Base URL: `https://<deployment>.convex.site/agent/kanban`
 - `GET /session/targets?sessionId=<sessionId>`
   - Preferred target source for tracked manual runs.
   - Returns the authoritative card list for that run.
+  - Target entries include the same card execution metadata as `/inbox` for the selected cards, plus tracked-run context like `trackedReason` and `comments`.
   - If `targets[].comments` is present, treat it as the authoritative comment thread for the card during that run.
 - `GET /tasks?includeDone=1`
   - Raw/debug endpoint.
-  - Returns tasks where the current agent is involved, with role and last-comment metadata.
+  - Returns tasks where the current agent is involved, with role data, card execution metadata, and last-comment metadata.
 - `POST /comment`
   - Body: `{ cardId: string, body: string }`
 - `POST /transition`

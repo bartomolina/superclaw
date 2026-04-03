@@ -27,10 +27,15 @@ type BaseTask = {
   title: string;
   description: string | undefined;
   extensionContext: string | undefined;
+  source: string | undefined;
   assigneeId: string | undefined;
   reviewerId: string | undefined;
+  priority: string | undefined;
+  size: string | undefined;
+  type: string | undefined;
   acp: string | undefined;
   model: string | undefined;
+  skills: string[];
   executionHint: string | undefined;
   roles: AgentRole[];
   order: number;
@@ -249,10 +254,15 @@ async function buildBaseTasks(
         title: card.title,
         description: card.description,
         extensionContext: card.extensionContext,
+        source: card.source,
         assigneeId: card.agentId,
         reviewerId: card.reviewerId,
+        priority: card.priority,
+        size: card.size,
+        type: card.type,
         acp: card.acp,
         model: card.model,
+        skills: Array.isArray(card.skills) ? card.skills : [],
         executionHint: buildExecutionHint({ acp: card.acp, model: card.model }),
         roles,
         order: card.order,
@@ -491,10 +501,18 @@ export const listBoardRunTargets = query({
       targets: targets.map((task) => ({
         cardId: task.cardId,
         title: task.title,
+        description: task.description,
         columnName: task.columnName,
         inboxReason: task.inboxReason,
+        source: task.source,
+        assigneeId: task.assigneeId,
+        reviewerId: task.reviewerId,
+        priority: task.priority,
+        size: task.size,
+        type: task.type,
         acp: task.acp,
         model: task.model,
+        skills: task.skills,
         executionHint: task.executionHint,
       })),
     };
@@ -583,11 +601,19 @@ export const getManualSessionTargets = internalQuery({
         boardId: task.boardId,
         boardName: task.boardName,
         title: task.title,
+        description: task.description,
         columnName: task.columnName,
         trackedReason: task.trackedReason,
         extensionContext: task.extensionContext,
+        source: task.source,
+        assigneeId: task.assigneeId,
+        reviewerId: task.reviewerId,
+        priority: task.priority,
+        size: task.size,
+        type: task.type,
         acp: task.acp,
         model: task.model,
+        skills: task.skills,
         executionHint: task.executionHint,
         comments: task.comments,
       })),
