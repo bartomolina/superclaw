@@ -83,23 +83,10 @@ export default function App() {
 
     const enrichment = await Promise.all(
       mapped.map(async (agent) => {
-        const [channelsData, skillsData] = await Promise.all([
-          fetchWithRetry(`/api/agents/${agent.id}/channels`, { channels: [] }, 2),
-          fetchWithRetry(`/api/agents/${agent.id}/skills`, { skills: [] }, 1),
-        ]);
+        const skillsData = await fetchWithRetry(`/api/agents/${agent.id}/skills`, { skills: [] }, 1);
 
         return {
           id: agent.id,
-          channels: (channelsData.channels || []).map((c: any) => ({
-            id: c.id,
-            name: c.name || c.id,
-            detail: c.detail || null,
-            running: c.running ?? false,
-            mode: c.mode || null,
-            streaming: c.streaming || null,
-            pairedUsers: (c.pairedUsers || []).map((u: any) => ({ id: u.id, name: u.name || u.id, source: u.source })),
-            groups: (c.groups || []).map((g: any) => ({ id: g.id, requireMention: g.requireMention ?? true, groupPolicy: g.groupPolicy ?? "allowlist" })),
-          })),
           skills: (skillsData.skills || []).map((s: any) => ({
             name: s.name,
             emoji: s.emoji || "📦",
@@ -117,7 +104,7 @@ export default function App() {
       current.map((agent) => {
         const next = enrichmentById.get(agent.id);
         if (!next) return agent;
-        return { ...agent, channels: next.channels, skills: next.skills };
+        return { ...agent, skills: next.skills };
       }),
     );
   }, []);
