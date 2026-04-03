@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { BarChart3, Gauge, Layers, LogOut, Moon, Puzzle, RefreshCw, Server, Sun, Terminal, Users, Wifi, WifiOff } from "lucide-react";
+import { BarChart3, Gauge, Layers, LogOut, Moon, Puzzle, Server, Sun, Terminal, Users, Wifi, WifiOff } from "lucide-react";
 
 import { clearToken, getToken, setToken, authFetch } from "@/components/dashboard/auth";
 import { AgentsPage } from "@/components/dashboard/agents";
@@ -60,7 +60,6 @@ export default function App() {
   const [defaultModel, setDefaultModel] = useState<{ primary: string | null; fallbacks: string[] }>({ primary: null, fallbacks: [] });
   const [gatewayUp, setGatewayUp] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [pendingOperation, setPendingOperation] = useState<RestartOperationState | null>(null);
 
   const hydrateRuntimeData = useCallback(async (mapped: Agent[]) => {
@@ -297,7 +296,6 @@ export default function App() {
 
       setAgents(mapped);
       setLoading(false);
-      setRefreshing(false);
       void hydrateRuntimeData(mapped);
     } catch (e: any) {
       if (e.message === "unauthorized") {
@@ -309,7 +307,6 @@ export default function App() {
       setGatewayUp(false);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [hydrateRuntimeData]);
 
@@ -394,11 +391,6 @@ export default function App() {
     }
   }, [waitForGateway]);
 
-  function handleRefresh() {
-    setRefreshing(true);
-    fetchAll();
-  }
-
   if (!authReady) {
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-500 dark:text-zinc-400 flex items-center justify-center text-sm">
@@ -433,14 +425,6 @@ export default function App() {
               title={dark ? "Switch to light mode" : "Switch to dark mode"}
             >
               {dark ? <Sun size={14} /> : <Moon size={14} />}
-            </button>
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors disabled:opacity-50"
-              title="Refresh"
-            >
-              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
             </button>
             <button
               onClick={handleLogout}

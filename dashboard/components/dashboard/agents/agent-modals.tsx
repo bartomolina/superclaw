@@ -156,14 +156,21 @@ export function CreateAgentForm({ runRestartOperation, open, onClose }: CreateAg
 export function ConfigModal() {
   const [showConfig, setShowConfig] = useState(false);
   const [configRaw, setConfigRaw] = useState("");
+  const [loadingConfig, setLoadingConfig] = useState(false);
 
   async function openConfig() {
+    setShowConfig(true);
+    setLoadingConfig(true);
+    setConfigRaw("Loading config...");
+
     try {
       const data = await authFetch("/api/config");
       setConfigRaw(data.raw || "{}");
-      setShowConfig(true);
     } catch {
+      setConfigRaw("Failed to load config.");
       toast.error("Failed to load config");
+    } finally {
+      setLoadingConfig(false);
     }
   }
 
@@ -171,7 +178,8 @@ export function ConfigModal() {
     <>
       <button
         onClick={openConfig}
-        className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+        disabled={loadingConfig && showConfig}
+        className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors disabled:opacity-60"
         title="View config (read-only)"
       >
         <Settings size={16} />
