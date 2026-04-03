@@ -58,6 +58,20 @@ Comment-thread interpretation:
 - For tracked manual runs, if `targets[].comments` is present, treat that thread as the authoritative conversation context for that run.
 - If a card appears in `ideas` or `review` because the agent was not the last commenter, interpret that as the ball being back in the agent's court.
 
+Task-field interpretation contract:
+- Treat field precedence as: comments/thread -> `description` -> explicit task metadata -> `executionHint`.
+- `title`: short label only; never let it override a clearer description or comment thread.
+- `description`: primary written spec when present.
+- `source`: context about origin (for example extension, inbox capture, dashboard, external note). Use it to understand provenance, not to skip the actual requested work.
+- `priority`: use it for ordering when multiple actionable cards exist. Default order is `Critical` / `Urgent` / `High` -> `Medium` -> `Low` / `Minor` -> empty/unknown. Preserve API order within the same priority band.
+- `size`: scope/effort hint only. For large cards, prefer a concrete incremental pass plus a clear progress/blocker comment over pretending the whole task was completed.
+- `type`: adapt the style of work. Rough guidance: `bug` / `fix` => diagnose + verify; `docs` => update docs; `cosmetic` => minimize surface area; `refactor` => preserve behavior; `research` => findings/comment first unless implementation is clearly requested.
+- `skills`: required or recommended skill hints. If one or more named skills are clearly relevant, load them before acting. If the task depends on a named skill that is unavailable in the current runtime/sandbox, stop and report the exact missing skill or missing local skill path.
+- `model`: preferred model hint. If the current runtime can honor it when spawning delegated work, do so. Otherwise treat it as a soft preference and only call out the mismatch when it materially affects execution.
+- `acp`: preferred ACP harness/runtime hint. If present and the task clearly needs delegated coding-agent execution, use ACP routing that matches the hint when available instead of ignoring it.
+- `executionHint`: concise backend hint derived from `model` and/or `acp`. Follow it unless it conflicts with clearer task instructions from the comments or description.
+- `assigneeId` / `reviewerId`: sanity-check role context only; do not let them override the workflow rules for comments/transitions.
+
 ## 2) API endpoints
 
 Base URL: `https://<deployment>.convex.site/agent/kanban`
@@ -116,7 +130,7 @@ Use these rules for autonomous cron-style runs:
 3. If the inbox is empty: `NO_REPLY`.
 4. Handle lightweight comment/reply work conservatively.
 5. For TODO cards, the agent may pick up multiple actionable cards in one run, up to a hard cap of 4.
-6. Process picked TODO cards deterministically in inbox order.
+6. Process picked TODO cards in deterministic priority-aware order: higher priority first, then preserve API order within the same priority band.
 7. After selecting TODO cards, claim them first by transitioning them to `In Progress` before implementation work begins.
 
 ### Ideas
@@ -128,7 +142,8 @@ Use these rules for autonomous cron-style runs:
 ### TODO
 
 - Pick up to 4 actionable TODO cards in one run.
-- Process them in deterministic inbox order.
+- Process them in deterministic priority-aware order.
+- Do not use `size` as a reason to skip clearly higher-priority work unless the task is blocked or obviously too large for a responsible single pass.
 - In the manual worker run path, picked TODO cards are auto-claimed from `TODO -> In Progress` by the backend before implementation work begins.
 - Once the selected cards have been claimed into `In Progress`, do the requested work for each card in order.
 - For each picked card:

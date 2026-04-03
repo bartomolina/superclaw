@@ -453,33 +453,21 @@ export function OpsPage() {
       <div className="space-y-2">
         <SectionTitle title={`ACP (${acp?.selectableAgents.length || 0})`} />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
-            {loadingAcp ? (
-              <div className="px-5 py-4 text-sm text-zinc-400">Loading ACP config...</div>
-            ) : !acp ? (
-              <div className="px-5 py-4 text-sm text-zinc-400">ACP config unavailable</div>
-            ) : (
-              <>
-                <DetailRow
-                  label="Backend"
-                  value={acp.backend ?? "—"}
-                  detail={acp.enabled ? (acp.pluginEnabled ? "ACP enabled" : "ACP enabled, but the acpx plugin is disabled") : "ACP disabled"}
-                />
-                <DetailRow
-                  label="Default agent"
-                  detail={acp.defaultAgent ?? "None configured"}
-                />
-                <DetailRow
-                  label="Selectable agents"
-                  detail={acp.selectableAgents.length > 0 ? acp.selectableAgents.join(", ") : "None detected from the current ACP config"}
-                />
-                <DetailRow
-                  label="Allowlist"
-                  detail={acp.allowedAgents.length > 0 ? acp.allowedAgents.join(", ") : "No ACP allowlist configured"}
-                />
-              </>
-            )}
-          </div>
+          {loadingAcp ? (
+            <div className="px-5 py-4 text-sm text-zinc-400">Loading ACP config...</div>
+          ) : !acp ? (
+            <div className="px-5 py-4 text-sm text-zinc-400">ACP config unavailable</div>
+          ) : acp.selectableAgents.length === 0 ? (
+            <div className="px-5 py-4 text-sm text-zinc-400">No selectable agents</div>
+          ) : (
+            <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+              {acp.selectableAgents.map((agent) => (
+                <div key={agent} className="px-5 py-3 text-sm text-zinc-700 dark:text-zinc-200">
+                  <span className="font-mono">{agent}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
