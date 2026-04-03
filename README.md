@@ -15,14 +15,22 @@ It gives you a dashboard for managing agents and seeing useful info from your VP
 
 ## Screenshots
 
-<p align="center">
-  <img src="./assets/dashboard-ops.png" alt="SuperClaw dashboard ops view" width="48%">
-  <img src="./assets/dashboard-agents.png" alt="SuperClaw dashboard agents view" width="48%">
-</p>
-
-<p align="center">
-  <img src="./assets/kanban.png" alt="SuperClaw kanban board" width="96%">
-</p>
+<table>
+  <tr>
+    <td align="center" width="33.33%">
+      <img src="./assets/dashboard-ops.png" alt="SuperClaw dashboard ops view" width="100%"><br>
+      <sub><strong>Dashboard · Ops</strong></sub>
+    </td>
+    <td align="center" width="33.33%">
+      <img src="./assets/dashboard-agents.png" alt="SuperClaw dashboard agents view" width="100%"><br>
+      <sub><strong>Dashboard · Agents</strong></sub>
+    </td>
+    <td align="center" width="33.33%">
+      <img src="./assets/kanban.png" alt="SuperClaw kanban board" width="100%"><br>
+      <sub><strong>Kanban</strong></sub>
+    </td>
+  </tr>
+</table>
 
 ## Requirements
 
