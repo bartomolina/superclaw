@@ -31,7 +31,7 @@ It covers areas like:
 1. Prefer server-side adapters for OpenClaw integration and keep secrets server-side.
 2. If dashboard install/runtime assumptions change, update:
    - `README.md`
-   - `AGENT_INSTALL.md`
+   - `INSTALL.md`
    - `dashboard/README.md`
 3. If dashboard changes depend on OpenClaw API/runtime behavior, document the assumption in code or docs near the integration point.
 

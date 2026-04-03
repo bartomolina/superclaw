@@ -4,7 +4,7 @@ Dashboard is the local UI for inspecting and managing OpenClaw.
 
 For suite-level setup, see:
 - `../README.md`
-- `../AGENT_INSTALL.md`
+- `../INSTALL.md`
 
 ## Basics
 

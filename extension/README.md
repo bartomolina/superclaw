@@ -4,7 +4,7 @@ Extension for sending UI feedback into SuperClaw Kanban.
 
 For suite-level setup, see:
 - `../README.md`
-- `../AGENT_INSTALL.md`
+- `../INSTALL.md`
 
 ## Basics
 

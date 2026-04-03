@@ -139,5 +139,5 @@ Use the dedicated `kanban` skill for narrow worker tasks such as:
 2. If you change agent API behavior, update the skill docs too.
 3. If you change install/runtime assumptions, update:
    - `README.md`
-   - `AGENT_INSTALL.md`
+   - `INSTALL.md`
    - `kanban/README.md`
