@@ -3,16 +3,16 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { BarChart3, Gauge, Layers, LogOut, Moon, Puzzle, RefreshCw, Server, Sun, Terminal, Users, Wifi, WifiOff } from "lucide-react";
-import { toast } from "sonner";
 
-import { clearToken, getToken, setToken, authFetch, authHeaders } from "@/components/dashboard/auth";
+import { clearToken, getToken, setToken, authFetch } from "@/components/dashboard/auth";
 import { AgentsPage } from "@/components/dashboard/agents";
 import { DebugPage, PerformancePage, UsagePage } from "@/components/dashboard/debug";
 import { LoginScreen } from "@/components/dashboard/login-screen";
 import { ModelsPage } from "@/components/dashboard/models-page";
 import { OpsPage } from "@/components/dashboard/ops-page";
+import { PendingOperationOverlay } from "@/components/dashboard/pending-operation-overlay";
 import { SkillsPage } from "@/components/dashboard/skills-page";
-import { type Agent, type Model, type Page } from "@/components/dashboard/types";
+import { type Agent, type Model, type Page, type RestartOperationDescriptor, type RestartOperationState, type RunRestartOperation } from "@/components/dashboard/types";
 import { useTheme } from "@/components/dashboard/use-theme";
 
 const BASE_NAV_ITEMS: { id: Page; label: string; icon: typeof Users }[] = [
@@ -61,7 +61,7 @@ export default function App() {
   const [gatewayUp, setGatewayUp] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [restarting, setRestarting] = useState(false);
+  const [pendingOperation, setPendingOperation] = useState<RestartOperationState | null>(null);
 
   const hydrateRuntimeData = useCallback(async (mapped: Agent[]) => {
     async function fetchWithRetry(url: string, fallback: any, retries = 1) {
@@ -317,29 +317,15 @@ export default function App() {
     setAgents([]);
   }
 
-  async function handleModelChange(agentId: string, model: string) {
-    try {
-      const res = await fetch(`/api/agents/${agentId}/model`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ model }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        await waitForGateway();
-        toast.success(`Updated ${agentId} model`);
-      } else {
-        console.error("Model switch failed:", data.error);
-        toast.error(data.error || `Failed to update ${agentId} model`);
-      }
-    } catch (e) {
-      console.error("Model switch failed:", e);
-      toast.error(`Failed to update ${agentId} model`);
-    }
-  }
-
-  const waitForGateway = useCallback(async () => {
-    setRestarting(true);
+  const waitForGateway = useCallback(async (descriptor: RestartOperationDescriptor) => {
+    setPendingOperation((current) =>
+      current
+        ? {
+            ...current,
+            phaseLabel: descriptor.restartingLabel || "Waiting for the gateway to restart...",
+          }
+        : current,
+    );
     setGatewayUp(false);
     // Wait for gateway to go offline (or timeout after 8s)
     for (let i = 0; i < 16; i++) {
@@ -356,15 +342,45 @@ export default function App() {
         const res = await authFetch("/api/gateway-status");
         if (res.online) {
           setGatewayUp(true);
-          setRestarting(false);
+          setPendingOperation((current) =>
+            current
+              ? {
+                  ...current,
+                  phaseLabel: descriptor.refreshingLabel || "Refreshing the dashboard...",
+                }
+              : current,
+          );
           await fetchAll();
           return;
         }
       } catch {}
     }
-    setRestarting(false);
+    setPendingOperation((current) =>
+      current
+        ? {
+            ...current,
+            phaseLabel: descriptor.refreshingLabel || "Refreshing the dashboard...",
+          }
+        : current,
+    );
     await fetchAll();
   }, [fetchAll]);
+
+  const runRestartOperation = useCallback<RunRestartOperation>(async <T,>(descriptor: RestartOperationDescriptor, action: () => Promise<T>) => {
+    setPendingOperation({
+      title: descriptor.title,
+      message: descriptor.message,
+      phaseLabel: descriptor.submittingLabel || "Applying changes...",
+    });
+
+    try {
+      const result = await action();
+      await waitForGateway(descriptor);
+      return result;
+    } finally {
+      setPendingOperation(null);
+    }
+  }, [waitForGateway]);
 
   function handleRefresh() {
     setRefreshing(true);
@@ -476,16 +492,10 @@ export default function App() {
 
         {/* Content */}
         <main className="flex-1 min-w-0 pb-20 md:pb-0">
-          {restarting && (
-            <div className="mb-4 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2">
-              <RefreshCw size={14} className="animate-spin" />
-              Gateway restarting...
-            </div>
-          )}
           {loading ? <div className="text-center py-24 text-zinc-400 dark:text-zinc-500 text-sm">Connecting to gateway...</div> : (
             <>
-              {page === "agents" && <AgentsPage agents={agents} defaultPrimary={defaultModel.primary || "—"} onModelChange={handleModelChange} onRefresh={waitForGateway} onRefreshQuick={fetchAll} />}
-              {page === "models" && <ModelsPage configuredModels={configuredModels} defaultModel={defaultModel} onRefresh={waitForGateway} />}
+              {page === "agents" && <AgentsPage agents={agents} defaultPrimary={defaultModel.primary || "—"} runRestartOperation={runRestartOperation} onRefreshQuick={fetchAll} />}
+              {page === "models" && <ModelsPage configuredModels={configuredModels} defaultModel={defaultModel} runRestartOperation={runRestartOperation} />}
               {page === "skills" && <SkillsPage />}
               {page === "debug" && debugRpcEnabled && <DebugPage />}
               {page === "ops" && <OpsPage />}
@@ -495,6 +505,7 @@ export default function App() {
           )}
         </main>
       </div>
+      <PendingOperationOverlay operation={pendingOperation} />
       </div>
   );
 }

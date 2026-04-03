@@ -6,7 +6,7 @@ import { AlertTriangle, Check, Cpu, Shield } from "lucide-react";
 import { toast } from "sonner";
 
 import { authFetch, authHeaders } from "@/components/dashboard/auth";
-import { type Agent, type Skill } from "@/components/dashboard/types";
+import { type Agent, type RunRestartOperation, type Skill } from "@/components/dashboard/types";
 import { AgentChips, buildAgentSections } from "./agent-chips";
 import { AvatarImg } from "./avatar-img";
 import { FileViewerModal, type ViewingFile } from "./file-viewer-modal";
@@ -15,8 +15,7 @@ interface AgentCardProps {
   agent: Agent;
   defaultPrimary: string;
   commonSkills: Set<string>;
-  onModelChange: (agentId: string, model: string) => void;
-  onConfigChange: () => Promise<void>;
+  runRestartOperation: RunRestartOperation;
   onRefreshData: () => Promise<void>;
 }
 
@@ -49,8 +48,7 @@ export function AgentCard({
   agent,
   defaultPrimary,
   commonSkills,
-  onModelChange,
-  onConfigChange,
+  runRestartOperation,
   onRefreshData,
 }: AgentCardProps) {
   const uniqueSkills: Skill[] = agent.skills.filter((s) => s.eligible && !commonSkills.has(s.name));
@@ -75,7 +73,32 @@ export function AgentCard({
   async function handleModelSwitch(newModel: string) {
     setSwitching(true);
     try {
-      await onModelChange(agent.id, newModel);
+      await runRestartOperation(
+        {
+          title: `Updating ${agent.name} model`,
+          message:
+            newModel === "__default__"
+              ? "Restoring the agent to the default model and waiting for the gateway to come back."
+              : "Applying the new model selection and waiting for the gateway to come back.",
+          submittingLabel: "Saving model change...",
+          restartingLabel: "Waiting for the gateway to restart...",
+          refreshingLabel: "Refreshing agents...",
+        },
+        async () => {
+          const res = await fetch(`/api/agents/${agent.id}/model`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ model: newModel }),
+          });
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error || `Failed to update ${agent.id} model`);
+          return data;
+        },
+      );
+      toast.success(`Updated ${agent.id} model`);
+    } catch (error) {
+      console.error("Model switch failed:", error);
+      toast.error(error instanceof Error ? error.message : `Failed to update ${agent.id} model`);
     } finally {
       setSwitching(false);
     }
@@ -84,14 +107,25 @@ export function AgentCard({
   async function updateSandbox(nextSandboxed: boolean, nextWorkspaceAccess: "none" | "ro" | "rw") {
     setSandboxSwitching(true);
     try {
-      const res = await fetch(`/api/agents/${agent.id}/sandbox`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ sandboxed: nextSandboxed, workspaceAccess: nextWorkspaceAccess }),
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to update sandbox settings");
-      await onConfigChange();
+      await runRestartOperation(
+        {
+          title: nextSandboxed ? `Enabling sandbox for ${agent.name}` : `Disabling sandbox for ${agent.name}`,
+          message: "Saving sandbox settings and waiting for the gateway to come back.",
+          submittingLabel: "Saving sandbox settings...",
+          restartingLabel: "Waiting for the gateway to restart...",
+          refreshingLabel: "Refreshing agents...",
+        },
+        async () => {
+          const res = await fetch(`/api/agents/${agent.id}/sandbox`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ sandboxed: nextSandboxed, workspaceAccess: nextWorkspaceAccess }),
+          });
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error || "Failed to update sandbox settings");
+          return data;
+        },
+      );
       toast.success(nextSandboxed ? `Sandbox enabled for ${agent.id}` : `Sandbox disabled for ${agent.id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update sandbox settings");

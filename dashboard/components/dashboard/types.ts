@@ -33,6 +33,22 @@ export type Cron = {
 };
 export type Heartbeat = { active: boolean };
 export type KanbanReadiness = { applicable: boolean; ready: boolean; missing: string[] };
+export type RestartOperationDescriptor = {
+  title: string;
+  message: string;
+  submittingLabel?: string;
+  restartingLabel?: string;
+  refreshingLabel?: string;
+};
+export type RestartOperationState = {
+  title: string;
+  message: string;
+  phaseLabel: string;
+};
+export type RunRestartOperation = <T>(
+  descriptor: RestartOperationDescriptor,
+  action: () => Promise<T>,
+) => Promise<T>;
 export type Agent = {
   id: string;
   name: string;
