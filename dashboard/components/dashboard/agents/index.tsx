@@ -7,19 +7,18 @@ import { toast } from "sonner";
 
 import { authHeaders } from "@/components/dashboard/auth";
 import { StateMessage } from "@/components/dashboard/state-message";
-import { type Agent } from "@/components/dashboard/types";
+import { type Agent, type RunRestartOperation } from "@/components/dashboard/types";
 import { AgentCard } from "./agent-card";
 import { CreateAgentForm, ConfigModal, DeleteAgentModal } from "./agent-modals";
 
 interface AgentsPageProps {
   agents: Agent[];
   defaultPrimary: string;
-  onModelChange: (agentId: string, model: string) => void;
-  onRefresh: () => Promise<void>;
+  runRestartOperation: RunRestartOperation;
   onRefreshQuick: () => Promise<void>;
 }
 
-export function AgentsPage({ agents, defaultPrimary, onModelChange, onRefresh, onRefreshQuick }: AgentsPageProps) {
+export function AgentsPage({ agents, defaultPrimary, runRestartOperation, onRefreshQuick }: AgentsPageProps) {
   const commonSkills = (() => {
     if (agents.length === 0) return new Set<string>();
     const eligiblePerAgent = agents.map((a) => new Set(a.skills.filter((s) => s.eligible).map((s) => s.name)));
@@ -36,14 +35,27 @@ export function AgentsPage({ agents, defaultPrimary, onModelChange, onRefresh, o
 
   async function handleDelete(agentId: string, deleteWorkspace: boolean) {
     try {
-      const res = await fetch(`/api/agents/${agentId}${deleteWorkspace ? "?deleteWorkspace=true" : ""}`, {
-        method: "DELETE",
-        headers: authHeaders(),
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to delete agent");
+      await runRestartOperation(
+        {
+          title: deleteWorkspace ? `Deleting ${agentId} and workspace` : `Deleting ${agentId}`,
+          message: deleteWorkspace
+            ? "Removing the agent, deleting its workspace, and waiting for the gateway to come back."
+            : "Removing the agent and waiting for the gateway to come back.",
+          submittingLabel: deleteWorkspace ? "Deleting agent and workspace..." : "Deleting agent...",
+          restartingLabel: "Waiting for the gateway to restart...",
+          refreshingLabel: "Refreshing agents...",
+        },
+        async () => {
+          const res = await fetch(`/api/agents/${agentId}${deleteWorkspace ? "?deleteWorkspace=true" : ""}`, {
+            method: "DELETE",
+            headers: authHeaders(),
+          });
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error || "Failed to delete agent");
+          return data;
+        },
+      );
       setDeleteConfirmAgentId(null);
-      await onRefresh();
       toast.success(deleteWorkspace ? `Deleted ${agentId} and its workspace` : `Deleted ${agentId}`);
     } catch (e) {
       console.error("Delete failed:", e);
@@ -67,7 +79,7 @@ export function AgentsPage({ agents, defaultPrimary, onModelChange, onRefresh, o
         </div>
       </div>
 
-      <CreateAgentForm onRefresh={onRefresh} open={showCreate} onClose={() => setShowCreate(false)} />
+      <CreateAgentForm runRestartOperation={runRestartOperation} open={showCreate} onClose={() => setShowCreate(false)} />
 
       {agents.length === 0 ? (
         <StateMessage>No agents configured</StateMessage>
@@ -79,8 +91,7 @@ export function AgentsPage({ agents, defaultPrimary, onModelChange, onRefresh, o
                 agent={agent}
                 defaultPrimary={defaultPrimary}
                 commonSkills={commonSkills}
-                onModelChange={onModelChange}
-                onConfigChange={onRefresh}
+                runRestartOperation={runRestartOperation}
                 onRefreshData={onRefreshQuick}
               />
               <div className="absolute top-4 right-4 flex items-center gap-0.5">

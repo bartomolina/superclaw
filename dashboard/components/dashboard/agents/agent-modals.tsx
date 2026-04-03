@@ -6,16 +6,16 @@ import { Settings } from "lucide-react";
 import { toast } from "sonner";
 
 import { authFetch, authHeaders } from "@/components/dashboard/auth";
-import { type Agent } from "@/components/dashboard/types";
+import { type Agent, type RunRestartOperation } from "@/components/dashboard/types";
 import { FileViewerModal } from "./file-viewer-modal";
 
 interface CreateAgentFormProps {
-  onRefresh: () => Promise<void>;
+  runRestartOperation: RunRestartOperation;
   open: boolean;
   onClose: () => void;
 }
 
-export function CreateAgentForm({ onRefresh, open, onClose }: CreateAgentFormProps) {
+export function CreateAgentForm({ runRestartOperation, open, onClose }: CreateAgentFormProps) {
   const [newId, setNewId] = useState("");
   const [newName, setNewName] = useState("");
   const [newEmoji, setNewEmoji] = useState("🤖");
@@ -33,25 +33,37 @@ export function CreateAgentForm({ onRefresh, open, onClose }: CreateAgentFormPro
 
   async function handleCreate() {
     if (!newId.trim()) return;
+    const agentId = newId.trim();
     setCreating(true);
     try {
-      const res = await fetch("/api/agents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({
-          id: newId.trim(),
-          name: newName.trim() || newId.trim(),
-          emoji: newEmoji,
-          telegramToken: newTelegramToken.trim() || undefined,
-          description: newDescription.trim() || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to create agent");
+      await runRestartOperation(
+        {
+          title: `Creating ${agentId}`,
+          message: "Setting up the agent and waiting for the gateway to come back.",
+          submittingLabel: "Creating agent...",
+          restartingLabel: "Waiting for the gateway to restart...",
+          refreshingLabel: "Refreshing agents...",
+        },
+        async () => {
+          const res = await fetch("/api/agents", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({
+              id: agentId,
+              name: newName.trim() || agentId,
+              emoji: newEmoji,
+              telegramToken: newTelegramToken.trim() || undefined,
+              description: newDescription.trim() || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error || "Failed to create agent");
+          return data;
+        },
+      );
       resetForm();
       onClose();
-      await onRefresh();
-      toast.success(`Created ${newId.trim()}`);
+      toast.success(`Created ${agentId}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create agent");
     } finally {
@@ -185,6 +197,17 @@ interface DeleteAgentModalProps {
 
 export function DeleteAgentModal({ agent, onClose, onDelete }: DeleteAgentModalProps) {
   const [deleteWorkspace, setDeleteWorkspace] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDeleteClick() {
+    if (!agent || deleting) return;
+    setDeleting(true);
+    try {
+      await onDelete(agent.id, deleteWorkspace);
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   if (!agent) return null;
 
@@ -204,6 +227,7 @@ export function DeleteAgentModal({ agent, onClose, onDelete }: DeleteAgentModalP
           <input
             type="checkbox"
             checked={deleteWorkspace}
+            disabled={deleting}
             onChange={(e) => setDeleteWorkspace(e.target.checked)}
             className="w-4 h-4 rounded border-zinc-300 dark:border-zinc-700 text-red-600 focus:ring-red-500"
           />
@@ -220,15 +244,17 @@ export function DeleteAgentModal({ agent, onClose, onDelete }: DeleteAgentModalP
         <div className="flex justify-end gap-2">
           <button
             onClick={onClose}
+            disabled={deleting}
             className="px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
           >
             Cancel
           </button>
           <button
-            onClick={() => onDelete(agent.id, deleteWorkspace)}
-            className="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+            onClick={handleDeleteClick}
+            disabled={deleting}
+            className="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {deleteWorkspace ? "Delete agent & workspace" : "Delete agent"}
+            {deleting ? "Deleting..." : deleteWorkspace ? "Delete agent & workspace" : "Delete agent"}
           </button>
         </div>
       </div>

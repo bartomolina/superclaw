@@ -6,16 +6,16 @@ import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { authFetch, authHeaders } from "@/components/dashboard/auth";
-import { type Model } from "@/components/dashboard/types";
+import { type Model, type RunRestartOperation } from "@/components/dashboard/types";
 
 export function ModelsPage({
   configuredModels,
   defaultModel,
-  onRefresh,
+  runRestartOperation,
 }: {
   configuredModels: Model[];
   defaultModel: { primary: string | null; fallbacks: string[] };
-  onRefresh: () => Promise<void>;
+  runRestartOperation: RunRestartOperation;
 }) {
   const primaryModel = defaultModel.primary || "—";
   const fallbacks = defaultModel.fallbacks || [];
@@ -65,14 +65,25 @@ export function ModelsPage({
 
     setAddingModelKey(modelKey);
     try {
-      const res = await fetch("/api/models/add", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ model: modelKey }),
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to add model");
-      await onRefresh();
+      await runRestartOperation(
+        {
+          title: `Adding ${modelKey}`,
+          message: "Updating configured models and waiting for the gateway to come back.",
+          submittingLabel: "Adding model...",
+          restartingLabel: "Waiting for the gateway to restart...",
+          refreshingLabel: "Refreshing models...",
+        },
+        async () => {
+          const res = await fetch("/api/models/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ model: modelKey }),
+          });
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error || "Failed to add model");
+          return data;
+        },
+      );
       toast.success(`Added ${modelKey}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to add model");
@@ -86,14 +97,25 @@ export function ModelsPage({
 
     setRemovingModelKey(modelKey);
     try {
-      const res = await fetch("/api/models/remove", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ model: modelKey }),
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to remove model");
-      await onRefresh();
+      await runRestartOperation(
+        {
+          title: `Removing ${modelKey}`,
+          message: "Updating configured models and waiting for the gateway to come back.",
+          submittingLabel: "Removing model...",
+          restartingLabel: "Waiting for the gateway to restart...",
+          refreshingLabel: "Refreshing models...",
+        },
+        async () => {
+          const res = await fetch("/api/models/remove", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ model: modelKey }),
+          });
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error || "Failed to remove model");
+          return data;
+        },
+      );
       toast.success(`Removed ${modelKey}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to remove model");
@@ -105,14 +127,25 @@ export function ModelsPage({
   async function handleSetPrimary(modelKey: string) {
     setSettingPrimary(modelKey);
     try {
-      const res = await fetch("/api/models/set-primary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ model: modelKey }),
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to set primary model");
-      await onRefresh();
+      await runRestartOperation(
+        {
+          title: "Setting primary model",
+          message: `Promoting ${modelKey} to the default primary model and waiting for the gateway to come back.`,
+          submittingLabel: "Saving primary model...",
+          restartingLabel: "Waiting for the gateway to restart...",
+          refreshingLabel: "Refreshing models...",
+        },
+        async () => {
+          const res = await fetch("/api/models/set-primary", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ model: modelKey }),
+          });
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error || "Failed to set primary model");
+          return data;
+        },
+      );
       toast.success(`Set ${modelKey} as primary`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to set primary model");
@@ -126,13 +159,24 @@ export function ModelsPage({
 
     setRemovingFallbacks(true);
     try {
-      const res = await fetch("/api/models/clear-fallbacks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to clear fallback models");
-      await onRefresh();
+      const data = await runRestartOperation(
+        {
+          title: "Clearing fallback models",
+          message: "Removing fallback status from the default model configuration and waiting for the gateway to come back.",
+          submittingLabel: "Clearing fallbacks...",
+          restartingLabel: "Waiting for the gateway to restart...",
+          refreshingLabel: "Refreshing models...",
+        },
+        async () => {
+          const res = await fetch("/api/models/clear-fallbacks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+          });
+          const next = await res.json();
+          if (!next.ok) throw new Error(next.error || "Failed to clear fallback models");
+          return next;
+        },
+      );
       toast.success(data.cleared > 0 ? `Cleared fallback status from ${data.cleared} model${data.cleared === 1 ? "" : "s"}` : "No fallback models to clear");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to clear fallback models");
