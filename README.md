@@ -9,7 +9,7 @@
 </p>
 
 **SuperClaw** is the local companion suite for [OpenClaw](https://github.com/openclaw/openclaw).
-It gives you a dashboard for managing agents and seeing useful info from your VPS, plus a Kanban app for managing human and agent work.
+It gives you a dashboard for managing agents and seeing useful info from your VPS, plus a Kanban app for coordinating work between agents and humans.
 
 [Install](./INSTALL.md) · [Dashboard docs](./dashboard/README.md) · [Kanban docs](./kanban/README.md) · [Extension docs](./extension/README.md) · [License](./LICENSE)
 
