@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./superclaw-logo.png" alt="SuperClaw" width="220">
+  <img src="./superclaw-logo.png" alt="SuperClaw" width="500">
 </p>
 
 # 🦞 SuperClaw — Companion suite for OpenClaw
