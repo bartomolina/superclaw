@@ -13,6 +13,17 @@ It gives you a dashboard for managing agents and seeing useful info from your VP
 
 [Install](./INSTALL.md) · [Dashboard docs](./dashboard/README.md) · [Kanban docs](./kanban/README.md) · [Extension docs](./extension/README.md) · [License](./LICENSE)
 
+## Screenshots
+
+<p align="center">
+  <img src="./assets/dashboard-ops.png" alt="SuperClaw dashboard ops view" width="48%">
+  <img src="./assets/dashboard-agents.png" alt="SuperClaw dashboard agents view" width="48%">
+</p>
+
+<p align="center">
+  <img src="./assets/kanban.png" alt="SuperClaw kanban board" width="96%">
+</p>
+
 ## Requirements
 
 - **[Convex](https://www.convex.dev/)** — remote backend/database for Kanban tasks, boards, and workflow state
