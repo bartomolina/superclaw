@@ -1,7 +1,7 @@
 # 🦞 SuperClaw — Companion suite for OpenClaw
 
 <p align="center">
-  <img src="./superclaw-logo.png" alt="SuperClaw" width="500">
+  <img src="./assets/superclaw-logo.png" alt="SuperClaw" width="500">
 </p>
 
 <p align="center">
