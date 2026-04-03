@@ -19,8 +19,9 @@ interface AgentsPageProps {
 }
 
 export function AgentsPage({ agents, defaultPrimary, runRestartOperation, onRefreshQuick }: AgentsPageProps) {
+  const skillsStable = agents.length > 0 && agents.every((a) => a.skillsState === "ready");
   const commonSkills = (() => {
-    if (agents.length === 0) return new Set<string>();
+    if (!skillsStable || agents.length === 0) return new Set<string>();
     const eligiblePerAgent = agents.map((a) => new Set(a.skills.filter((s) => s.eligible).map((s) => s.name)));
     const common = new Set<string>();
     for (const name of eligiblePerAgent[0]) {
@@ -91,6 +92,7 @@ export function AgentsPage({ agents, defaultPrimary, runRestartOperation, onRefr
                 agent={agent}
                 defaultPrimary={defaultPrimary}
                 commonSkills={commonSkills}
+                skillsStable={skillsStable}
                 runRestartOperation={runRestartOperation}
                 onRefreshData={onRefreshQuick}
               />

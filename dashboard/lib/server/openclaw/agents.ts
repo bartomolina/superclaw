@@ -14,7 +14,6 @@ import { runOpenClaw, runOpenClawJson } from "@/lib/server/openclaw/cli";
 import { applyConfig, getConfigDocument, parseConfigRaw, readLocalConfig } from "@/lib/server/openclaw/config";
 import { OPENCLAW_HOME } from "@/lib/server/openclaw/constants";
 import { listCrons } from "@/lib/server/openclaw/crons";
-import { mapChannelsByAgent } from "@/lib/server/openclaw/channels";
 import {
   getAgentHeartbeatFile,
   getAgentIdentityFile,
@@ -242,6 +241,59 @@ function buildKanbanReadiness({
   };
 }
 
+async function getAgentKanbanReadiness(agentId: string) {
+  const localConfig = readLocalConfig();
+  const defaults = localConfig.agents?.defaults || {};
+  const configuredAgents = Array.isArray(localConfig.agents?.list) ? localConfig.agents.list : [];
+  const agentConfig = configuredAgents.find((entry: any) => entry.id === agentId) || {};
+  const isDefault = agentId === (defaults.id || null);
+  const sandboxed = agentConfig.sandbox?.mode
+    ? agentConfig.sandbox.mode !== "off"
+    : isDefault
+      ? defaults?.sandbox?.mode && defaults.sandbox.mode !== "off"
+      : false;
+
+  if (!sandboxed) {
+    return {
+      kanbanReadiness: {
+        applicable: false,
+        ready: false,
+        missing: [] as string[],
+      },
+    };
+  }
+
+  const workspace = agentConfig.workspace ?? defaults.workspace ?? path.join(OPENCLAW_HOME, "workspace");
+  const sandboxEnv = {
+    ...(defaults?.sandbox?.docker?.env || {}),
+    ...(agentConfig.sandbox?.docker?.env || {}),
+  };
+
+  try {
+    const dedicatedCredentialAgentIds = await listDedicatedKanbanCredentialAgentIds();
+    return {
+      kanbanReadiness: buildKanbanReadiness({
+        sandboxed,
+        workspace,
+        sandboxEnv,
+        hasDedicatedCredential: dedicatedCredentialAgentIds.has(agentId),
+        canVerifyDedicatedCredential: true,
+      }),
+    };
+  } catch (error) {
+    return {
+      kanbanReadiness: buildKanbanReadiness({
+        sandboxed,
+        workspace,
+        sandboxEnv,
+        hasDedicatedCredential: false,
+        canVerifyDedicatedCredential: false,
+      }),
+      warnings: [`kanban dedicated credentials: ${error instanceof Error ? error.message : String(error)}`],
+    };
+  }
+}
+
 async function buildAgentResponse(): Promise<AgentsListResponse> {
   const warnings: string[] = [];
   const localConfig = readLocalConfig();
@@ -295,15 +347,6 @@ async function buildAgentResponse(): Promise<AgentsListResponse> {
 
   const availableModels = inferAvailableModels(providerMap);
   const configModels = localConfig.agents?.defaults?.models || {};
-  let dedicatedCredentialAgentIds = new Set<string>();
-  let canVerifyDedicatedCredentials = true;
-
-  try {
-    dedicatedCredentialAgentIds = await listDedicatedKanbanCredentialAgentIds();
-  } catch (error) {
-    canVerifyDedicatedCredentials = false;
-    addWarning(warnings, "kanban dedicated credentials", error);
-  }
   const models = Object.keys(configModels).map((key) => {
     const provider = key.split("/")[0];
     return {
@@ -313,11 +356,6 @@ async function buildAgentResponse(): Promise<AgentsListResponse> {
     };
   });
   const defaultModel = localConfig.agents?.defaults?.model ?? {};
-  const channelsData = await runOpenClawJson<any>(["channels", "status", "--json"], { channelAccounts: {} }, { timeoutMs: 10_000 }).catch((error) => {
-    addWarning(warnings, "openclaw channels status", error);
-    return { channelAccounts: {} };
-  });
-  const accountsByAgent = mapChannelsByAgent(channelsData, localConfig, defaultId || defaults.id || null);
 
   const agents: DashboardAgent[] = baseAgents.map((agent) => {
     const agentConfig = configuredAgents.find((entry: any) => entry.id === agent.id) || {};
@@ -332,10 +370,6 @@ async function buildAgentResponse(): Promise<AgentsListResponse> {
     const isDefault = agent.id === (defaultId || defaults.id || null);
     const sandboxed = !!agentConfig.sandbox?.mode && agentConfig.sandbox.mode !== "off";
     const workspace = agentConfig.workspace ?? agent.workspace ?? defaults.workspace ?? "—";
-    const sandboxEnv = {
-      ...(defaults?.sandbox?.docker?.env || {}),
-      ...(agentConfig.sandbox?.docker?.env || {}),
-    };
 
     return {
       id: agent.id,
@@ -351,19 +385,13 @@ async function buildAgentResponse(): Promise<AgentsListResponse> {
       isDefault,
       sandboxed,
       workspaceAccess: agentConfig.sandbox?.workspaceAccess ?? null,
-      channels: accountsByAgent[agent.id] || [],
+      channels: [],
       skills: [],
       models: models.length > 0 ? models : availableModels,
       heartbeat: {
         active: hasHeartbeatContent,
       },
-      kanbanReadiness: buildKanbanReadiness({
-        sandboxed,
-        workspace,
-        sandboxEnv,
-        hasDedicatedCredential: dedicatedCredentialAgentIds.has(agent.id),
-        canVerifyDedicatedCredential: canVerifyDedicatedCredentials,
-      }),
+      kanbanReadiness: { applicable: sandboxed, ready: false, missing: [] },
       files: listAgentWorkspaceFiles(agent.id),
       crons: [],
     };
@@ -388,6 +416,13 @@ export async function getAgentsSummary() {
 export async function handleAgentsList() {
   const response = await buildAgentResponse();
   return json(response);
+}
+
+export async function handleAgentKanbanReadiness(agentIdRaw: string) {
+  const agentId = optionalAgentId(agentIdRaw);
+  if (!agentId) throw new ApiError("invalid agent id", 400);
+
+  return json(await getAgentKanbanReadiness(agentId));
 }
 
 export async function handleCreateAgent(req: NextRequest) {
@@ -625,4 +660,3 @@ export async function handleAgentSandbox(req: NextRequest, agentIdRaw: string) {
   await applyConfig(JSON.stringify(raw, null, 2), config.hash);
   return json({ ok: true, sandboxed, workspaceAccess: sandboxed ? workspaceAccess : null });
 }
-

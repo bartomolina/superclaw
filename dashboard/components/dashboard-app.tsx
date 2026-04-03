@@ -69,7 +69,7 @@ export default function App() {
 
       for (let attempt = 0; attempt <= retries; attempt += 1) {
         try {
-          return await authFetch(url);
+          return { data: await authFetch(url), ok: true };
         } catch (error) {
           lastError = error;
           if (attempt >= retries) break;
@@ -78,16 +78,18 @@ export default function App() {
       }
 
       console.warn(`dashboard fetch failed: ${url}`, lastError);
-      return fallback;
+      return { data: fallback, ok: false };
     }
 
-    const enrichment = await Promise.all(
-      mapped.map(async (agent) => {
-        const skillsData = await fetchWithRetry(`/api/agents/${agent.id}/skills`, { skills: [] }, 1);
+    function updateAgent(agentId: string, updater: (agent: Agent) => Agent) {
+      setAgents((current) => current.map((agent) => (agent.id === agentId ? updater(agent) : agent)));
+    }
 
-        return {
-          id: agent.id,
-          skills: (skillsData.skills || []).map((s: any) => ({
+    const skillTasks = mapped.map((agent) =>
+      fetchWithRetry(`/api/agents/${agent.id}/skills`, { skills: [] }, 1).then((skillsResult) => {
+        updateAgent(agent.id, (currentAgent) => ({
+          ...currentAgent,
+          skills: (skillsResult.data.skills || []).map((s: any) => ({
             name: s.name,
             emoji: s.emoji || "📦",
             description: s.description || "",
@@ -95,18 +97,47 @@ export default function App() {
             disabled: s.disabled ?? false,
             source: s.source || "",
           })),
-        };
+          skillsState: skillsResult.ok ? "ready" : "error",
+        }));
       }),
     );
 
-    const enrichmentById = new Map(enrichment.map((entry) => [entry.id, entry]));
-    setAgents((current) =>
-      current.map((agent) => {
-        const next = enrichmentById.get(agent.id);
-        if (!next) return agent;
-        return { ...agent, skills: next.skills };
+    const channelTasks = [
+      fetchWithRetry(`/api/agents/channels`, { channelsByAgent: {} }, 2).then((channelsResult) => {
+        const channelsByAgent = channelsResult.data.channelsByAgent || {};
+
+        setAgents((current) =>
+          current.map((currentAgent) => ({
+            ...currentAgent,
+            channels: ((channelsByAgent[currentAgent.id] || []) as any[]).map((c: any) => ({
+              id: c.id,
+              name: c.name || c.id,
+              detail: c.detail || null,
+              running: c.running ?? false,
+              mode: c.mode || null,
+              streaming: c.streaming || null,
+              pairedUsers: (c.pairedUsers || []).map((u: any) => ({ id: u.id, name: u.name || u.id, source: u.source })),
+              groups: (c.groups || []).map((g: any) => ({ id: g.id, requireMention: g.requireMention ?? true, groupPolicy: g.groupPolicy ?? "allowlist" })),
+            })),
+            channelsState: channelsResult.ok ? "ready" : "error",
+          })),
+        );
       }),
-    );
+    ];
+
+    const kanbanTasks = mapped
+      .filter((agent) => agent.sandboxed)
+      .map((agent) =>
+        fetchWithRetry(`/api/agents/${agent.id}/kanban`, { kanbanReadiness: { applicable: true, ready: false, missing: [] } }, 1).then((kanbanResult) => {
+          updateAgent(agent.id, (currentAgent) => ({
+            ...currentAgent,
+            kanbanReadiness: kanbanResult.data.kanbanReadiness || currentAgent.kanbanReadiness,
+            kanbanState: kanbanResult.ok ? "ready" : "error",
+          }));
+        }),
+      );
+
+    await Promise.all([...skillTasks, ...channelTasks, ...kanbanTasks]);
   }, []);
 
   useLayoutEffect(() => {
@@ -230,16 +261,7 @@ export default function App() {
         sandboxed: a.sandboxed ?? false,
         workspaceAccess: a.workspaceAccess ?? null,
         isDefault: a.isDefault ?? false,
-        channels: (a.channels || []).map((c: any) => ({
-          id: c.id,
-          name: c.name || c.id,
-          detail: c.detail || null,
-          running: c.running ?? false,
-          mode: c.mode || null,
-          streaming: c.streaming || null,
-          pairedUsers: (c.pairedUsers || []).map((u: any) => ({ id: u.id, name: u.name || u.id, source: u.source })),
-          groups: (c.groups || []).map((g: any) => ({ id: g.id, requireMention: g.requireMention ?? true, groupPolicy: g.groupPolicy ?? "allowlist" })),
-        })),
+        channels: [],
         skills: [],
         models: (a.models || []).map((m: any) => ({
           id: m.id,
@@ -254,7 +276,10 @@ export default function App() {
           updatedAtMs: f.updatedAtMs ?? 0,
         })),
         heartbeat: a.heartbeat || { active: false },
-        kanbanReadiness: a.kanbanReadiness || { applicable: false, ready: false, missing: [] },
+        kanbanReadiness: a.kanbanReadiness || { applicable: !!(a.sandboxed ?? false), ready: false, missing: [] },
+        channelsState: "loading",
+        skillsState: "loading",
+        kanbanState: a.sandboxed ? "loading" : "ready",
         crons: agentCrons.map((cr: any) => ({
           id: cr.id,
           name: cr.name || cr.id,

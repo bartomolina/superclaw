@@ -109,3 +109,17 @@ export async function handleAgentChannels(agentIdRaw: string) {
   const accountsByAgent = mapChannelsByAgent(channelsData, config, defaultAgentId);
   return json({ channels: accountsByAgent[agentId] || [], warnings });
 }
+
+export async function handleAgentsChannels() {
+  const warnings: string[] = [];
+  const config = readLocalConfig();
+  const defaultAgentId = config.agents?.defaults?.id || null;
+
+  const channelsData = await runOpenClawJson<any>(["channels", "status", "--json"], { channelAccounts: {} }, { timeoutMs: 10_000 }).catch((error) => {
+    warnings.push(`channels.status: ${error instanceof Error ? error.message : String(error)}`);
+    return { channelAccounts: {} };
+  });
+
+  const channelsByAgent = mapChannelsByAgent(channelsData, config, defaultAgentId);
+  return json({ channelsByAgent, warnings });
+}

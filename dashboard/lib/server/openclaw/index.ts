@@ -2,7 +2,7 @@ export { handleAccountsList } from "@/lib/server/openclaw/accounts";
 export { handleAcpSummary } from "@/lib/server/openclaw/acp";
 export { isAuthorized, handleVerify } from "@/lib/server/openclaw/auth";
 export { gatewayCall, runOpenClaw, runOpenClawJson } from "@/lib/server/openclaw/cli";
-export { handleAgentChannels } from "@/lib/server/openclaw/channels";
+export { handleAgentChannels, handleAgentsChannels } from "@/lib/server/openclaw/channels";
 export { handleCloudflaredStatus } from "@/lib/server/openclaw/cloudflared";
 export { handleConfigGet, parseConfigRaw, readLocalConfig, getConfigDocument, applyConfig } from "@/lib/server/openclaw/config";
 export { handleConvexDeployments } from "@/lib/server/openclaw/convex";
@@ -18,6 +18,7 @@ export { handleAgentSkills, handleSkills } from "@/lib/server/openclaw/skills";
 export { getInstalledOpenClawVersion, handleGatewayStatus, handlePerformance, handleUsage } from "@/lib/server/openclaw/status";
 export {
   getAgentsSummary,
+  handleAgentKanbanReadiness,
   handleAgentHeartbeatModel,
   handleAgentModel,
   handleAgentsList,

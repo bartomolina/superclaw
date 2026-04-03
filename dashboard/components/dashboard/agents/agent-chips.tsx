@@ -13,6 +13,7 @@ export interface ChipSection {
   label: string;
   count: number;
   icon: typeof Cpu;
+  state?: "loading" | "ready" | "error";
 }
 
 const DEFAULT_AGENT_FILE_NAMES = new Set(["AGENTS.md", "BOOTSTRAP.md", "HEARTBEAT.md"]);
@@ -64,12 +65,12 @@ export function AgentChips({ agent, uniqueSkills, sections, onRefreshData, onOpe
       <div className="px-4 py-2.5 flex flex-wrap gap-1.5">
         {sections.map((s) => {
           const Icon = s.icon;
-          const active = s.count > 0;
+          const active = s.count > 0 || s.state === "loading" || s.state === "error";
           const isExpanded = expanded === s.id;
           return (
             <button
               key={s.id}
-              onClick={() => (s.count > 0 ? toggle(s.id) : undefined)}
+              onClick={() => (active ? toggle(s.id) : undefined)}
               className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border transition-colors ${
                 isExpanded
                   ? "bg-zinc-200 dark:bg-zinc-700 border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200"
@@ -80,7 +81,7 @@ export function AgentChips({ agent, uniqueSkills, sections, onRefreshData, onOpe
             >
               <Icon size={11} />
               {s.label}
-              <span className="font-mono">{s.count}</span>
+              <span className="font-mono">{s.state === "loading" ? "…" : s.state === "error" ? "!" : s.count}</span>
             </button>
           );
         })}
@@ -89,7 +90,11 @@ export function AgentChips({ agent, uniqueSkills, sections, onRefreshData, onOpe
       {expanded && (
         <div className="px-4 pb-3">
           {expanded === "channels" &&
-            (agent.channels.length > 0 ? (
+            (agent.channelsState === "loading" ? (
+              <div className="text-sm text-zinc-400 dark:text-zinc-500">Loading channels…</div>
+            ) : agent.channelsState === "error" ? (
+              <div className="text-sm text-zinc-400 dark:text-zinc-500">Channels unavailable right now.</div>
+            ) : agent.channels.length > 0 ? (
               <div className="space-y-2">
                 {agent.channels.map((c) => (
                   <div key={c.id}>
@@ -141,22 +146,31 @@ export function AgentChips({ agent, uniqueSkills, sections, onRefreshData, onOpe
                   </div>
                 ))}
               </div>
-            ) : null)}
+            ) : (
+              <div className="text-sm text-zinc-400 dark:text-zinc-500">No channels.</div>
+            ))}
 
-          {expanded === "skills" && (
-            <div className="flex flex-wrap gap-1.5">
-              {uniqueSkills.map((s) => (
-                <span
-                  key={s.name}
-                  title={s.description}
-                  className="inline-flex items-center gap-1 text-xs bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/40 text-zinc-600 dark:text-zinc-300 px-2 py-1 rounded-md cursor-default"
-                >
-                  <span className="text-sm">{s.emoji || "📦"}</span>
-                  {s.name}
-                </span>
-              ))}
-            </div>
-          )}
+          {expanded === "skills" &&
+            (agent.skillsState === "loading" ? (
+              <div className="text-sm text-zinc-400 dark:text-zinc-500">Loading skills…</div>
+            ) : agent.skillsState === "error" ? (
+              <div className="text-sm text-zinc-400 dark:text-zinc-500">Skills unavailable right now.</div>
+            ) : uniqueSkills.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {uniqueSkills.map((s) => (
+                  <span
+                    key={s.name}
+                    title={s.description}
+                    className="inline-flex items-center gap-1 text-xs bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/40 text-zinc-600 dark:text-zinc-300 px-2 py-1 rounded-md cursor-default"
+                  >
+                    <span className="text-sm">{s.emoji || "📦"}</span>
+                    {s.name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-zinc-400 dark:text-zinc-500">No unique skills.</div>
+            ))}
 
           {expanded === "crons" && (
             <div className="space-y-2">
@@ -261,10 +275,10 @@ export function AgentChips({ agent, uniqueSkills, sections, onRefreshData, onOpe
   );
 }
 
-export function buildAgentSections(agent: Agent, uniqueSkillsCount: number): ChipSection[] {
+export function buildAgentSections(agent: Agent, uniqueSkillsCount: number, skillsStable = true): ChipSection[] {
   return [
-    { id: "channels", label: "Channels", count: agent.channels.length, icon: MessageSquare },
-    { id: "skills", label: "Skills", count: uniqueSkillsCount, icon: Puzzle },
+    { id: "channels", label: "Channels", count: agent.channels.length, icon: MessageSquare, state: agent.channelsState },
+    { id: "skills", label: "Skills", count: uniqueSkillsCount, icon: Puzzle, state: skillsStable ? agent.skillsState : "loading" },
     { id: "crons", label: "Crons", count: agent.crons.length, icon: Clock },
     { id: "files", label: "Files", count: agent.files.length, icon: FileText },
   ];

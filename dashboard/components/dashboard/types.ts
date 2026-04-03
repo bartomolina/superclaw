@@ -33,6 +33,7 @@ export type Cron = {
 };
 export type Heartbeat = { active: boolean };
 export type KanbanReadiness = { applicable: boolean; ready: boolean; missing: string[] };
+export type LoadState = "loading" | "ready" | "error";
 export type RestartOperationDescriptor = {
   title: string;
   message: string;
@@ -67,6 +68,9 @@ export type Agent = {
   models: Model[];
   heartbeat: Heartbeat;
   kanbanReadiness: KanbanReadiness;
+  channelsState: LoadState;
+  skillsState: LoadState;
+  kanbanState: LoadState;
   crons: Cron[];
   files: AgentFile[];
 };

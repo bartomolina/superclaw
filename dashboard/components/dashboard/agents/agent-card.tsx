@@ -15,6 +15,7 @@ interface AgentCardProps {
   agent: Agent;
   defaultPrimary: string;
   commonSkills: Set<string>;
+  skillsStable: boolean;
   runRestartOperation: RunRestartOperation;
   onRefreshData: () => Promise<void>;
 }
@@ -48,10 +49,13 @@ export function AgentCard({
   agent,
   defaultPrimary,
   commonSkills,
+  skillsStable,
   runRestartOperation,
   onRefreshData,
 }: AgentCardProps) {
-  const uniqueSkills: Skill[] = agent.skills.filter((s) => s.eligible && !commonSkills.has(s.name));
+  const uniqueSkills: Skill[] = skillsStable
+    ? agent.skills.filter((s) => s.eligible && !commonSkills.has(s.name))
+    : agent.skills.filter((s) => s.eligible);
   const [switching, setSwitching] = useState(false);
   const [sandboxSwitching, setSandboxSwitching] = useState(false);
   const [viewingFile, setViewingFile] = useState<ViewingFile | null>(null);
@@ -134,7 +138,7 @@ export function AgentCard({
     }
   }
 
-  const sections = buildAgentSections(agent, uniqueSkills.length);
+  const sections = buildAgentSections(agent, uniqueSkills.length, skillsStable);
   const kanbanMissing = formatKanbanMissing(agent.kanbanReadiness.missing);
   const workspacePath = formatWorkspacePath(agent.workspace);
 
@@ -224,21 +228,29 @@ export function AgentCard({
                 <option value="ro">read-only</option>
                 <option value="rw">read-write</option>
               </select>
-              {agent.kanbanReadiness.applicable && (
+              {(agent.kanbanReadiness.applicable || (agent.sandboxed && agent.kanbanState !== "ready")) && (
                 <span
                   title={
-                    agent.kanbanReadiness.ready
+                    agent.kanbanState === "loading"
+                      ? "Checking sandbox Kanban readiness…"
+                      : agent.kanbanState === "error"
+                        ? "Kanban readiness unavailable right now."
+                        : agent.kanbanReadiness.ready
                       ? "Sandbox workspace has kanban + superclaw skills copied, required Kanban env vars configured, and a dedicated Kanban credential for this agent."
                       : kanbanMissing.join("\n")
                   }
                   className={`inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[9px] font-medium tracking-normal whitespace-nowrap ${
-                    agent.kanbanReadiness.ready
+                    agent.kanbanState === "loading"
+                      ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+                      : agent.kanbanState === "error"
+                        ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+                      : agent.kanbanReadiness.ready
                       ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300"
                       : "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
                   }`}
                 >
                   <span>Kanban</span>
-                  {agent.kanbanReadiness.ready ? <Check size={10} /> : <AlertTriangle size={10} />}
+                  {agent.kanbanState === "loading" ? "…" : agent.kanbanState === "error" ? "?" : agent.kanbanReadiness.ready ? <Check size={10} /> : <AlertTriangle size={10} />}
                 </span>
               )}
             </div>
