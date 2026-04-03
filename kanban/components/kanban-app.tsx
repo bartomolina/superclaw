@@ -615,6 +615,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [sidebarSkillOptions, setSidebarSkillOptions] = useState<SkillOption[]>([]);
   const [sidebarModelOptions, setSidebarModelOptions] = useState<ModelOption[]>([]);
   const [sidebarAcpOptions, setSidebarAcpOptions] = useState<AcpOption[]>([]);
+  const [isSidebarAcpLoading, setIsSidebarAcpLoading] = useState(false);
   const [runningAgentId, setRunningAgentId] = useState<string | null>(null);
   const [activeCardId, setActiveCardId] = useState<Id<"cards"> | null>(null);
   const [activeBoardId, setActiveBoardId] = useState<Id<"boards"> | null>(null);
@@ -822,6 +823,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   useEffect(() => {
     if (!isConvexAuthenticated || !effectiveSelectedBoardId) {
       setIsSidebarAgentsLoading(false);
+      setIsSidebarAcpLoading(false);
       setSidebarAgentOptions([]);
       setSidebarModelOptions([]);
       setSidebarAcpOptions([]);
@@ -830,7 +832,9 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
     let cancelled = false;
     setIsSidebarAgentsLoading(true);
+    setIsSidebarAcpLoading(true);
     setSidebarAgentOptions([]);
+    setSidebarAcpOptions([]);
 
     async function loadSidebarOptions() {
       try {
@@ -897,6 +901,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
       } finally {
         if (!cancelled) {
           setIsSidebarAgentsLoading(false);
+          setIsSidebarAcpLoading(false);
         }
       }
     }
@@ -1917,6 +1922,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           skillOptions={sidebarSkillOptions}
           modelOptions={sidebarModelOptions}
           acpOptions={sidebarAcpOptions}
+          acpLoading={isSidebarAcpLoading}
           onClose={() => {
             if (document.activeElement instanceof HTMLElement) {
               document.activeElement.blur();
@@ -2715,6 +2721,7 @@ function CardModal({
   skillOptions,
   modelOptions,
   acpOptions,
+  acpLoading,
   onClose,
 }: {
   card: CardModel;
@@ -2724,6 +2731,7 @@ function CardModal({
   skillOptions: SkillOption[];
   modelOptions: ModelOption[];
   acpOptions: AcpOption[];
+  acpLoading: boolean;
   onClose: () => void;
 }) {
   const updateCard = useMutation(api.cards.update);
@@ -2817,8 +2825,17 @@ function CardModal({
     const seen = new Set<string>();
     const normalizedCurrent = acpDraft.trim();
     const baseOptions = [...acpOptions];
+    const currentIndex = normalizedCurrent
+      ? baseOptions.findIndex((option) => option.id.trim().toLowerCase() === normalizedCurrent.toLowerCase())
+      : -1;
 
-    if (normalizedCurrent && !baseOptions.some((option) => option.id.trim() === normalizedCurrent)) {
+    if (currentIndex >= 0) {
+      baseOptions[currentIndex] = {
+        ...baseOptions[currentIndex],
+        id: normalizedCurrent,
+        label: normalizedCurrent,
+      };
+    } else if (normalizedCurrent) {
       baseOptions.push({ id: normalizedCurrent, label: normalizedCurrent });
     }
 
@@ -3260,7 +3277,9 @@ function CardModal({
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">ACP</label>
                 {availableAcpOptions.length === 0 ? (
-                  <div className="text-xs text-zinc-400 dark:text-zinc-500">No ACP agents detected from the current config.</div>
+                  <div className="text-xs text-zinc-400 dark:text-zinc-500">
+                    {acpLoading ? "Loading ACP agents..." : "No ACP agents detected from the current config."}
+                  </div>
                 ) : (
                   <ChoiceChips
                     value={acpDraft}

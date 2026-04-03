@@ -100,7 +100,12 @@ export async function fetchAcpOptions(): Promise<AcpOption[]> {
   const acpConfig = config.acp ?? {};
 
   if (acpConfig.enabled !== true || config.plugins?.entries?.acpx?.enabled === false) {
-    return [];
+    const value: AcpOption[] = [];
+    acpOptionsCache = {
+      expiresAt: now + ACP_OPTIONS_TTL_MS,
+      value,
+    };
+    return value;
   }
 
   const acpxConfig = await readResolvedAcpxConfig();
