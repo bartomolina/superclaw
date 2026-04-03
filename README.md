@@ -11,22 +11,21 @@
 **SuperClaw** is the local companion suite for [OpenClaw](https://github.com/openclaw/openclaw).
 It adds the practical surfaces around an OpenClaw install: a dashboard for visibility and ops, a Kanban app for tracked agent work, and a browser extension for sending UI feedback into the workflow.
 
-[Install](./INSTALL.md) · [Recommended setup](./RECOMMENDED_SETUP.md) · [Dashboard docs](./dashboard/README.md) · [Kanban docs](./kanban/README.md) · [Extension docs](./extension/README.md) · [License](./LICENSE)
+[Install](./INSTALL.md) · [Dashboard docs](./dashboard/README.md) · [Kanban docs](./kanban/README.md) · [Extension docs](./extension/README.md) · [License](./LICENSE)
 
 ## Requirements
 
-- **OpenClaw** already installed and working
-- **Convex** — required for Kanban
-- **Resend** — required for Kanban email/auth flows
-- **Cloudflare Tunnel** — recommended for managing/exposing the apps
+- **Convex** — remote backend/database for Kanban tasks, boards, and workflow state
+- **Resend** — for Kanban auth emails
 
-For the broader machine/bootstrap setup, see [`RECOMMENDED_SETUP.md`](./RECOMMENDED_SETUP.md).
+### Optional
+
+- **Cloudflare Tunnel** — recommended for exposing/managing the apps cleanly
+- **Gemini API key** — optional for dashboard avatar generation during the agent creation flow
 
 ## Installation
 
-Installing SuperClaw sets up the suite inside your main OpenClaw workspace and syncs the related skills.
-
-Expected result:
+SuperClaw will install the suite into your main OpenClaw workspace and sync the related skills:
 
 ```text
 ~/.openclaw/workspace/
@@ -40,13 +39,4 @@ Expected result:
     └── kanban/
 ```
 
-For the full installation flow, see [`INSTALL.md`](./INSTALL.md).
-
-## Skills
-
-Repo copies of the SuperClaw-related skills live in:
-
-- [`skills/superclaw/`](./skills/superclaw/)
-- [`skills/kanban/`](./skills/kanban/)
-
-When skill behavior changes, keep the repo copies aligned with the active installed copies under `~/.openclaw/skills/`.
+Take a look at [`INSTALL.md`](./INSTALL.md), or point your OpenClaw agent at it and have it run the setup for you.
