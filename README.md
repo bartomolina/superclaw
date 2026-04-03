@@ -20,8 +20,8 @@ It gives you a dashboard for managing agents and seeing useful info from your VP
 
 ### Optional
 
-- **[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)** — recommended for exposing/managing apps cleanly
 - **[Gemini API key](https://aistudio.google.com/)** — optional for dashboard avatar generation during the agent creation flow
+- **[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)** — recommended for exposing/managing apps cleanly
 
 ## Installation
 
