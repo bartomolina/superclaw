@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, Gauge, Layers, LogOut, Moon, Puzzle, Server, Sun, Terminal, Users, Wifi, WifiOff } from "lucide-react";
 
 import { clearToken, getToken, setToken, authFetch } from "@/components/dashboard/auth";
@@ -12,7 +12,7 @@ import { ModelsPage } from "@/components/dashboard/models-page";
 import { OpsPage } from "@/components/dashboard/ops-page";
 import { PendingOperationOverlay } from "@/components/dashboard/pending-operation-overlay";
 import { SkillsPage } from "@/components/dashboard/skills-page";
-import { type Agent, type Model, type Page, type RestartOperationDescriptor, type RestartOperationState, type RunRestartOperation } from "@/components/dashboard/types";
+import { type Agent, type Model, type Page, type ProviderSummary, type RestartOperationDescriptor, type RestartOperationState, type RunRestartOperation } from "@/components/dashboard/types";
 import { useTheme } from "@/components/dashboard/use-theme";
 
 const BASE_NAV_ITEMS: { id: Page; label: string; icon: typeof Users }[] = [
@@ -56,11 +56,13 @@ export default function App() {
   };
   const [agents, setAgents] = useState<Agent[]>([]);
   const [version, setVersion] = useState("—");
+  const [configuredProviders, setConfiguredProviders] = useState<ProviderSummary[]>([]);
   const [configuredModels, setConfiguredModels] = useState<Model[]>([]);
   const [defaultModel, setDefaultModel] = useState<{ primary: string | null; fallbacks: string[] }>({ primary: null, fallbacks: [] });
   const [gatewayUp, setGatewayUp] = useState(false);
   const [loading, setLoading] = useState(true);
   const [pendingOperation, setPendingOperation] = useState<RestartOperationState | null>(null);
+  const hydrateTimeoutRef = useRef<number | null>(null);
 
   const hydrateRuntimeData = useCallback(async (mapped: Agent[]) => {
     async function fetchWithRetry(url: string, fallback: any, retries = 1) {
@@ -223,11 +225,12 @@ export default function App() {
         authFetch("/api/agents"),
         authFetch("/api/gateway-status").catch(() => ({ online: false })),
         authFetch("/api/features").catch(() => ({ debugRpcEnabled: false })),
-        authFetch("/api/models").catch(() => ({ configuredModels: [], defaultModel: { primary: null, fallbacks: [] } })),
+        authFetch("/api/models").catch(() => ({ configuredProviders: [], configuredModels: [], defaultModel: { primary: null, fallbacks: [] } })),
         authFetch("/api/crons").catch(() => ({ jobs: [] })),
       ]);
 
       setVersion(gwStatus.version || agentsRes.version || "—");
+      setConfiguredProviders(modelsRes.configuredProviders || []);
       setConfiguredModels(modelsRes.configuredModels || []);
       setDefaultModel(modelsRes.defaultModel || agentsRes.defaultModel || { primary: null, fallbacks: [] });
       setGatewayUp(gwStatus.online ?? false);
@@ -296,7 +299,16 @@ export default function App() {
 
       setAgents(mapped);
       setLoading(false);
-      void hydrateRuntimeData(mapped);
+
+      if (hydrateTimeoutRef.current !== null) {
+        window.clearTimeout(hydrateTimeoutRef.current);
+      }
+
+      // Give visible assets like agent avatars a short head start before
+      // fanning out into slower per-agent background requests.
+      hydrateTimeoutRef.current = window.setTimeout(() => {
+        void hydrateRuntimeData(mapped);
+      }, 500);
     } catch (e: any) {
       if (e.message === "unauthorized") {
         clearToken();
@@ -311,6 +323,14 @@ export default function App() {
   }, [hydrateRuntimeData]);
 
   useEffect(() => { if (authenticated) fetchAll(); }, [authenticated, fetchAll]);
+
+  useEffect(() => {
+    return () => {
+      if (hydrateTimeoutRef.current !== null) {
+        window.clearTimeout(hydrateTimeoutRef.current);
+      }
+    };
+  }, []);
 
   function handleLogin(token: string) {
     setToken(token);
@@ -491,7 +511,7 @@ export default function App() {
           {loading ? <div className="text-center py-24 text-zinc-400 dark:text-zinc-500 text-sm">Connecting to gateway...</div> : (
             <>
               {page === "agents" && <AgentsPage agents={agents} defaultPrimary={defaultModel.primary || "—"} runRestartOperation={runRestartOperation} onRefreshQuick={fetchAll} />}
-              {page === "models" && <ModelsPage configuredModels={configuredModels} defaultModel={defaultModel} runRestartOperation={runRestartOperation} />}
+              {page === "models" && <ModelsPage configuredProviders={configuredProviders} configuredModels={configuredModels} defaultModel={defaultModel} runRestartOperation={runRestartOperation} />}
               {page === "skills" && <SkillsPage />}
               {page === "debug" && debugRpcEnabled && <DebugPage />}
               {page === "ops" && <OpsPage />}
