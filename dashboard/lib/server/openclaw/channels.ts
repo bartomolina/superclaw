@@ -9,6 +9,8 @@ import { OPENCLAW_HOME } from "@/lib/server/openclaw/constants";
 import { json } from "@/lib/server/openclaw/http";
 import { runOpenClawJson } from "@/lib/server/openclaw/cli";
 
+const CHANNELS_STATUS_TIMEOUT_MS = 20_000;
+
 function readStoredAllowFrom(channel: string, accountId: string) {
   try {
     const suffix = accountId === "default" ? "default" : accountId;
@@ -101,7 +103,7 @@ export async function handleAgentChannels(agentIdRaw: string) {
   const config = readLocalConfig();
   const defaultAgentId = config.agents?.defaults?.id || null;
 
-  const channelsData = await runOpenClawJson<any>(["channels", "status", "--json"], { channelAccounts: {} }, { timeoutMs: 10_000 }).catch((error) => {
+  const channelsData = await runOpenClawJson<any>(["channels", "status", "--json"], { channelAccounts: {} }, { timeoutMs: CHANNELS_STATUS_TIMEOUT_MS }).catch((error) => {
     warnings.push(`channels.status: ${error instanceof Error ? error.message : String(error)}`);
     return { channelAccounts: {} };
   });
@@ -115,7 +117,7 @@ export async function handleAgentsChannels() {
   const config = readLocalConfig();
   const defaultAgentId = config.agents?.defaults?.id || null;
 
-  const channelsData = await runOpenClawJson<any>(["channels", "status", "--json"], { channelAccounts: {} }, { timeoutMs: 10_000 }).catch((error) => {
+  const channelsData = await runOpenClawJson<any>(["channels", "status", "--json"], { channelAccounts: {} }, { timeoutMs: CHANNELS_STATUS_TIMEOUT_MS }).catch((error) => {
     warnings.push(`channels.status: ${error instanceof Error ? error.message : String(error)}`);
     return { channelAccounts: {} };
   });

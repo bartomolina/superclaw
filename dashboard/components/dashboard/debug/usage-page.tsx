@@ -2,11 +2,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { authFetch } from "@/components/dashboard/auth";
 import { StateMessage } from "@/components/dashboard/state-message";
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 
 type DailyUsageRow = {
   date: string;
@@ -45,6 +45,28 @@ function buildDenseDailyUsage(rows: DailyUsageRow[], startDate: string, endDate:
   }
 
   return result;
+}
+
+function formatCurrencyCompact(value: number) {
+  if (value >= 1000) return `$${(value / 1000).toFixed(1)}k`;
+  if (value >= 100) return `$${value.toFixed(0)}`;
+  if (value >= 10) return `$${value.toFixed(1)}`;
+  return `$${value.toFixed(2)}`;
+}
+
+function getAgentColor(index: number) {
+  const colors = [
+    "hsl(221 83% 53%)",
+    "hsl(262 83% 58%)",
+    "hsl(160 84% 39%)",
+    "hsl(24 95% 53%)",
+    "hsl(343 75% 51%)",
+    "hsl(47 96% 53%)",
+    "hsl(199 89% 48%)",
+    "hsl(280 65% 60%)",
+  ];
+
+  return colors[index % colors.length];
 }
 
 export function UsagePage() {
@@ -90,6 +112,42 @@ export function UsagePage() {
     );
     return { ...a, filteredCost: cost, filteredTokens: tokens };
   });
+  const activeAgents = filteredByAgent.filter((a: any) => a.filteredCost > 0).sort((a: any, b: any) => b.filteredCost - a.filteredCost);
+
+  const stackedCostConfig = activeAgents.reduce(
+    (acc: ChartConfig, agent: any, index: number) => ({
+      ...acc,
+      [agent.agentId]: {
+        label: agent.agentId,
+        color: getAgentColor(index),
+      },
+    }),
+    {},
+  );
+
+  const stackedDailyCost = daily.map((row: any) => {
+    const entry: Record<string, any> = {
+      date: row.date,
+      label: row.date.slice(5),
+    };
+
+    for (const agent of activeAgents) {
+      entry[agent.agentId] = 0;
+    }
+
+    for (const session of data.sessions || []) {
+      const agentId = session.agentId;
+      if (!agentId || !(agentId in entry)) continue;
+
+      for (const breakdown of session.usage?.dailyBreakdown || []) {
+        if (breakdown.date === row.date) {
+          entry[agentId] += breakdown.cost || 0;
+        }
+      }
+    }
+
+    return entry;
+  });
   const totalCost = daily.reduce((s: number, d: any) => s + d.cost, 0);
   const totalTokens = daily.reduce((s: number, d: any) => s + d.tokens, 0);
   const totalMessages = daily.reduce((s: number, d: any) => s + d.messages, 0);
@@ -134,43 +192,38 @@ export function UsagePage() {
       </div>
 
       <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-4">Daily Cost</h2>
-        <ChartContainer
-          config={{ cost: { label: "Cost", color: "hsl(221 83% 53%)" } satisfies ChartConfig["cost"] }}
-          className="h-48 w-full"
-        >
-          <BarChart data={daily.map((d: any) => ({ ...d, label: d.date.slice(5) }))} margin={{ left: 12, right: 12 }}>
+        <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-4">Daily Cost by Agent</h2>
+        <ChartContainer config={stackedCostConfig} className="h-64 w-full">
+          <BarChart data={stackedDailyCost} margin={{ left: 8, right: 12, top: 8 }}>
             <CartesianGrid vertical={false} />
             <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
+            <YAxis tickLine={false} axisLine={false} tickMargin={8} width={44} tickFormatter={(value: number) => formatCurrencyCompact(Number(value))} />
             <ChartTooltip
               content={
                 <ChartTooltipContent
-                  className="w-[120px]"
+                  className="w-[180px]"
                   labelFormatter={(value: unknown) => String(value)}
-                  formatter={(value: unknown) => [`$${Number(value).toFixed(2)}`, "Cost"]}
+                  formatter={(value: unknown, name: unknown) => (
+                    <div className="flex w-full items-center justify-between gap-3">
+                      <span className="text-muted-foreground">{String(name)}</span>
+                      <span className="font-mono font-medium text-foreground">${Number(value).toFixed(2)}</span>
+                    </div>
+                  )}
                 />
               }
             />
-            <Bar dataKey="cost" fill="var(--color-cost)" radius={[4, 4, 0, 0]} />
+            <ChartLegend content={<ChartLegendContent />} />
+            {activeAgents.map((agent: any, index: number) => (
+              <Bar
+                key={agent.agentId}
+                dataKey={agent.agentId}
+                stackId="daily-cost"
+                fill={`var(--color-${agent.agentId})`}
+                radius={index === activeAgents.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+              />
+            ))}
           </BarChart>
         </ChartContainer>
-      </div>
-
-      <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-3">Cost by Agent</h2>
-        <div className="space-y-2">
-          {filteredByAgent.map((a: any) => (
-            <div key={a.agentId} className="flex items-center justify-between">
-              <span className="text-sm text-zinc-700 dark:text-zinc-300 font-medium">{a.agentId}</span>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-zinc-400">{(a.filteredTokens / 1_000_000).toFixed(1)}M tokens</span>
-                <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-                  ${a.filteredCost.toFixed(2)}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
       </div>
 
       <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl p-5">
