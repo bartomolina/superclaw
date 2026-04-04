@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     if (!isAuthorized(req)) return json({ error: "unauthorized" }, 401);
-    return await handleConvexDeployments();
+    const forceRefresh = req.nextUrl.searchParams.get("refresh") === "1";
+    return await handleConvexDeployments(forceRefresh);
   } catch (error) {
     return errorResponse(error);
   }

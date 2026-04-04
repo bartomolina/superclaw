@@ -19,6 +19,8 @@ type ConvexDeployment = {
   source: string | null;
 };
 
+const CONVEX_DEPLOYMENTS_TTL_MS = 300_000;
+
 const HOME_DIR = process.env.HOME || homedir();
 const OPENCLAW_HOME = path.join(HOME_DIR, ".openclaw");
 const CONVEX_ENV_FILE_FIND_SCRIPT = [
@@ -26,6 +28,10 @@ const CONVEX_ENV_FILE_FIND_SCRIPT = [
   "\\( -path '*/node_modules' -o -path '*/vendor_imports' -o -path '*/.tmp' -o -path '*/dist' -o -path '*/.next' \\) -prune -o",
   "\\( -name '.env.local' -o -name '.env' -o -name '.env.development' -o -name '.env.production' \\) -print",
 ].join(" ");
+
+let convexDeploymentsCache: ConvexDeployment[] | null = null;
+let convexDeploymentsCacheTime = 0;
+let convexDeploymentsCacheInFlight: Promise<ConvexDeployment[]> | null = null;
 
 function readEnvValue(content: string, key: string) {
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -103,8 +109,8 @@ function inspectEnvFile(envPath: string, repos: Awaited<ReturnType<typeof listRe
   }
 }
 
-export async function listConvexDeployments() {
-  const [repos, envFiles] = await Promise.all([listRepos(), discoverConvexEnvFiles()]);
+async function loadConvexDeployments(forceRefresh = false) {
+  const [repos, envFiles] = await Promise.all([listRepos(forceRefresh), discoverConvexEnvFiles()]);
 
   return envFiles
     .map((envPath) => inspectEnvFile(envPath, repos))
@@ -112,6 +118,37 @@ export async function listConvexDeployments() {
     .sort((a, b) => a.appPath.localeCompare(b.appPath));
 }
 
-export async function handleConvexDeployments() {
-  return json({ deployments: await listConvexDeployments() });
+function refreshConvexDeployments(forceRefresh = false) {
+  if (!convexDeploymentsCacheInFlight) {
+    convexDeploymentsCacheInFlight = loadConvexDeployments(forceRefresh)
+      .then((deployments) => {
+        convexDeploymentsCache = deployments;
+        convexDeploymentsCacheTime = Date.now();
+        return deployments;
+      })
+      .catch(() => convexDeploymentsCache || [])
+      .finally(() => {
+        convexDeploymentsCacheInFlight = null;
+      });
+  }
+
+  return convexDeploymentsCacheInFlight;
+}
+
+export async function listConvexDeployments(forceRefresh = false) {
+  if (forceRefresh) return refreshConvexDeployments(true);
+
+  const now = Date.now();
+  if (convexDeploymentsCache && now - convexDeploymentsCacheTime < CONVEX_DEPLOYMENTS_TTL_MS) return convexDeploymentsCache;
+
+  if (convexDeploymentsCache) {
+    void refreshConvexDeployments();
+    return convexDeploymentsCache;
+  }
+
+  return refreshConvexDeployments();
+}
+
+export async function handleConvexDeployments(forceRefresh = false) {
+  return json({ deployments: await listConvexDeployments(forceRefresh) });
 }

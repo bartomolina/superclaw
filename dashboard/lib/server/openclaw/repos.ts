@@ -19,6 +19,8 @@ export type RepoSummary = {
   active: boolean;
 };
 
+const REPOS_TTL_MS = 300_000;
+
 const HOME_DIR = process.env.HOME || homedir();
 const OPENCLAW_HOME = path.join(HOME_DIR, ".openclaw");
 const MAIN_WORKSPACE = path.join(OPENCLAW_HOME, "workspace");
@@ -51,6 +53,10 @@ function hasConvexConfig(repoRoot: string) {
 function isUsefulRepoRoot(repoRoot: string) {
   return repoRoot.startsWith(`${OPENCLAW_HOME}${path.sep}`) || repoRoot === OPENCLAW_HOME;
 }
+
+let reposCache: RepoSummary[] | null = null;
+let reposCacheTime = 0;
+let reposCacheInFlight: Promise<RepoSummary[]> | null = null;
 
 function repoKind(repoRoot: string): RepoSummary["kind"] {
   const base = path.basename(repoRoot);
@@ -177,12 +183,43 @@ export async function discoverGitRepoRoots() {
   }
 }
 
-export async function listRepos() {
+async function loadRepos() {
   const [repoRoots, activeAgentWorkspaces] = await Promise.all([discoverGitRepoRoots(), listActiveAgentWorkspacePaths()]);
   const repos = await Promise.all(repoRoots.map((repoRoot) => inspectRepo(repoRoot, activeAgentWorkspaces)));
   return repos.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-export async function handleReposList() {
-  return json({ repos: await listRepos() });
+function refreshRepos() {
+  if (!reposCacheInFlight) {
+    reposCacheInFlight = loadRepos()
+      .then((repos) => {
+        reposCache = repos;
+        reposCacheTime = Date.now();
+        return repos;
+      })
+      .catch(() => reposCache || [])
+      .finally(() => {
+        reposCacheInFlight = null;
+      });
+  }
+
+  return reposCacheInFlight;
+}
+
+export async function listRepos(forceRefresh = false) {
+  if (forceRefresh) return refreshRepos();
+
+  const now = Date.now();
+  if (reposCache && now - reposCacheTime < REPOS_TTL_MS) return reposCache;
+
+  if (reposCache) {
+    void refreshRepos();
+    return reposCache;
+  }
+
+  return refreshRepos();
+}
+
+export async function handleReposList(forceRefresh = false) {
+  return json({ repos: await listRepos(forceRefresh) });
 }

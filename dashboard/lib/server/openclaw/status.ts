@@ -1,5 +1,6 @@
 import { readdirSync } from "fs";
 import { readFileSync } from "fs";
+import { readlinkSync } from "fs";
 
 import { runCommand } from "@/lib/server/command";
 import { OPENCLAW_HOME } from "@/lib/server/openclaw/constants";
@@ -164,9 +165,19 @@ async function readSystemdServices() {
   return services.filter(Boolean);
 }
 
-async function readTopProcesses() {
+type ProcessRow = {
+  pid: number;
+  cpuPct: number;
+  memPct: number;
+  rssBytes: number;
+  elapsed: string;
+  command: string;
+  cwd?: string | null;
+};
+
+async function readProcesses() {
   try {
-    const { stdout } = await runCommand("ps", ["-eo", "pid=,pcpu=,pmem=,etime=,comm=", "--sort=-pcpu"], {
+    const { stdout } = await runCommand("ps", ["-eo", "pid=,pcpu=,pmem=,rss=,etime=,args="], {
       timeoutMs: 8_000,
     });
 
@@ -175,22 +186,68 @@ async function readTopProcesses() {
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => {
-        const match = line.match(/^(\d+)\s+([\d.]+)\s+([\d.]+)\s+(\S+)\s+(.+)$/);
+        const match = line.match(/^(\d+)\s+([\d.]+)\s+([\d.]+)\s+(\d+)\s+(\S+)\s+(.+)$/);
         if (!match) return null;
 
         return {
           pid: Number.parseInt(match[1] || "0", 10) || 0,
           cpuPct: Number.parseFloat(match[2] || "0") || 0,
           memPct: Number.parseFloat(match[3] || "0") || 0,
-          elapsed: match[4],
-          command: match[5],
+          rssBytes: (Number.parseInt(match[4] || "0", 10) || 0) * 1024,
+          elapsed: match[5],
+          command: match[6],
         };
       })
-      .filter((row): row is { pid: number; cpuPct: number; memPct: number; elapsed: string; command: string } => Boolean(row))
-      .filter((row) => row.command !== "ps")
-      .slice(0, 12);
+      .filter((row): row is ProcessRow => Boolean(row))
+      .filter((row) => row.command !== "ps" && !row.command.startsWith("ps "));
   } catch {
     return [];
+  }
+}
+
+function readProcessCwd(pid: number) {
+  try {
+    return readlinkSync(`/proc/${pid}/cwd`);
+  } catch {
+    return null;
+  }
+}
+
+function enrichProcesses(rows: ProcessRow[]) {
+  return rows.map((row) => ({
+    ...row,
+    cwd: readProcessCwd(row.pid),
+  }));
+}
+
+function summarizeCpuTimes(cpus: Array<{ times: Record<string, number> }>) {
+  return cpus.reduce(
+    (acc, cpu) => {
+      const times = cpu.times || {};
+      const idle = Number(times.idle || 0);
+      const total = Object.values(times).reduce((sum, value) => sum + Number(value || 0), 0);
+      acc.idle += idle;
+      acc.total += total;
+      return acc;
+    },
+    { idle: 0, total: 0 },
+  );
+}
+
+async function readCpuUtilization(osModule: typeof import("os")) {
+  try {
+    const start = summarizeCpuTimes(osModule.cpus());
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const end = summarizeCpuTimes(osModule.cpus());
+
+    const totalDelta = end.total - start.total;
+    const idleDelta = end.idle - start.idle;
+    if (totalDelta <= 0) return null;
+
+    const busyPct = ((totalDelta - idleDelta) / totalDelta) * 100;
+    return Math.max(0, Math.min(100, busyPct));
+  } catch {
+    return null;
   }
 }
 
@@ -201,6 +258,7 @@ export async function handlePerformance() {
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
   const uptime = os.uptime();
+  const cpuUtilizationPromise = readCpuUtilization(os);
 
   let diskTotal = 0;
   let diskUsed = 0;
@@ -217,14 +275,20 @@ export async function handlePerformance() {
     // Disk metrics unavailable.
   }
 
-  const [systemdServices, topProcesses] = await Promise.all([readSystemdServices(), readTopProcesses()]);
+  const [systemdServices, processes, utilizationPct] = await Promise.all([readSystemdServices(), readProcesses(), cpuUtilizationPromise]);
+
+  const topCpuProcesses = enrichProcesses([...processes].sort((a, b) => b.cpuPct - a.cpuPct).slice(0, 12));
+  const topMemoryProcesses = enrichProcesses([...processes].sort((a, b) => b.rssBytes - a.rssBytes).slice(0, 12));
 
   return json({
-    cpu: { cores: cpus.length, model: cpus[0]?.model, loadAvg },
+    cpu: { cores: cpus.length, model: cpus[0]?.model, loadAvg, utilizationPct },
     memory: { total: totalMem, free: freeMem, used: totalMem - freeMem },
     disk: { total: diskTotal, used: diskUsed, free: diskFree },
     uptime,
     systemd: systemdServices,
-    processes: topProcesses,
+    processes: {
+      cpu: topCpuProcesses,
+      memory: topMemoryProcesses,
+    },
   });
 }

@@ -37,15 +37,6 @@ type AcpSummary = {
   selectableAgents: string[];
 };
 
-const ACP_SUMMARY_TTL_MS = 10_000;
-
-let acpSummaryCache:
-  | {
-      expiresAt: number;
-      value: AcpSummary;
-    }
-  | null = null;
-
 function normalizeId(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -92,11 +83,6 @@ async function readResolvedAcpxConfig(): Promise<RawAcpxConfig | null> {
 }
 
 export async function getAcpSummary(): Promise<AcpSummary> {
-  const now = Date.now();
-  if (acpSummaryCache && acpSummaryCache.expiresAt > now) {
-    return acpSummaryCache.value;
-  }
-
   const config = readLocalConfig() as RawConfig;
   const acpConfig = config.acp ?? {};
   const acpxConfig = await readResolvedAcpxConfig();
@@ -114,7 +100,7 @@ export async function getAcpSummary(): Promise<AcpSummary> {
       : uniqueStrings([defaultAgent, ...customAgents])
   ).sort((a, b) => compareAgentIds(a, b, defaultAgent));
 
-  const value = {
+  return {
     enabled,
     pluginEnabled,
     backend,
@@ -123,13 +109,6 @@ export async function getAcpSummary(): Promise<AcpSummary> {
     customAgents,
     selectableAgents: enabled && pluginEnabled ? selectableAgents : [],
   } satisfies AcpSummary;
-
-  acpSummaryCache = {
-    expiresAt: now + ACP_SUMMARY_TTL_MS,
-    value,
-  };
-
-  return value;
 }
 
 export async function handleAcpSummary() {

@@ -280,13 +280,15 @@ export function OpsPage() {
     if (mode === "initial") setLoading(true);
     else setRefreshing(true);
 
+    const refreshSuffix = mode === "refresh" ? "?refresh=1" : "";
+
     try {
       const tasks = [
         authFetch("/api/kanban-worker-status").then((next) => setData(next)),
         authFetch("/api/accounts")
           .catch(() => ({ providers: [] }))
           .then((accountsData) => setAccounts(accountsData)),
-        authFetch("/api/convex")
+        authFetch(`/api/convex${refreshSuffix}`)
           .catch(() => ({ deployments: [] }))
           .then((convexData) => setConvex(convexData)),
         authFetch("/api/acp")
@@ -301,7 +303,7 @@ export function OpsPage() {
         authFetch("/api/performance")
           .catch(() => ({ systemd: [] }))
           .then((perf) => setPerformance(perf)),
-        authFetch("/api/repos")
+        authFetch(`/api/repos${refreshSuffix}`)
           .catch(() => ({ repos: [] }))
           .then((reposData) => setRepos(reposData)),
       ];

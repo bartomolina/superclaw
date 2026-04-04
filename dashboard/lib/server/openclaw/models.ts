@@ -10,6 +10,8 @@ let modelsCache: Record<string, any[]> | null = null;
 let modelsCacheTime = 0;
 let modelsCacheInFlight: Promise<Record<string, any[]>> | null = null;
 
+const MODELS_CATALOG_TTL_MS = 300_000;
+
 async function loadModelsCatalog() {
   const data = await runOpenClawJson<{ models?: Array<any> }>(["models", "list", "--all", "--json"], {}, { timeoutMs: 60_000 });
   const byProvider = new Map<string, Map<string, { key: string; name: string; input: string | null; contextWindow: number; available: boolean }>>();
@@ -54,23 +56,32 @@ async function loadModelsCatalog() {
 }
 
 export async function getModelsCatalog() {
-  const now = Date.now();
-  if (modelsCache && now - modelsCacheTime < 300_000) return modelsCache;
+  function refreshModelsCatalog() {
+    if (!modelsCacheInFlight) {
+      modelsCacheInFlight = loadModelsCatalog()
+        .then((catalog) => {
+          modelsCache = catalog;
+          modelsCacheTime = Date.now();
+          return catalog;
+        })
+        .catch(() => modelsCache || {})
+        .finally(() => {
+          modelsCacheInFlight = null;
+        });
+    }
 
-  if (!modelsCacheInFlight) {
-    modelsCacheInFlight = loadModelsCatalog()
-      .then((catalog) => {
-        modelsCache = catalog;
-        modelsCacheTime = Date.now();
-        return catalog;
-      })
-      .catch(() => modelsCache || {})
-      .finally(() => {
-        modelsCacheInFlight = null;
-      });
+    return modelsCacheInFlight;
   }
 
-  return modelsCacheInFlight;
+  const now = Date.now();
+  if (modelsCache && now - modelsCacheTime < MODELS_CATALOG_TTL_MS) return modelsCache;
+
+  if (modelsCache) {
+    void refreshModelsCatalog();
+    return modelsCache;
+  }
+
+  return refreshModelsCatalog();
 }
 
 export function aliasToFullModel(alias: string, providerMap: Record<string, any>) {
