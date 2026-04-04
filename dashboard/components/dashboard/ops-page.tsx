@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
 
 import { authFetch } from "@/components/dashboard/auth";
-import { StateMessage } from "@/components/dashboard/state-message";
 import { fmtUptime } from "@/components/dashboard/debug/utils";
 
 type KanbanWorkerStatus = {
@@ -237,34 +236,29 @@ function sortSystemdServices(services: PerformanceData["systemd"]) {
   });
 }
 
-function RepoGroup({ title, repos }: { title: string; repos: ReposData["repos"] }) {
-  if (repos.length === 0) return null;
-
+function RepoRows({ repos }: { repos: ReposData["repos"] }) {
   return (
-    <div>
-      <div className="px-5 py-2 text-[11px] uppercase tracking-wider font-medium text-zinc-400 dark:text-zinc-500 bg-zinc-50/80 dark:bg-zinc-950/30">{title}</div>
-      <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
-        {repos.map((repo) => (
-          <DetailRow
-            key={repo.path}
-            label={repo.name}
-            value={
-              <div className="flex items-center gap-2">
-                {repo.branch ? pill(repo.branch, "neutral") : null}
-                {repo.dirty === true ? pill("dirty", "warning") : null}
-                {repo.sync ? pill(repo.sync, repo.sync === "behind" || repo.sync === "diverged" ? "warning" : "neutral") : null}
-                {repo.hasConvex ? pill("convex", "neutral") : null}
-              </div>
-            }
-            detail={
-              <div className="space-y-0.5">
-                <div className="break-all">{repo.path}</div>
-                {repo.remote ? <div className="break-all"><ExternalLink value={repo.remote} /></div> : null}
-              </div>
-            }
-          />
-        ))}
-      </div>
+    <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+      {repos.map((repo) => (
+        <DetailRow
+          key={repo.path}
+          label={repo.name}
+          value={
+            <div className="flex items-center gap-2">
+              {repo.branch ? pill(repo.branch, "neutral") : null}
+              {repo.dirty === true ? pill("dirty", "warning") : null}
+              {repo.sync ? pill(repo.sync, repo.sync === "behind" || repo.sync === "diverged" ? "warning" : "neutral") : null}
+              {repo.hasConvex ? pill("convex", "neutral") : null}
+            </div>
+          }
+          detail={
+            <div className="space-y-0.5">
+              <div className="break-all">{repo.path}</div>
+              {repo.remote ? <div className="break-all"><ExternalLink value={repo.remote} /></div> : null}
+            </div>
+          }
+        />
+      ))}
     </div>
   );
 }
@@ -327,12 +321,12 @@ export function OpsPage() {
     setExpandedConvex((current) => ({ ...current, [id]: !current[id] }));
   }
 
-  if (loading && !data) return <StateMessage>Loading ops...</StateMessage>;
-  if (!data) return <StateMessage tone="error">Failed to load ops</StateMessage>;
-
-  const openClawEnv = envSummary(data.workerEnv.baseUrl, data.workerEnv.hasToken);
-  const showSandboxEnv = data.sandboxDefaults.enabled || data.sandboxDefaults.configured || data.sandboxDefaults.hasToken || Boolean(data.sandboxDefaults.baseUrl);
-  const sandboxEnv = envSummary(data.sandboxDefaults.baseUrl, data.sandboxDefaults.hasToken);
+  const loadingKanban = loading && !data;
+  const openClawEnv = data ? envSummary(data.workerEnv.baseUrl, data.workerEnv.hasToken) : null;
+  const showSandboxEnv = data
+    ? data.sandboxDefaults.enabled || data.sandboxDefaults.configured || data.sandboxDefaults.hasToken || Boolean(data.sandboxDefaults.baseUrl)
+    : false;
+  const sandboxEnv = data ? envSummary(data.sandboxDefaults.baseUrl, data.sandboxDefaults.hasToken) : null;
 
   const accountProviders = accounts?.providers || [];
   const convexDeployments = convex?.deployments || [];
@@ -368,8 +362,16 @@ export function OpsPage() {
         <SectionTitle title="Kanban" />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
-            <DetailRow label="ENVs" value={openClawEnv.badge} detail={openClawEnv.detail} />
-            {showSandboxEnv ? <DetailRow label="Sandbox ENVs" value={sandboxEnv.badge} detail={sandboxEnv.detail} /> : null}
+            {loadingKanban ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">Loading Kanban status...</div>
+            ) : !data || !openClawEnv ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">Kanban status unavailable</div>
+            ) : (
+              <>
+                <DetailRow label="ENVs" value={openClawEnv.badge} detail={openClawEnv.detail} />
+                {showSandboxEnv && sandboxEnv ? <DetailRow label="Sandbox ENVs" value={sandboxEnv.badge} detail={sandboxEnv.detail} /> : null}
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -570,18 +572,34 @@ export function OpsPage() {
 
       <div className="space-y-2">
         <SectionTitle title={`Repos (${visibleRepoCount})`} />
-        <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
-          {loadingRepos ? (
+        {loadingRepos ? (
+          <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
             <div className="px-5 py-4 text-sm text-zinc-400">Loading repos...</div>
-          ) : repoList.length === 0 ? (
+          </div>
+        ) : repoList.length === 0 ? (
+          <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
             <div className="px-5 py-4 text-sm text-zinc-400">None found</div>
-          ) : (
-            <div>
-              <RepoGroup title={`OpenClaw repos (${otherRepos.length})`} repos={otherRepos} />
-              <RepoGroup title={`Active agent repos (${agentRepos.length})`} repos={agentRepos} />
-            </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {[
+              { id: "openclaw", label: "OpenClaw repos", repos: otherRepos },
+              { id: "agents", label: "Active agent repos", repos: agentRepos },
+            ]
+              .filter((group) => group.repos.length > 0)
+              .map((group) => (
+                <section key={group.id} className="space-y-2.5">
+                  <div className="flex items-center justify-between gap-3 px-1">
+                    <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{group.label}</h2>
+                    <span className="text-xs text-zinc-400 dark:text-zinc-500 shrink-0">{group.repos.length} repos</span>
+                  </div>
+                  <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
+                    <RepoRows repos={group.repos} />
+                  </div>
+                </section>
+              ))}
+          </div>
+        )}
       </div>
     </div>
   );

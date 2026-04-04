@@ -20,6 +20,52 @@ function getActiveSkillGroupId(skill: any) {
   return "custom";
 }
 
+function SkillRows({ skills }: { skills: any[] }) {
+  return (
+    <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+      {skills.map((s) => (
+        <div key={s.name} className="px-5 py-3 flex items-start gap-3">
+          <span className="text-xl mt-0.5">{s.emoji || "📦"}</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{s.name}</span>
+              <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{getSkillSourceLabel(s)}</span>
+            </div>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 line-clamp-2">{s.description}</p>
+            {(s.missing?.bins?.length > 0 || s.missing?.anyBins?.length > 0 || s.missing?.env?.length > 0) && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {s.missing?.bins?.map((b: string) => (
+                  <span key={b} className="text-[10px] font-mono bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">
+                    {b}
+                  </span>
+                ))}
+                {s.missing?.anyBins?.length > 0 && (
+                  <span className="text-[10px] font-mono bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">{s.missing.anyBins.join(" | ")}</span>
+                )}
+                {s.missing?.env?.map((e: string) => (
+                  <span key={e} className="text-[10px] font-mono bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">
+                    {e}
+                  </span>
+                ))}
+                {s.missing.os?.map((o: string) => (
+                  <span key={o} className="text-[10px] font-mono bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">
+                    os:{o}
+                  </span>
+                ))}
+              </div>
+            )}
+            {s.homepage && (
+              <a href={s.homepage} target="_blank" rel="noopener noreferrer" className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 mt-1 inline-block">
+                {s.homepage.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+              </a>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function SkillsPage() {
   const [skills, setSkills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,104 +151,29 @@ export function SkillsPage() {
         ))}
       </div>
 
-      <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl overflow-hidden shadow-sm dark:shadow-none">
-        {filtered.length === 0 ? (
+      {filtered.length === 0 ? (
+        <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl overflow-hidden shadow-sm dark:shadow-none">
           <div className="p-5 text-sm text-zinc-400 italic">No skills match</div>
-        ) : filter === "active" ? (
-          <div>
-            {activeGroups.map((group, groupIndex) => (
-              <div key={group.id} className={groupIndex > 0 ? "border-t border-zinc-100 dark:border-zinc-800/60" : ""}>
-                <div className="px-5 py-2 text-[11px] uppercase tracking-wider font-medium text-zinc-400 dark:text-zinc-500 bg-zinc-50/80 dark:bg-zinc-950/30">
-                  {group.label} ({group.skills.length})
-                </div>
-                <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
-                  {group.skills.map((s) => (
-                    <div key={s.name} className="px-5 py-3 flex items-start gap-3">
-                      <span className="text-xl mt-0.5">{s.emoji || "📦"}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{s.name}</span>
-                          <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{getSkillSourceLabel(s)}</span>
-                        </div>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 line-clamp-2">{s.description}</p>
-                        {(s.missing?.bins?.length > 0 || s.missing?.anyBins?.length > 0 || s.missing?.env?.length > 0) && (
-                          <div className="mt-1.5 flex flex-wrap gap-1">
-                            {s.missing?.bins?.map((b: string) => (
-                              <span key={b} className="text-[10px] font-mono bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">
-                                {b}
-                              </span>
-                            ))}
-                            {s.missing?.anyBins?.length > 0 && (
-                              <span className="text-[10px] font-mono bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">{s.missing.anyBins.join(" | ")}</span>
-                            )}
-                            {s.missing?.env?.map((e: string) => (
-                              <span key={e} className="text-[10px] font-mono bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">
-                                {e}
-                              </span>
-                            ))}
-                            {s.missing.os?.map((o: string) => (
-                              <span key={o} className="text-[10px] font-mono bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">
-                                os:{o}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {s.homepage && (
-                          <a href={s.homepage} target="_blank" rel="noopener noreferrer" className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 mt-1 inline-block">
-                            {s.homepage.replace(/^https?:\/\//, "").replace(/\/$/, "")}
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+        </div>
+      ) : filter === "active" ? (
+        <div className="space-y-5">
+          {activeGroups.map((group) => (
+            <section key={group.id} className="space-y-2.5">
+              <div className="flex items-center justify-between gap-3 px-1">
+                <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{group.label}</h2>
+                <span className="text-xs text-zinc-400 dark:text-zinc-500 shrink-0">{group.skills.length} active</span>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
-            {filtered.map((s) => (
-              <div key={s.name} className="px-5 py-3 flex items-start gap-3">
-                <span className="text-xl mt-0.5">{s.emoji || "📦"}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{s.name}</span>
-                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{getSkillSourceLabel(s)}</span>
-                  </div>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 line-clamp-2">{s.description}</p>
-                  {(s.missing?.bins?.length > 0 || s.missing?.anyBins?.length > 0 || s.missing?.env?.length > 0) && (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {s.missing?.bins?.map((b: string) => (
-                        <span key={b} className="text-[10px] font-mono bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">
-                          {b}
-                        </span>
-                      ))}
-                      {s.missing?.anyBins?.length > 0 && (
-                        <span className="text-[10px] font-mono bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">{s.missing.anyBins.join(" | ")}</span>
-                      )}
-                      {s.missing?.env?.map((e: string) => (
-                        <span key={e} className="text-[10px] font-mono bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">
-                          {e}
-                        </span>
-                      ))}
-                      {s.missing.os?.map((o: string) => (
-                        <span key={o} className="text-[10px] font-mono bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">
-                          os:{o}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {s.homepage && (
-                    <a href={s.homepage} target="_blank" rel="noopener noreferrer" className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 mt-1 inline-block">
-                      {s.homepage.replace(/^https?:\/\//, "").replace(/\/$/, "")}
-                    </a>
-                  )}
-                </div>
+              <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl overflow-hidden shadow-sm dark:shadow-none">
+                <SkillRows skills={group.skills} />
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </section>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl overflow-hidden shadow-sm dark:shadow-none">
+          <SkillRows skills={filtered} />
+        </div>
+      )}
     </div>
   );
 }

@@ -164,6 +164,36 @@ async function readSystemdServices() {
   return services.filter(Boolean);
 }
 
+async function readTopProcesses() {
+  try {
+    const { stdout } = await runCommand("ps", ["-eo", "pid=,pcpu=,pmem=,etime=,comm=", "--sort=-pcpu"], {
+      timeoutMs: 8_000,
+    });
+
+    return stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const match = line.match(/^(\d+)\s+([\d.]+)\s+([\d.]+)\s+(\S+)\s+(.+)$/);
+        if (!match) return null;
+
+        return {
+          pid: Number.parseInt(match[1] || "0", 10) || 0,
+          cpuPct: Number.parseFloat(match[2] || "0") || 0,
+          memPct: Number.parseFloat(match[3] || "0") || 0,
+          elapsed: match[4],
+          command: match[5],
+        };
+      })
+      .filter((row): row is { pid: number; cpuPct: number; memPct: number; elapsed: string; command: string } => Boolean(row))
+      .filter((row) => row.command !== "ps")
+      .slice(0, 12);
+  } catch {
+    return [];
+  }
+}
+
 export async function handlePerformance() {
   const os = await import("os");
   const cpus = os.cpus();
@@ -187,15 +217,7 @@ export async function handlePerformance() {
     // Disk metrics unavailable.
   }
 
-  const systemdServices = await readSystemdServices();
-
-  let gatewayUp = false;
-  try {
-    await runtimeGatewayRequest("system-presence", {}, 5_000);
-    gatewayUp = true;
-  } catch {
-    gatewayUp = await probeGatewayOnlineWithCli();
-  }
+  const [systemdServices, topProcesses] = await Promise.all([readSystemdServices(), readTopProcesses()]);
 
   return json({
     cpu: { cores: cpus.length, model: cpus[0]?.model, loadAvg },
@@ -203,6 +225,6 @@ export async function handlePerformance() {
     disk: { total: diskTotal, used: diskUsed, free: diskFree },
     uptime,
     systemd: systemdServices,
-    gateway: { online: gatewayUp },
+    processes: topProcesses,
   });
 }
