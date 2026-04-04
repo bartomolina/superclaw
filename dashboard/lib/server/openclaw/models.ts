@@ -133,13 +133,92 @@ export function inferAvailableModels(providerMap: Record<string, any>) {
 export async function handleModelsGet() {
   const config = readLocalConfig();
   const providerMap = config.models?.providers || {};
-  const configuredProviders = Object.entries(providerMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([providerId, provider]: [string, any]) => ({
-      id: providerId,
-      configuredModelCount: Array.isArray(provider?.models) ? provider.models.length : 0,
-      authMode: typeof provider?.auth === "string" ? provider.auth : null,
+  const authProfiles = config.auth?.profiles || {};
+  const primaryModel = config.agents?.defaults?.model?.primary ?? null;
+  const fallbackModels = Array.isArray(config.agents?.defaults?.model?.fallbacks) ? config.agents.defaults.model.fallbacks : [];
+  const configuredModelKeys = Array.from(
+    new Set(
+      [
+        ...Object.keys(config.agents?.defaults?.models || {}),
+        primaryModel,
+        ...fallbackModels,
+      ].filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  );
+
+  const providerSummary = new Map<string, {
+    id: string;
+    configuredModelCount: number;
+    authModes: Set<string>;
+    authProfileCount: number;
+    hasProviderConfig: boolean;
+    providerConfigModelCount: number;
+    sources: Set<string>;
+    models: Set<string>;
+  }>();
+
+  function ensureProvider(providerId: string) {
+    if (!providerSummary.has(providerId)) {
+      providerSummary.set(providerId, {
+        id: providerId,
+        configuredModelCount: 0,
+        authModes: new Set<string>(),
+        authProfileCount: 0,
+        hasProviderConfig: false,
+        providerConfigModelCount: 0,
+        sources: new Set<string>(),
+        models: new Set<string>(),
+      });
+    }
+
+    return providerSummary.get(providerId)!;
+  }
+
+  for (const [providerId, provider] of Object.entries(providerMap) as Array<[string, any]>) {
+    const summary = ensureProvider(providerId);
+    summary.hasProviderConfig = true;
+    summary.providerConfigModelCount = Array.isArray(provider?.models) ? provider.models.length : 0;
+    if (typeof provider?.auth === "string") summary.authModes.add(provider.auth);
+    summary.sources.add("provider config");
+
+    const providerModels = Array.isArray(provider?.models) ? provider.models : [];
+    for (const model of providerModels) {
+      const modelId = typeof model === "string" ? model : model?.id || model?.alias || model?.name;
+      if (typeof modelId === "string" && modelId.length > 0) summary.models.add(modelId);
+    }
+  }
+
+  for (const profile of Object.values(authProfiles) as any[]) {
+    const providerId = typeof profile?.provider === "string" ? profile.provider : "";
+    if (!providerId) continue;
+    const summary = ensureProvider(providerId);
+    summary.authProfileCount += 1;
+    if (typeof profile?.mode === "string") summary.authModes.add(profile.mode);
+    summary.sources.add("auth profile");
+  }
+
+  for (const modelKey of configuredModelKeys) {
+    const providerId = modelKey.split("/")[0];
+    if (!providerId) continue;
+    const summary = ensureProvider(providerId);
+    summary.configuredModelCount += 1;
+    summary.sources.add("configured model");
+    summary.models.add(modelKey.split("/").slice(1).join("/") || modelKey);
+  }
+
+  const configuredProviders = Array.from(providerSummary.values())
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((provider) => ({
+      id: provider.id,
+      configuredModelCount: provider.configuredModelCount,
+      authMode: provider.authModes.size > 0 ? Array.from(provider.authModes).sort().join(", ") : null,
+      authProfileCount: provider.authProfileCount,
+      hasProviderConfig: provider.hasProviderConfig,
+      providerConfigModelCount: provider.providerConfigModelCount,
+      sources: Array.from(provider.sources).sort(),
+      models: Array.from(provider.models).sort((a, b) => a.localeCompare(b)),
     }));
+
   const configuredModels = Object.keys(config.agents?.defaults?.models || {}).map((key) => {
     const provider = key.split("/")[0];
     const name = key.split("/").pop() || key;
@@ -154,8 +233,8 @@ export async function handleModelsGet() {
     configuredProviders,
     configuredModels: configuredModels.length > 0 ? configuredModels : inferAvailableModels(providerMap),
     defaultModel: {
-      primary: config.agents?.defaults?.model?.primary ?? null,
-      fallbacks: Array.isArray(config.agents?.defaults?.model?.fallbacks) ? config.agents.defaults.model.fallbacks : [],
+      primary: primaryModel,
+      fallbacks: fallbackModels,
     },
   });
 }

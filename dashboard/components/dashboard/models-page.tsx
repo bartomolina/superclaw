@@ -251,22 +251,26 @@ export function ModelsPage({
       </div>
 
       <div>
-        <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200 mb-3">Configured Providers</h2>
-        <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl overflow-hidden shadow-sm dark:shadow-none p-5">
+        <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200 mb-3">Providers</h2>
+        <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl overflow-hidden shadow-sm dark:shadow-none">
           {configuredProviders.length === 0 ? (
-            <div className="text-sm text-zinc-400 dark:text-zinc-500">No providers configured in local config</div>
+            <div className="p-5 text-sm text-zinc-400 dark:text-zinc-500">No providers detected from the current model/auth config.</div>
           ) : (
-            <div className="flex flex-wrap gap-2">
+            <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
               {configuredProviders.map((provider) => (
-                <div
-                  key={provider.id}
-                  className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 px-3 py-2"
-                >
+                <div key={provider.id} className="px-5 py-4">
                   <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{provider.id}</div>
-                  <div className="text-[11px] text-zinc-400 dark:text-zinc-500">
-                    {provider.configuredModelCount} configured model{provider.configuredModelCount === 1 ? "" : "s"}
-                    {provider.authMode ? ` · ${provider.authMode}` : ""}
-                  </div>
+                  {provider.models.length > 0 ? (
+                    <div className="mt-2 space-y-1">
+                      {provider.models.map((model) => (
+                        <div key={`${provider.id}-${model}`} className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">
+                          {model}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">No models listed</div>
+                  )}
                 </div>
               ))}
             </div>

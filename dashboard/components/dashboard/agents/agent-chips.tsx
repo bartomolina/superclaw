@@ -71,6 +71,8 @@ export function AgentChips({ agent, uniqueSkills, sections, onRefreshData, onOpe
             <button
               key={s.id}
               onClick={() => (active ? toggle(s.id) : undefined)}
+              title={s.label}
+              aria-label={s.label}
               className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border transition-colors ${
                 isExpanded
                   ? "bg-zinc-200 dark:bg-zinc-700 border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200"
@@ -80,7 +82,6 @@ export function AgentChips({ agent, uniqueSkills, sections, onRefreshData, onOpe
               }`}
             >
               <Icon size={11} />
-              {s.label}
               <span className="font-mono">{s.state === "loading" ? "…" : s.state === "error" ? "!" : s.count}</span>
             </button>
           );
