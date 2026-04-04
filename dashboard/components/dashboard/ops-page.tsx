@@ -94,6 +94,21 @@ type ConvexData = {
   }>;
 };
 
+type PostgresData = {
+  databases: Array<{
+    name: string;
+  }>;
+};
+
+type BrowserProfilesData = {
+  profiles: Array<{
+    name: string;
+    status: string;
+    details: string[];
+    isDefault: boolean;
+  }>;
+};
+
 type AcpData = {
   enabled: boolean;
   pluginEnabled: boolean;
@@ -267,6 +282,8 @@ export function OpsPage() {
   const [data, setData] = useState<KanbanWorkerStatus | null>(null);
   const [accounts, setAccounts] = useState<AccountsData | null>(null);
   const [convex, setConvex] = useState<ConvexData | null>(null);
+  const [postgres, setPostgres] = useState<PostgresData | null>(null);
+  const [browserProfiles, setBrowserProfiles] = useState<BrowserProfilesData | null>(null);
   const [acp, setAcp] = useState<AcpData | null>(null);
   const [cloudflared, setCloudflared] = useState<CloudflaredStatus | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
@@ -291,6 +308,12 @@ export function OpsPage() {
         authFetch(`/api/convex${refreshSuffix}`)
           .catch(() => ({ deployments: [] }))
           .then((convexData) => setConvex(convexData)),
+        authFetch(`/api/postgres${refreshSuffix}`)
+          .catch(() => ({ databases: [] }))
+          .then((postgresData) => setPostgres(postgresData)),
+        authFetch(`/api/browser-profiles${refreshSuffix}`)
+          .catch(() => ({ profiles: [] }))
+          .then((browserProfilesData) => setBrowserProfiles(browserProfilesData)),
         authFetch("/api/acp")
           .catch(() => ({ enabled: false, pluginEnabled: false, backend: null, defaultAgent: null, allowedAgents: [], customAgents: [], selectableAgents: [] }))
           .then((acpData) => setAcp(acpData)),
@@ -334,10 +357,14 @@ export function OpsPage() {
   const convexDeployments = convex?.deployments || [];
   const systemdServices = sortSystemdServices(performance?.systemd || []);
   const repoList = repos?.repos || [];
+  const postgresDatabases = postgres?.databases || [];
+  const browserProfileList = browserProfiles?.profiles || [];
 
   const loadingAccounts = loading && !accounts;
   const loadingCloudflared = loading && !cloudflared;
   const loadingConvex = loading && !convex;
+  const loadingPostgres = loading && !postgres;
+  const loadingBrowserProfiles = loading && !browserProfiles;
   const loadingAcp = loading && !acp;
   const loadingMcp = loading && mcpServers.length === 0;
   const loadingPerformance = loading && !performance;
@@ -449,6 +476,52 @@ export function OpsPage() {
                   />
                 );
               })
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <SectionTitle title={`Postgres DBs (${postgresDatabases.length})`} />
+        <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+            {loadingPostgres ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">Loading Postgres databases...</div>
+            ) : postgresDatabases.length === 0 ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">None found</div>
+            ) : (
+              postgresDatabases.map((database) => (
+                <div key={database.name} className="px-5 py-3 text-sm text-zinc-700 dark:text-zinc-200">
+                  <span className="font-mono">{database.name}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <SectionTitle title={`Browser profiles (${browserProfileList.length})`} />
+        <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+            {loadingBrowserProfiles ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">Loading browser profiles...</div>
+            ) : browserProfileList.length === 0 ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">No browser profiles found</div>
+            ) : (
+              browserProfileList.map((profile) => (
+                <DetailRow
+                  key={profile.name}
+                  label={profile.name}
+                  value={
+                    <div className="flex items-center gap-2">
+                      {profile.isDefault ? pill("default", "neutral") : null}
+                      {pill(profile.status, profile.status.startsWith("running") ? "success" : "neutral")}
+                    </div>
+                  }
+                  detail={profile.details.length > 0 ? profile.details.join(" · ") : undefined}
+                />
+              ))
             )}
           </div>
         </div>
