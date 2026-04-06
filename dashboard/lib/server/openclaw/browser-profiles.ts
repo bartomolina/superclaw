@@ -46,12 +46,8 @@ function parseBrowserProfiles(stdout: string) {
 }
 
 async function loadBrowserProfiles() {
-  try {
-    const { stdout } = await runOpenClaw(["browser", "profiles"], { timeoutMs: 15_000 });
-    return parseBrowserProfiles(stdout);
-  } catch {
-    return [];
-  }
+  const { stdout } = await runOpenClaw(["browser", "profiles"], { timeoutMs: 30_000 });
+  return parseBrowserProfiles(stdout);
 }
 
 function refreshBrowserProfiles() {

@@ -46,7 +46,7 @@ export async function handleUsage() {
 }
 
 const SYSTEMD_CORE_UNITS = new Set(["cloudflared.service", "openclaw-gateway.service"]);
-const WORKSPACE_ROOT = `${OPENCLAW_HOME}/workspace`;
+const OPENCLAW_ROOT = OPENCLAW_HOME;
 
 function parseSystemdProperties(stdout: string) {
   const props: Record<string, string> = {};
@@ -138,10 +138,10 @@ async function readSystemdServices() {
 
         const workingDirectory = props.WorkingDirectory || null;
         const fragmentPath = props.FragmentPath || null;
-        const isWorkspaceService = Boolean(workingDirectory && workingDirectory.startsWith(WORKSPACE_ROOT));
+        const isOpenClawService = Boolean(workingDirectory && workingDirectory.startsWith(OPENCLAW_ROOT));
         const isCoreUnit = SYSTEMD_CORE_UNITS.has(props.Id);
 
-        if (!isWorkspaceService && !isCoreUnit) return null;
+        if (!isOpenClawService && !isCoreUnit) return null;
 
         return {
           name: props.Id.replace(/\.service$/, ""),

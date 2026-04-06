@@ -16,6 +16,8 @@ These parts should be treated as one product family with shared install/runtime 
 - Repo path: `~/.openclaw/workspace/apps/superclaw/`
 - Default install target on a machine with OpenClaw: `~/.openclaw/workspace/apps/superclaw/`
 
+This is the canonical location for the SuperClaw suite itself, not the generic default for unrelated apps. Separate apps should usually live under `~/.openclaw/apps/` or an agent workspace's `apps/` directory.
+
 ## Canonical runtime model
 
 Default assumptions unless the user explicitly asks otherwise:
@@ -24,9 +26,10 @@ Default assumptions unless the user explicitly asks otherwise:
 - dev mode is acceptable and often preferred
 - long-running services managed by `systemd`
 - when external exposure is needed, prefer `cloudflared.service` / Cloudflare Tunnel
-- fixed ports:
-  - Dashboard: `4000`
-  - Kanban: `4100`
+- preferred default ports if free:
+  - Dashboard: `19830`
+  - Kanban: `19831`
+- if those ports are already in use, choose nearby free ports and keep the service, env, tunnel, and docs aligned
 - canonical service names:
   - `superclaw-dashboard.service`
   - `superclaw-convex.service`

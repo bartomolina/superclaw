@@ -15,7 +15,7 @@ It covers areas like:
 ## Location
 
 - App path: `apps/superclaw/dashboard/`
-- Canonical local port: `4000`
+- Preferred default local port if free: `19830`
 - Canonical service: `superclaw-dashboard.service`
 
 ## Runtime shape
@@ -37,8 +37,8 @@ It covers areas like:
 
 ## Quick reference
 
-Typical local dev command inside the systemd unit:
+Typical local dev command inside the systemd unit (or the same command with a nearby free port if `19830` is already taken):
 
 ```bash
-pnpm exec next dev --hostname 127.0.0.1 --port 4000
+pnpm exec next dev --hostname 127.0.0.1 --port 19830
 ```

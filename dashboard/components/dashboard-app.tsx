@@ -437,7 +437,17 @@ export default function App() {
           </div>
           <div className="flex items-center gap-3 text-xs text-zinc-500">
             <span className="flex items-center gap-1.5">
-              {gatewayUp ? <><Wifi size={12} className="text-green-500" /> Gateway online</> : <><WifiOff size={12} className="text-red-400" /> Gateway offline</>}
+              {gatewayUp ? (
+                <>
+                  <Wifi size={12} className="text-green-500" />
+                  <span className="hidden sm:inline">Gateway online</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff size={12} className="text-red-400" />
+                  <span className="hidden sm:inline">Gateway offline</span>
+                </>
+              )}
             </span>
             <button
               onClick={toggleTheme}
@@ -465,10 +475,11 @@ export default function App() {
               const Icon = item.icon;
               const active = page === item.id;
               return (
-                <button
+                <a
                   key={item.id}
-                  onClick={() => setPage(item.id)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  href={`#${item.id}`}
+                  aria-current={active ? "page" : undefined}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-default ${
                     active
                       ? 'bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100'
                       : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
@@ -476,7 +487,7 @@ export default function App() {
                 >
                   <Icon size={15} />
                   {item.label}
-                </button>
+                </a>
               );
             })}
           </div>
@@ -489,10 +500,11 @@ export default function App() {
               const Icon = item.icon;
               const active = page === item.id;
               return (
-                <button
+                <a
                   key={item.id}
-                  onClick={() => setPage(item.id)}
-                  className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+                  href={`#${item.id}`}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors cursor-default ${
                     active
                       ? 'text-zinc-900 dark:text-zinc-100'
                       : 'text-zinc-400 dark:text-zinc-500'
@@ -500,7 +512,7 @@ export default function App() {
                 >
                   <Icon size={16} />
                   {item.label}
-                </button>
+                </a>
               );
             })}
           </div>

@@ -65,3 +65,9 @@ SuperClaw installs into your main OpenClaw workspace:
 ```
 
 The default flow runs the apps in dev mode. Ideally, you use this repo as a starting point and adapt it into your own setup for your own needs.
+
+Preferred default ports if free:
+- Dashboard: `19830`
+- Kanban: `19831`
+
+If those are already in use on the host, choose nearby free ports and keep the service, env, and tunnel config aligned.

@@ -170,6 +170,10 @@ function DetailRow({ label, value, detail }: { label: ReactNode; value?: ReactNo
   );
 }
 
+function InlineMeta({ children }: { children: ReactNode }) {
+  return <span className="ml-2 break-all text-xs text-zinc-400 dark:text-zinc-500">{children}</span>;
+}
+
 function toHref(value: string | null | undefined) {
   if (!value) return null;
   if (/^https?:\/\//i.test(value)) return value;
@@ -397,8 +401,26 @@ export function OpsPage() {
               <div className="px-5 py-4 text-sm text-zinc-400">Kanban status unavailable</div>
             ) : (
               <>
-                <DetailRow label="ENVs" value={openClawEnv.badge} detail={openClawEnv.detail} />
-                {showSandboxEnv && sandboxEnv ? <DetailRow label="Sandbox ENVs" value={sandboxEnv.badge} detail={sandboxEnv.detail} /> : null}
+                <DetailRow
+                  label={
+                    <span>
+                      ENVs
+                      {openClawEnv.detail ? <InlineMeta>{openClawEnv.detail}</InlineMeta> : null}
+                    </span>
+                  }
+                  value={openClawEnv.badge}
+                />
+                {showSandboxEnv && sandboxEnv ? (
+                  <DetailRow
+                    label={
+                      <span>
+                        Sandbox ENVs
+                        {sandboxEnv.detail ? <InlineMeta>{sandboxEnv.detail}</InlineMeta> : null}
+                      </span>
+                    }
+                    value={sandboxEnv.badge}
+                  />
+                ) : null}
               </>
             )}
           </div>
@@ -414,23 +436,32 @@ export function OpsPage() {
             ) : accountProviders.length === 0 ? (
               <div className="px-5 py-4 text-sm text-zinc-400">None detected</div>
             ) : (
-              accountProviders.map((provider) => (
-                <DetailRow
-                  key={provider.id}
-                  label={provider.label}
-                  value={provider.value ?? undefined}
-                  detail={provider.lines?.length ? (
-                    <div className="space-y-0.5">
-                      {provider.lines.map((line) => (
-                        <div key={`${provider.id}-${line.label}`}>
-                          <span className="font-medium text-zinc-500 dark:text-zinc-400">{line.label}:</span>{" "}
-                          <span>{line.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : provider.detail ?? undefined}
-                />
-              ))
+              accountProviders.map((provider) => {
+                const hasLines = Boolean(provider.lines?.length);
+                const inlineDetail = provider.value ?? (!hasLines ? provider.detail ?? undefined : undefined);
+
+                return (
+                  <DetailRow
+                    key={provider.id}
+                    label={hasLines || !inlineDetail ? provider.label : (
+                      <span>
+                        {provider.label}
+                        <InlineMeta>{inlineDetail}</InlineMeta>
+                      </span>
+                    )}
+                    detail={hasLines ? (
+                      <div className="space-y-0.5">
+                        {provider.lines?.map((line) => (
+                          <div key={`${provider.id}-${line.label}`}>
+                            <span className="font-medium text-zinc-500 dark:text-zinc-400">{line.label}:</span>{" "}
+                            <span>{line.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : undefined}
+                  />
+                );
+              })
             )}
           </div>
         </div>
@@ -512,14 +543,18 @@ export function OpsPage() {
               browserProfileList.map((profile) => (
                 <DetailRow
                   key={profile.name}
-                  label={profile.name}
+                  label={
+                    <span>
+                      {profile.name}
+                      {profile.details.length > 0 ? <InlineMeta>{profile.details.join(" · ")}</InlineMeta> : null}
+                    </span>
+                  }
                   value={
                     <div className="flex items-center gap-2">
                       {profile.isDefault ? pill("default", "neutral") : null}
                       {pill(profile.status, profile.status.startsWith("running") ? "success" : "neutral")}
                     </div>
                   }
-                  detail={profile.details.length > 0 ? profile.details.join(" · ") : undefined}
                 />
               ))
             )}
@@ -560,14 +595,18 @@ export function OpsPage() {
               mcpServers.map((server) => (
                 <DetailRow
                   key={server.name}
-                  label={server.name}
+                  label={
+                    <span>
+                      {server.name}
+                      {server.url ? <InlineMeta><ExternalLink value={server.url} /></InlineMeta> : server.target || server.transport ? <InlineMeta>{server.target || server.transport}</InlineMeta> : null}
+                    </span>
+                  }
                   value={
                     <div className="flex shrink-0 items-center gap-2">
                       {pill(server.transport, "neutral")}
                       {server.hasAuth && pill("auth", "neutral")}
                     </div>
                   }
-                  detail={server.url ? <ExternalLink value={server.url} /> : server.target || server.transport}
                 />
               ))
             )}
@@ -591,8 +630,12 @@ export function OpsPage() {
                   cloudflared.config.routes.map((route) => (
                     <DetailRow
                       key={`${route.hostname}-${route.service}`}
-                      label={<ExternalLink value={route.hostname} />}
-                      detail={<span className="break-all font-mono text-xs text-zinc-400 dark:text-zinc-500">{route.service}</span>}
+                      label={
+                        <span>
+                          <ExternalLink value={route.hostname} />
+                          <InlineMeta><span className="font-mono">{route.service}</span></InlineMeta>
+                        </span>
+                      }
                     />
                   ))
                 )}

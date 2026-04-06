@@ -28,5 +28,5 @@ pnpm zip
 ## Notes
 
 - The extension talks to Kanban, not directly to OpenClaw.
-- Default local Kanban URL is `http://127.0.0.1:4100`.
+- Preferred default local Kanban URL if free is `http://127.0.0.1:19831`.
 - Install it as an unpacked extension or from a built artifact.

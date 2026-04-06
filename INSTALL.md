@@ -23,9 +23,9 @@ Paths:
 - `~/.openclaw/workspace/apps/superclaw/kanban`
 - `~/.openclaw/workspace/apps/superclaw/extension`
 
-Ports:
-- Dashboard: `4000`
-- Kanban: `4100`
+Preferred default ports if free:
+- Dashboard: `19830`
+- Kanban: `19831`
 
 Host:
 - `127.0.0.1`
@@ -61,9 +61,12 @@ Typical values to ask for:
 
 Do not change:
 - install path
-- ports
 - systemd unit names
 - dev-mode runtime
+
+Port rule:
+- prefer Dashboard `19830` and Kanban `19831` when free
+- if those ports are already in use, choose nearby free ports and substitute them consistently in the systemd units, env vars, tunnel config, extension config, and final report
 
 If public exposure is needed later, prefer **Cloudflare Tunnel** via `cloudflared.service`.
 
@@ -110,7 +113,7 @@ Type=simple
 WorkingDirectory=%h/.openclaw/workspace/apps/superclaw/dashboard
 Environment=HOME=%h
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:%h/.local/bin:%h/.local/share/pnpm
-ExecStart=/usr/bin/pnpm exec next dev --hostname 127.0.0.1 --port 4000
+ExecStart=/usr/bin/pnpm exec next dev --hostname 127.0.0.1 --port 19830
 Restart=always
 RestartSec=5
 User=%u
@@ -132,7 +135,7 @@ Required local env in `.env.local`:
 - `CONVEX_DEPLOYMENT`
 - `NEXT_PUBLIC_CONVEX_URL`
 - `NEXT_PUBLIC_CONVEX_SITE_URL`
-- `NEXT_PUBLIC_SITE_URL=http://127.0.0.1:4100` for single-machine local-only setup, or your private/internal host/IP for non-public access from other devices
+- `NEXT_PUBLIC_SITE_URL=http://127.0.0.1:19831` for single-machine local-only setup, or your private/internal host/IP for non-public access from other devices
 - `GATEWAY_TOKEN`
 
 ### Convex notes
@@ -144,7 +147,7 @@ Required local env in `.env.local`:
 
 Required Convex env vars:
 - `BETTER_AUTH_SECRET`
-- `SITE_URL=http://127.0.0.1:4100` for single-machine local-only setup, or your canonical private/internal/public origin in other modes
+- `SITE_URL=http://127.0.0.1:19831` for single-machine local-only setup, or your canonical private/internal/public origin in other modes
 - `SUPERUSER_EMAIL`
 - `RESEND_API_KEY`
 - `KANBAN_AGENT_SHARED_TOKEN`
@@ -156,7 +159,7 @@ If `AUTH_FROM_EMAIL` is omitted, Kanban falls back to `SuperClaw <onboarding@res
 
 `SITE_URL` is the canonical auth origin used in magic-link emails.
 Leave `TRUSTED_ORIGINS` unset by default.
-If you intentionally want alternate private/internal origins (for example `http://my-host:4100` or `http://100.x.y.z:4100`) to work too, add only those extras to `TRUSTED_ORIGINS`.
+If you intentionally want alternate private/internal origins (for example `http://my-host:19831` or `http://100.x.y.z:19831`) to work too, add only those extras to `TRUSTED_ORIGINS`.
 
 Create the Convex sync service:
 
@@ -194,7 +197,7 @@ Type=simple
 WorkingDirectory=%h/.openclaw/workspace/apps/superclaw/kanban
 Environment=HOME=%h
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:%h/.local/bin:%h/.local/share/pnpm
-ExecStart=/usr/bin/pnpm exec next dev --hostname 127.0.0.1 --port 4100
+ExecStart=/usr/bin/pnpm exec next dev --hostname 127.0.0.1 --port 19831
 Restart=always
 RestartSec=5
 User=%u
@@ -205,7 +208,7 @@ EOF
 ```
 
 Kanban exposure modes:
-- **single-machine local dev:** keep `ExecStart ... --hostname 127.0.0.1 --port 4100`, keep tunnel ingress off, and keep `NEXT_PUBLIC_SITE_URL` / `SITE_URL` on the same local origin
+- **single-machine local dev:** keep `ExecStart ... --hostname 127.0.0.1 --port 19831`, keep tunnel ingress off, and keep `NEXT_PUBLIC_SITE_URL` / `SITE_URL` on the same local origin
 - **private internal/Tailscale access:** bind Kanban to your internal IP instead of `127.0.0.1`, keep tunnel ingress off, and set both `NEXT_PUBLIC_SITE_URL` and `SITE_URL` to that internal origin
 - **shared/public mode:** add Cloudflare Tunnel ingress for the public hostname and set both `NEXT_PUBLIC_SITE_URL` and `SITE_URL` to that public URL so magic-link emails point to the right place
 

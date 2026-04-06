@@ -21,6 +21,16 @@ Prefer a separate app under `apps/<app-name>/` when it is:
 - a standalone product or experiment
 - agent-specific or domain-specific enough that it should not inherit the whole SuperClaw install/runtime contract
 
+Default placement for separate apps:
+- shared across agents on the machine: `~/.openclaw/apps/<app-name>/`
+- specific to a named agent: `~/.openclaw/workspace-<agent>/apps/<app-name>/`
+- specific to the main agent only: `~/.openclaw/workspace/apps/<app-name>/`
+
+If app ownership or scope is unclear, ask the user before choosing the path. Do not blindly default every new app to `~/.openclaw/apps/<app-name>/`.
+
+Treat `~/.openclaw/workspace/` as the main agent workspace, not as the generic home for every new app.
+Do not default new apps into `apps/superclaw/` unless they are actually part of the SuperClaw suite. Dashboard, Kanban, and Extension are the long-lived core apps there; most new apps should live outside that repo.
+
 Do not put agent identity files, per-agent memory, or unrelated utilities into the SuperClaw repo just because they interact with OpenClaw.
 
 ## Default technical conventions
@@ -47,11 +57,13 @@ Keep shared product-level docs at the repo root. Keep implementation details clo
 
 ## Runtime conventions
 
-- Document fixed ports centrally before adding/changing them.
+- Document preferred default ports centrally before adding/changing them.
 - Document systemd unit names centrally before adding/changing them.
 - Keep env examples checked in (`.env.example`, `.env.local.example`) when relevant.
 - Prefer server-side OpenClaw/Gateway integration over exposing secrets to the browser.
 - Avoid adding new infrastructure/services unless the user explicitly wants them.
+
+For separate user apps, prefer a free port in the `19900-19999` range unless the machine already has a clearer local policy. Keep the SuperClaw suite defaults separate from that standalone-app range.
 
 ## Skills and automation
 

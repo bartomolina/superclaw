@@ -13,7 +13,7 @@ It combines:
 ## Location and runtime
 
 - App path: `apps/superclaw/kanban/`
-- Canonical local port: `4100`
+- Preferred default local port if free: `19831`
 - Canonical app service: `superclaw-kanban.service`
 - Convex sync service: `superclaw-convex.service`
 
@@ -49,7 +49,8 @@ Important exposure rule:
 - shared/public mode should use the public hostname for both `NEXT_PUBLIC_SITE_URL` and `SITE_URL`
 - `SITE_URL` is the canonical auth origin; leave `TRUSTED_ORIGINS` unset by default
 - only set `TRUSTED_ORIGINS` if you intentionally want multiple private/internal origins for the same Kanban
-- use placeholders in docs/skills for private/internal hosts and IPs (for example `http://my-host:4100` or `http://100.x.y.z:4100`) instead of hardcoding user-specific values
+- use placeholders in docs/skills for private/internal hosts and IPs (for example `http://my-host:19831` or `http://100.x.y.z:19831`) instead of hardcoding user-specific values
+- if `19831` is already taken, choose a nearby free port and keep the service, env, tunnel, and docs aligned
 
 ## Agent automation runtime
 

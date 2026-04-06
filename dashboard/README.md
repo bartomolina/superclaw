@@ -9,7 +9,7 @@ For suite-level setup, see:
 ## Basics
 
 - path: `apps/superclaw/dashboard/`
-- port: `4000`
+- preferred default port if free: `19830`
 - service: `superclaw-dashboard.service`
 
 ## Commands

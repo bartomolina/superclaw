@@ -1,6 +1,6 @@
 ---
 name: superclaw
-description: Work on the SuperClaw companion suite for OpenClaw. Use when modifying or extending the repo under `apps/superclaw/`, creating new suite-level apps or features, adjusting shared install/runtime conventions, or working on the Dashboard, Kanban, Extension, or their cross-cutting architecture.
+description: Work on the SuperClaw companion suite for OpenClaw. Use when modifying or extending the repo under `apps/superclaw/`, creating new suite-level apps or features, adjusting shared install/runtime conventions, deciding whether a requested app belongs in SuperClaw or should live as a separate per-user or per-agent app, or working on the Dashboard, Kanban, Extension, or their cross-cutting architecture.
 metadata:
   openclaw:
     emoji: "🦞"
@@ -11,7 +11,7 @@ metadata:
 Read `references/architecture.md` first.
 
 Then read only the references that match the task:
-- `references/app-patterns.md` for new apps, repo structure, install flow, or shared conventions.
+- `references/app-patterns.md` for new apps, app placement, port selection, install flow, or shared conventions.
 - `references/dashboard.md` for dashboard work.
 - `references/kanban.md` for Kanban product/runtime/API work.
 - `references/extension.md` for browser extension work.

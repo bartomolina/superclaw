@@ -9,7 +9,7 @@ For suite-level setup, see:
 ## Basics
 
 - path: `apps/superclaw/kanban/`
-- port: `4100`
+- preferred default port if free: `19831`
 - services:
   - `superclaw-kanban.service`
   - `superclaw-convex.service`
@@ -74,6 +74,8 @@ Keep these aligned:
 - optional Cloudflare Tunnel ingress
 - `NEXT_PUBLIC_SITE_URL`
 - Convex `SITE_URL`
+
+If `19831` is already taken on the host, choose a nearby free port and keep those values aligned to the replacement.
 
 `SITE_URL` is the canonical auth origin.
 Leave `TRUSTED_ORIGINS` unset unless you intentionally want extra private/internal origins.

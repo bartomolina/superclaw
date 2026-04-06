@@ -97,16 +97,25 @@ async function readVercelAccount(): Promise<AccountProvider | null> {
 
 async function readGoogleAccount(): Promise<AccountProvider | null> {
   try {
-    const { stdout } = await runCommand("gcloud", ["auth", "list", "--format=json"], { timeoutMs: 10_000 });
-    const parsed = JSON.parse(stdout) as Array<{ account?: string; status?: string }>;
-    const active = parsed.find((entry) => entry.status === "ACTIVE" && entry.account);
-    if (!active?.account) return null;
+    const { stdout } = await runCommand("gog", ["auth", "list", "--json", "--no-input"], { timeoutMs: 10_000 });
+    const parsed = JSON.parse(stdout) as {
+      accounts?: Array<{
+        email?: string;
+        client?: string;
+        services?: string[];
+        scopes?: string[];
+        auth?: string;
+      }>;
+    };
+
+    const account = parsed.accounts?.find((entry) => entry.email) ?? null;
+    if (!account?.email) return null;
 
     return {
       id: "google",
       label: "Google",
-      value: active.account,
-      detail: "via gcloud auth",
+      value: null,
+      detail: account.email,
     };
   } catch (error) {
     if (commandMissing(error)) return null;
