@@ -256,28 +256,44 @@ function sortSystemdServices(services: PerformanceData["systemd"]) {
 }
 
 function RepoRows({ repos }: { repos: ReposData["repos"] }) {
+  const [expandedRepos, setExpandedRepos] = useState<Record<string, boolean>>({});
+
+  function toggleRepo(path: string) {
+    setExpandedRepos((current) => ({ ...current, [path]: !current[path] }));
+  }
+
   return (
     <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
-      {repos.map((repo) => (
-        <DetailRow
-          key={repo.path}
-          label={repo.name}
-          value={
-            <div className="flex items-center gap-2">
-              {repo.branch ? pill(repo.branch, "neutral") : null}
-              {repo.dirty === true ? pill("dirty", "warning") : null}
-              {repo.sync ? pill(repo.sync, repo.sync === "behind" || repo.sync === "diverged" ? "warning" : "neutral") : null}
-              {repo.hasConvex ? pill("convex", "neutral") : null}
+      {repos.map((repo) => {
+        const expanded = !!expandedRepos[repo.path];
+
+        return (
+          <button
+            key={repo.path}
+            type="button"
+            onClick={() => toggleRepo(repo.path)}
+            className="w-full px-5 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm text-zinc-600 dark:text-zinc-400">{repo.name}</div>
+                {expanded ? (
+                  <div className="mt-0.5 text-xs text-zinc-400 dark:text-zinc-500">
+                    <div className="break-all">{repo.path}</div>
+                    {repo.remote ? <div className="break-all"><ExternalLink value={repo.remote} /></div> : null}
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {repo.branch ? pill(repo.branch, "neutral") : null}
+                {repo.dirty === true ? pill("dirty", "warning") : null}
+                {repo.sync ? pill(repo.sync, repo.sync === "behind" || repo.sync === "diverged" ? "warning" : "neutral") : null}
+                {repo.hasConvex ? pill("convex", "neutral") : null}
+              </div>
             </div>
-          }
-          detail={
-            <div className="space-y-0.5">
-              <div className="break-all">{repo.path}</div>
-              {repo.remote ? <div className="break-all"><ExternalLink value={repo.remote} /></div> : null}
-            </div>
-          }
-        />
-      ))}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -294,6 +310,7 @@ export function OpsPage() {
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
   const [repos, setRepos] = useState<ReposData | null>(null);
   const [expandedConvex, setExpandedConvex] = useState<Record<string, boolean>>({});
+  const [expandedSystemd, setExpandedSystemd] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -348,6 +365,10 @@ export function OpsPage() {
 
   function toggleConvex(id: string) {
     setExpandedConvex((current) => ({ ...current, [id]: !current[id] }));
+  }
+
+  function toggleSystemd(unit: string) {
+    setExpandedSystemd((current) => ({ ...current, [unit]: !current[unit] }));
   }
 
   const loadingKanban = loading && !data;
@@ -655,6 +676,7 @@ export function OpsPage() {
               <div className="px-5 py-4 text-sm text-zinc-400">None</div>
             ) : (
               systemdServices.map((service) => {
+                const expanded = !!expandedSystemd[service.unit];
                 const dotClass =
                   service.active === "active"
                     ? "bg-emerald-400"
@@ -669,18 +691,25 @@ export function OpsPage() {
                 if (service.mainPid > 0) metadata.push(`pid ${service.mainPid}`);
 
                 return (
-                  <div key={service.unit} className="flex items-start justify-between gap-3 px-5 py-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-sm text-zinc-800 dark:text-zinc-200">
-                        <span className={`h-2 w-2 rounded-full ${dotClass}`} />
-                        <span>{service.name}</span>
-                        {service.description ? <span className="min-w-0 truncate text-xs text-zinc-400 dark:text-zinc-500">{service.description}</span> : null}
+                  <button
+                    key={service.unit}
+                    type="button"
+                    onClick={() => toggleSystemd(service.unit)}
+                    className="w-full px-5 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 text-sm text-zinc-800 dark:text-zinc-200">
+                          <span className={`h-2 w-2 rounded-full ${dotClass}`} />
+                          <span>{service.name}</span>
+                          {service.description ? <span className="min-w-0 truncate text-xs text-zinc-400 dark:text-zinc-500">{service.description}</span> : null}
+                        </div>
+                        {expanded && service.command ? <div className="mt-1 break-all font-mono text-xs text-zinc-400 dark:text-zinc-500">{service.command}</div> : null}
+                        {expanded && metadata.length > 0 ? <div className="mt-1 break-all text-xs text-zinc-400 dark:text-zinc-500">{metadata.join(" · ")}</div> : null}
                       </div>
-                      {service.command ? <div className="mt-1 break-all font-mono text-xs text-zinc-400 dark:text-zinc-500">{service.command}</div> : null}
-                      {metadata.length > 0 ? <div className="mt-1 break-all text-xs text-zinc-400 dark:text-zinc-500">{metadata.join(" · ")}</div> : null}
+                      <div className="shrink-0 text-xs text-zinc-400 dark:text-zinc-500">{systemdStatusLabel(service.active, service.subState, service.uptime)}</div>
                     </div>
-                    <div className="shrink-0 text-xs text-zinc-400 dark:text-zinc-500">{systemdStatusLabel(service.active, service.subState, service.uptime)}</div>
-                  </div>
+                  </button>
                 );
               })
             )}
