@@ -2459,7 +2459,7 @@ function KanbanColumn({
                   className="inline-flex h-7 items-center justify-center rounded-md bg-zinc-900 px-2.5 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
                   disabled={!trimmedNewCardTitle || isCreatingCard}
                 >
-                  {isCreatingCard ? "Adding…" : "Add"}
+                  {isCreatingCard ? "Creating…" : "New"}
                 </button>
               </div>
             </form>
