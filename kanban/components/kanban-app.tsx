@@ -2428,9 +2428,9 @@ function KanbanColumn({
             <button
               type="button"
               onClick={() => setShowComposer(true)}
-              className="inline-flex h-7 items-center rounded-md px-2 text-xs text-sky-700 transition hover:bg-sky-100 hover:text-sky-800 dark:text-sky-300 dark:hover:bg-sky-950/50 dark:hover:text-sky-200"
+              className="inline-flex h-7 items-center rounded-md px-2 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-200"
             >
-              + New card
+              + Add card
             </button>
           ) : (
             <form onSubmit={handleCreateCard} className="space-y-1.5">
@@ -2459,7 +2459,7 @@ function KanbanColumn({
                   className="inline-flex h-7 items-center justify-center rounded-md bg-zinc-900 px-2.5 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
                   disabled={!trimmedNewCardTitle || isCreatingCard}
                 >
-                  {isCreatingCard ? "Creating…" : "New"}
+                  {isCreatingCard ? "Adding…" : "Add"}
                 </button>
               </div>
             </form>
