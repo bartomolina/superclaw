@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 
 import type { Id } from "./_generated/dataModel";
-import { mutation } from "./_generated/server";
+import { mutation, type MutationCtx } from "./_generated/server";
 import { getNextOrder, normalizeText, optionalText, touchBoard } from "./helpers";
 import {
   assertAgentsAllowedForBoard,
@@ -10,6 +10,23 @@ import {
   requireOwnedBoard,
   requireOwnedCard,
 } from "./access";
+
+function normalizeColumnName(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z]/g, "");
+}
+
+async function resolveBoardColumns(ctx: MutationCtx, boardId: Id<"boards">) {
+  return await ctx.db
+    .query("columns")
+    .withIndex("by_board_order", (q) => q.eq("boardId", boardId))
+    .order("asc")
+    .collect();
+}
+
+function findColumnByName<T extends { name: string }>(columns: T[], targetName: string) {
+  const target = normalizeColumnName(targetName);
+  return columns.find((column) => normalizeColumnName(column.name) === target);
+}
 
 function normalizeSkills(skills?: string[]) {
   if (!skills || skills.length === 0) return [];
@@ -229,6 +246,39 @@ export const moveToColumn = mutation({
   },
 });
 
+export const archiveCard = mutation({
+  args: {
+    cardId: v.id("cards"),
+  },
+  handler: async (ctx, args) => {
+    const card = await requireAccessibleCard(ctx, args.cardId);
+    const columns = await resolveBoardColumns(ctx, card.boardId);
+    const archiveColumn = findColumnByName(columns, "Archive");
+
+    if (!archiveColumn) {
+      throw new Error("Board must have an Archive column");
+    }
+
+    if (card.columnId === archiveColumn._id) {
+      return { ok: true, moved: false };
+    }
+
+    const archiveCards = await ctx.db
+      .query("cards")
+      .withIndex("by_column_order", (q) => q.eq("columnId", archiveColumn._id))
+      .order("asc")
+      .collect();
+
+    await ctx.db.patch(args.cardId, {
+      columnId: archiveColumn._id,
+      order: getNextOrder(archiveCards),
+    });
+
+    await touchBoard(ctx, card.boardId, Date.now());
+    return { ok: true, moved: true };
+  },
+});
+
 export const claimTodoCards = mutation({
   args: {
     boardId: v.id("boards"),
@@ -349,6 +399,52 @@ export const moveToBoard = mutation({
       touchBoard(ctx, card.boardId, now),
       touchBoard(ctx, args.targetBoardId, now),
     ]);
+  },
+});
+
+export const archiveDoneCards = mutation({
+  args: {
+    boardId: v.id("boards"),
+  },
+  handler: async (ctx, args) => {
+    await requireAccessibleBoard(ctx, args.boardId);
+
+    const columns = await resolveBoardColumns(ctx, args.boardId);
+    const doneColumn = findColumnByName(columns, "Done");
+    const archiveColumn = findColumnByName(columns, "Archive");
+
+    if (!doneColumn || !archiveColumn) {
+      throw new Error("Board must have Done and Archive columns");
+    }
+
+    const [doneCards, archiveCards] = await Promise.all([
+      ctx.db
+        .query("cards")
+        .withIndex("by_column_order", (q) => q.eq("columnId", doneColumn._id))
+        .order("asc")
+        .collect(),
+      ctx.db
+        .query("cards")
+        .withIndex("by_column_order", (q) => q.eq("columnId", archiveColumn._id))
+        .order("asc")
+        .collect(),
+    ]);
+
+    let nextOrder = getNextOrder(archiveCards);
+
+    for (const card of doneCards) {
+      await ctx.db.patch(card._id, {
+        columnId: archiveColumn._id,
+        order: nextOrder,
+      });
+      nextOrder += 1_000;
+    }
+
+    if (doneCards.length > 0) {
+      await touchBoard(ctx, args.boardId, Date.now());
+    }
+
+    return { ok: true, movedCount: doneCards.length };
   },
 });
 

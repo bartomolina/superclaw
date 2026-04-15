@@ -19,6 +19,7 @@ const columnToneByName: Record<string, string> = {
   inprogress: "text-sky-700 dark:text-sky-300",
   review: "text-amber-700 dark:text-amber-300",
   done: "text-emerald-700 dark:text-emerald-300",
+  archive: "text-zinc-500 dark:text-zinc-400",
 };
 
 export function normalizeColumnName(columnName: string) {
@@ -38,6 +39,7 @@ export function formatColumnName(columnName: string) {
   if (normalized === "inprogress") return "In Progress";
   if (normalized === "review") return "Review";
   if (normalized === "done") return "Done";
+  if (normalized === "archive") return "Archive";
 
   return columnName.trim();
 }

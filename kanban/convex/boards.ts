@@ -12,7 +12,7 @@ import {
   requireSuperuser,
 } from "./access";
 
-const FIXED_COLUMNS = ["Ideas", "TODO", "In Progress", "Review", "Done"] as const;
+const FIXED_COLUMNS = ["Ideas", "TODO", "In Progress", "Review", "Done", "Archive"] as const;
 
 type ManagedUserDoc = Doc<"managedUsers">;
 type BoardPermissionDoc = Doc<"boardPermissions">;
@@ -51,6 +51,41 @@ function normalizeAllowedAgentIds(allowedAgentIds?: string[]) {
   }
 
   return normalized;
+}
+
+function normalizeColumnName(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z]/g, "");
+}
+
+async function ensureBoardFixedColumns(ctx: MutationCtx, boardId: Id<"boards">) {
+  const columns = await ctx.db
+    .query("columns")
+    .withIndex("by_board_order", (q) => q.eq("boardId", boardId))
+    .order("asc")
+    .collect();
+
+  const columnByName = new Map(
+    columns.map((column) => [normalizeColumnName(column.name), column]),
+  );
+
+  for (let index = 0; index < FIXED_COLUMNS.length; index += 1) {
+    const name = FIXED_COLUMNS[index];
+    const order = (index + 1) * 1_000;
+    const existing = columnByName.get(normalizeColumnName(name));
+
+    if (!existing) {
+      await ctx.db.insert("columns", {
+        boardId,
+        name,
+        order,
+      });
+      continue;
+    }
+
+    if (existing.order !== order) {
+      await ctx.db.patch(existing._id, { order });
+    }
+  }
 }
 
 async function resolveSharedUsers(
@@ -293,15 +328,25 @@ export const create = mutation({
       order: getNextOrder(boards),
     });
 
-    for (let index = 0; index < FIXED_COLUMNS.length; index += 1) {
-      await ctx.db.insert("columns", {
-        boardId,
-        name: FIXED_COLUMNS[index],
-        order: (index + 1) * 1_000,
-      });
-    }
+    await ensureBoardFixedColumns(ctx, boardId);
 
     return boardId;
+  },
+});
+
+export const ensureFixedColumns = mutation({
+  args: {
+    boardId: v.id("boards"),
+  },
+  handler: async (ctx, args) => {
+    await requireSuperuser(ctx);
+
+    const board = await ctx.db.get(args.boardId);
+    if (!board) {
+      throw new Error("Board not found");
+    }
+
+    await ensureBoardFixedColumns(ctx, args.boardId);
   },
 });
 

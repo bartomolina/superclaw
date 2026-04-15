@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Clock3, Cpu, MemoryStick, RefreshCw } from "lucide-react";
+import { Clock3, Cpu, Flame, MemoryStick, RefreshCw } from "lucide-react";
 
 import { authFetch } from "@/components/dashboard/auth";
 import { fmt, fmtUptime } from "./utils";
@@ -172,7 +172,17 @@ export function PerformancePage() {
                 <div key={`${proc.pid}-${proc.command}`} className="flex flex-col gap-2 px-5 py-3 md:flex-row md:items-center md:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="min-w-0 text-sm text-zinc-800 dark:text-zinc-200">
-                      <span className="block overflow-hidden text-ellipsis whitespace-nowrap font-medium" title={proc.command}>{proc.command}</span>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="block flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-medium" title={proc.command}>{proc.command}</span>
+                        {proc.isDevMode ? (
+                          <Flame
+                            size={12}
+                            className="shrink-0 text-amber-500"
+                            aria-label="Dev mode (likely hot reload)"
+                            title="Dev mode (likely hot reload)"
+                          />
+                        ) : null}
+                      </div>
                     </div>
                     <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500">
                       <span className="font-mono">{proc.pid}</span>

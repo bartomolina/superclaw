@@ -22,12 +22,13 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useConvexAuth, useMutation, useQueries, useQuery } from "convex/react";
-import { Chrome, Clock3, ExternalLink, Eye, EyeOff, Hash, Menu, Moon, Play, Search, Send, Sun, UserRound, Users, X } from "lucide-react";
+import { Archive, Chrome, Clock3, ExternalLink, Eye, EyeOff, Hash, Menu, Moon, Play, Search, Send, Sun, UserRound, Users, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { ActivitySheet } from "@/components/activity-sheet";
+import { ArchiveSheet } from "@/components/archive-sheet";
 import { ExtensionAccessSheet } from "@/components/extension-access-sheet";
 import { InboxDebugSheet } from "@/components/inbox-debug-sheet";
 import { UserManagementSheet } from "@/components/user-management-sheet";
@@ -44,6 +45,7 @@ import {
   getColumnTone,
   getRunTone,
   maskEmail,
+  normalizeColumnName,
   summarize,
 } from "@/lib/kanban/card-formatting";
 
@@ -619,10 +621,12 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     | null
     | undefined;
   const createBoard = useMutation(api.boards.create);
+  const ensureFixedColumns = useMutation(api.boards.ensureFixedColumns);
   const renameBoard = useMutation(api.boards.rename);
   const deleteBoard = useMutation(api.boards.remove);
   const reorderBoards = useMutation(api.boards.reorder);
   const applyCardLayout = useMutation(api.cards.applyLayout);
+  const archiveDoneCards = useMutation(api.cards.archiveDoneCards);
   const [optimisticBoards, setOptimisticBoards] = useState<BoardModel[] | null>(null);
   const boardReorderQueueRef = useRef<Promise<void>>(Promise.resolve());
   const cardLayoutQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -636,6 +640,8 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [isInboxDebugOpen, setIsInboxDebugOpen] = useState(false);
   const [debugAgentId, setDebugAgentId] = useState<string | null>(null);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [isArchivingDone, setIsArchivingDone] = useState(false);
   const [isExtensionAccessOpen, setIsExtensionAccessOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [allAgentOptions, setAllAgentOptions] = useState<AgentOption[]>([]);
@@ -657,6 +663,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [searchDraft, setSearchDraft] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const ensuredFixedColumnsRef = useRef<Set<string>>(new Set());
 
   const router = useRouter();
   const pathname = usePathname();
@@ -735,6 +742,28 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
   const selectedBoardName = selectedBoard?.name ?? "Kanban";
   const selectedBoardUrl = selectedBoard?.url;
+
+  useEffect(() => {
+    if (!boardView?.board?._id || !boardView.board.isOwner) {
+      return;
+    }
+
+    const boardId = String(boardView.board._id);
+    const hasArchiveColumn = boardView.columns.some(
+      (column) => normalizeColumnName(column.name) === "archive",
+    );
+
+    if (hasArchiveColumn || ensuredFixedColumnsRef.current.has(boardId)) {
+      return;
+    }
+
+    ensuredFixedColumnsRef.current.add(boardId);
+
+    void ensureFixedColumns({ boardId: boardView.board._id }).catch((error) => {
+      ensuredFixedColumnsRef.current.delete(boardId);
+      toast.error(error instanceof Error ? error.message : "Failed to prepare board columns");
+    });
+  }, [boardView, ensureFixedColumns]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -1007,18 +1036,34 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     return null;
   }, [boardView, activeCardId]);
 
-  const dndColumns = useMemo(() => dragColumns ?? boardView?.columns ?? [], [dragColumns, boardView]);
+  const visibleBoardColumns = useMemo(
+    () => (boardView?.columns ?? []).filter((column) => normalizeColumnName(column.name) !== "archive"),
+    [boardView],
+  );
+  const archiveColumn = useMemo(
+    () => (boardView?.columns ?? []).find((column) => normalizeColumnName(column.name) === "archive") ?? null,
+    [boardView],
+  );
+  const archivedCards = useMemo(
+    () =>
+      (archiveColumn?.cards ?? []).map((card) => ({
+        ...card,
+        updatedAt: card.lastSessionUpdatedAt ?? card._creationTime,
+      })),
+    [archiveColumn],
+  );
+  const dndColumns = useMemo(() => dragColumns ?? visibleBoardColumns, [dragColumns, visibleBoardColumns]);
   const hasSearchInput = searchDraft.trim().length > 0;
   const isSearchActive = searchQuery.length >= 2;
   const visibleColumns = useMemo(() => {
     if (!isSearchActive) return dndColumns;
 
-    return (boardView?.columns ?? []).map((column) => ({
+    return visibleBoardColumns.map((column) => ({
       ...column,
       cards: column.cards.filter((card) => cardMatchesSearch(card, searchQuery)),
     }));
-  }, [boardView, dndColumns, isSearchActive, searchQuery]);
-  const boardColumnsSig = useMemo(() => columnsSignature(boardView?.columns ?? []), [boardView]);
+  }, [dndColumns, isSearchActive, searchQuery, visibleBoardColumns]);
+  const boardColumnsSig = useMemo(() => columnsSignature(visibleBoardColumns), [visibleBoardColumns]);
   const dragColumnsSig = useMemo(() => columnsSignature(dragColumns ?? []), [dragColumns]);
   const runningAgentIdsForBoard = useMemo(() => {
     return new Set(
@@ -1357,11 +1402,11 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     );
 
     setDragColumns((current) => {
-      const working = cloneColumns(current ?? boardView.columns);
+      const working = cloneColumns(current ?? visibleBoardColumns);
       const changed = applyOverMove(working, cardId, overId, insertAfterOverCard);
       if (!changed) return current;
 
-      const previousSig = columnsSignature(current ?? boardView.columns);
+      const previousSig = columnsSignature(current ?? visibleBoardColumns);
       const nextSig = columnsSignature(working);
       if (previousSig === nextSig) return current;
 
@@ -1414,7 +1459,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     let finalColumns = dragColumns;
 
     if (!finalColumns && event.over) {
-      const fallback = cloneColumns(boardView.columns);
+      const fallback = cloneColumns(visibleBoardColumns);
       const overId = String(event.over.id);
       const insertAfterOverCard = shouldInsertAfterOverCard(
         event.active.rect.current.translated ?? event.active.rect.current.initial,
@@ -1461,6 +1506,27 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
       toast.error(error instanceof Error ? error.message : "Failed to save card order");
     });
+  }
+
+  async function handleArchiveAllDoneCards() {
+    if (!effectiveSelectedBoardId || !archiveColumn || isArchivingDone) {
+      return;
+    }
+
+    setIsArchivingDone(true);
+
+    try {
+      const result = await archiveDoneCards({ boardId: effectiveSelectedBoardId });
+      toast.success(
+        result.movedCount > 0
+          ? `Archived ${result.movedCount} done ${result.movedCount === 1 ? "card" : "cards"}`
+          : "No done cards to archive",
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to archive done cards");
+    } finally {
+      setIsArchivingDone(false);
+    }
   }
 
   return (
@@ -1854,6 +1920,9 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                           onOpenCard={(cardId) => setActiveCardId(cardId)}
                           draggable={!isSearchActive}
                           hideComposer={isSearchActive}
+                          archiveAvailable={Boolean(archiveColumn)}
+                          onArchiveAll={handleArchiveAllDoneCards}
+                          archiveAllPending={isArchivingDone}
                         />
                       ))}
                     </div>
@@ -1878,13 +1947,25 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
           {effectiveSelectedBoardId ? (
             <div className="pointer-events-none fixed bottom-4 right-4 z-20 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setIsActivityOpen(true)}
-                className="pointer-events-auto inline-flex items-center rounded-full border border-zinc-200 bg-white/95 px-3 py-2 text-sm font-medium text-zinc-600 shadow-lg shadow-zinc-950/5 backdrop-blur transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950/95 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
-              >
-                Activity
-              </button>
+              <div className="pointer-events-auto flex items-center gap-2">
+                {archiveColumn ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsArchiveOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white/95 px-3 py-2 text-sm font-medium text-zinc-600 shadow-lg shadow-zinc-950/5 backdrop-blur transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950/95 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
+                  >
+                    <Archive className="h-4 w-4" aria-hidden="true" />
+                    Archive
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setIsActivityOpen(true)}
+                  className="inline-flex items-center rounded-full border border-zinc-200 bg-white/95 px-3 py-2 text-sm font-medium text-zinc-600 shadow-lg shadow-zinc-950/5 backdrop-blur transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950/95 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
+                >
+                  Activity
+                </button>
+              </div>
             </div>
           ) : null}
         </main>
@@ -1896,6 +1977,14 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
         boardName={selectedBoardName}
         events={boardActivity as Array<{ _id: string; actorId?: string; message: string; details?: string; createdAt: number; }> | undefined}
         loading={effectiveSelectedBoardId ? boardActivity === undefined : false}
+      />
+
+      <ArchiveSheet
+        open={isArchiveOpen}
+        onClose={() => setIsArchiveOpen(false)}
+        boardName={selectedBoardName}
+        cards={archivedCards}
+        onOpenCard={(cardId) => setActiveCardId(cardId)}
       />
 
       <InboxDebugSheet
@@ -2388,12 +2477,18 @@ function KanbanColumn({
   onOpenCard,
   draggable,
   hideComposer,
+  archiveAvailable,
+  onArchiveAll,
+  archiveAllPending,
 }: {
   column: ColumnModel;
   accentClass: string;
   onOpenCard: (cardId: Id<"cards">) => void;
   draggable: boolean;
   hideComposer?: boolean;
+  archiveAvailable: boolean;
+  onArchiveAll: () => void;
+  archiveAllPending: boolean;
 }) {
   const createCard = useMutation(api.cards.create);
   const { setNodeRef, isOver } = useDroppable({
@@ -2405,6 +2500,7 @@ function KanbanColumn({
   const [newCardTitle, setNewCardTitle] = useState("");
   const [isCreatingCard, setIsCreatingCard] = useState(false);
   const trimmedNewCardTitle = newCardTitle.trim();
+  const isDoneColumn = normalizeColumnName(column.name) === "done";
 
   async function handleCreateCard(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2440,13 +2536,25 @@ function KanbanColumn({
       }`}
     >
       <header className="mb-2 flex items-center justify-between gap-2 px-1">
-        <h3 className={`text-xs font-semibold uppercase tracking-[0.14em] ${accentClass}`}>
-          {formatColumnName(column.name)}
-        </h3>
-        {hideComposer ? (
-          <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300">
-            {column.cards.length}
-          </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <h3 className={`text-xs font-semibold uppercase tracking-[0.14em] ${accentClass}`}>
+            {formatColumnName(column.name)}
+          </h3>
+          {hideComposer ? (
+            <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300">
+              {column.cards.length}
+            </span>
+          ) : null}
+        </div>
+        {isDoneColumn && archiveAvailable ? (
+          <button
+            type="button"
+            onClick={onArchiveAll}
+            disabled={archiveAllPending}
+            className="inline-flex items-center rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-200"
+          >
+            {archiveAllPending ? "Archiving…" : "Archive All"}
+          </button>
         ) : null}
       </header>
 
@@ -2459,6 +2567,7 @@ function KanbanColumn({
               columnId={column._id}
               onOpenCard={onOpenCard}
               draggable={draggable}
+              canArchive={archiveAvailable && normalizeColumnName(column.name) !== "archive"}
             />
           ))}
 
@@ -2513,12 +2622,15 @@ function KanbanCard({
   columnId,
   onOpenCard,
   draggable,
+  canArchive,
 }: {
   card: CardModel;
   columnId: Id<"columns">;
   onOpenCard: (cardId: Id<"cards">) => void;
   draggable: boolean;
+  canArchive: boolean;
 }) {
+  const archiveCard = useMutation(api.cards.archiveCard);
   const deleteCard = useMutation(api.cards.remove);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(card._id),
@@ -2643,12 +2755,23 @@ function KanbanCard({
     }
   }
 
+  async function handleArchiveCard() {
+    setMenuPosition(null);
+
+    try {
+      await archiveCard({ cardId: card._id });
+      toast.success("Card archived");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to archive card");
+    }
+  }
+
   function handleContextMenu(event: ReactMouseEvent<HTMLButtonElement>) {
     event.preventDefault();
     event.stopPropagation();
 
     const menuWidth = 184;
-    const menuHeight = 92;
+    const menuHeight = canArchive ? 124 : 92;
 
     setMenuPosition({
       x: Math.max(12, Math.min(event.clientX, window.innerWidth - menuWidth - 12)),
@@ -2738,6 +2861,15 @@ function KanbanCard({
           className="fixed z-50 min-w-36 overflow-hidden rounded-xl border border-zinc-200 bg-white p-1 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
           style={{ left: menuPosition.x, top: menuPosition.y }}
         >
+          {canArchive ? (
+            <button
+              type="button"
+              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              onClick={handleArchiveCard}
+            >
+              Archive card
+            </button>
+          ) : null}
           <button
             type="button"
             className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"

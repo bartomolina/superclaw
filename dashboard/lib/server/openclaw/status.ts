@@ -96,6 +96,19 @@ function parseSystemdTimestamp(value: string | undefined) {
   return Number.isFinite(ts) ? ts : null;
 }
 
+function detectDevelopmentMode(command: string | null | undefined) {
+  if (!command) return false;
+
+  return [
+    /\bnext\s+dev\b/i,
+    /\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?dev\b/i,
+    /\bwebpack-dev-server\b/i,
+    /\bvite(?:\s|$)/i,
+    /\b(?:nodemon|ts-node-dev)\b/i,
+    /\btsx\s+watch\b/i,
+  ].some((pattern) => pattern.test(command));
+}
+
 async function readSystemdServices() {
   const candidates = collectSystemdCandidateUnits();
 
@@ -143,6 +156,8 @@ async function readSystemdServices() {
 
         if (!isOpenClawService && !isCoreUnit) return null;
 
+        const command = summarizeSystemdExecStart(props.ExecStart);
+
         return {
           name: props.Id.replace(/\.service$/, ""),
           unit: props.Id,
@@ -152,7 +167,8 @@ async function readSystemdServices() {
           enabled: props.UnitFileState || null,
           mainPid: Number.parseInt(props.MainPID || "0", 10) || 0,
           uptime: parseSystemdTimestamp(props.ExecMainStartTimestamp),
-          command: summarizeSystemdExecStart(props.ExecStart),
+          command,
+          isDevMode: detectDevelopmentMode(command),
           workingDirectory,
           fragmentPath,
         };
@@ -217,6 +233,7 @@ function enrichProcesses(rows: ProcessRow[]) {
   return rows.map((row) => ({
     ...row,
     cwd: readProcessCwd(row.pid),
+    isDevMode: detectDevelopmentMode(row.command),
   }));
 }
 

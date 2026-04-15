@@ -241,7 +241,10 @@ async function buildBaseTasks(
 
       if (!column || !board) return null;
 
-      const isDone = normalizeColumnName(column.name) === "done";
+      const columnState = normalizeColumnName(column.name);
+      const isDone = columnState === "done";
+      const isArchive = columnState === "archive";
+      if (isArchive) return null;
       if (isDone && !includeDone) return null;
 
       return {
@@ -795,4 +798,3 @@ export const transitionAgentCard = internalMutation({
     };
   },
 });
-
