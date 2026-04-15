@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { HelpCircle, Lock, RefreshCw } from "lucide-react";
+import { Flame, HelpCircle, Lock, RefreshCw } from "lucide-react";
 
 import { authFetch } from "@/components/dashboard/auth";
 import { fmtUptime } from "@/components/dashboard/debug/utils";
@@ -61,6 +61,7 @@ type PerformanceData = {
     mainPid: number;
     uptime: number | null;
     command?: string | null;
+    isDevMode?: boolean;
     workingDirectory: string | null;
     fragmentPath: string | null;
   }>;
@@ -227,21 +228,22 @@ function envSummary(baseUrl: string | null, hasToken: boolean) {
 
 function systemdStatusLabel(active: string | null, subState: string | null, uptime: number | null) {
   const uptimeText = uptime ? fmtUptime(Math.max(0, (Date.now() - uptime) / 1000)) : null;
+
+  if (active === "active" && uptimeText) {
+    return uptimeText;
+  }
+
   const parts: string[] = [];
 
-  if (active) {
+  if (active && active !== "active") {
     parts.push(active.charAt(0).toUpperCase() + active.slice(1));
   }
 
-  if (subState && subState !== active) {
+  if (subState && subState !== active && subState !== "running" && subState !== "exited") {
     parts.push(subState);
   }
 
-  if (uptimeText) {
-    parts.push(uptimeText);
-  }
-
-  return parts.join(" ") || "—";
+  return parts.join(" ") || uptimeText || "—";
 }
 
 function sortSystemdServices(services: PerformanceData["systemd"]) {
@@ -707,6 +709,7 @@ export function OpsPage() {
                         <div className="flex items-center gap-2 text-sm text-zinc-800 dark:text-zinc-200">
                           <span className={`h-2 w-2 rounded-full ${dotClass}`} />
                           <span>{service.name}</span>
+                          {service.isDevMode ? <Flame size={12} className="shrink-0 text-amber-500" aria-label="Dev mode (likely hot reload)" title="Dev mode (likely hot reload)" /> : null}
                           {service.description ? <span className="min-w-0 truncate text-xs text-zinc-400 dark:text-zinc-500">{service.description}</span> : null}
                         </div>
                         {expanded && service.command ? <div className="mt-1 break-all font-mono text-xs text-zinc-400 dark:text-zinc-500">{service.command}</div> : null}
