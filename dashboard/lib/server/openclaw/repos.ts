@@ -14,12 +14,15 @@ export type RepoSummary = {
   dirty: boolean | null;
   sync: "ahead" | "behind" | "diverged" | null;
   remote: string | null;
+  visibility: "private" | "public" | "unknown";
   hasConvex: boolean;
   kind: "agent" | "other";
   active: boolean;
 };
 
 const REPOS_TTL_MS = 300_000;
+const GITHUB_VISIBILITY_TTL_MS = 1_800_000;
+const GITHUB_VISIBILITY_BATCH_SIZE = 20;
 
 const HOME_DIR = process.env.HOME || homedir();
 const OPENCLAW_HOME = path.join(HOME_DIR, ".openclaw");
@@ -57,6 +60,7 @@ function isUsefulRepoRoot(repoRoot: string) {
 let reposCache: RepoSummary[] | null = null;
 let reposCacheTime = 0;
 let reposCacheInFlight: Promise<RepoSummary[]> | null = null;
+const githubVisibilityCache = new Map<string, { visibility: RepoSummary["visibility"]; cachedAt: number }>();
 
 function repoKind(repoRoot: string): RepoSummary["kind"] {
   const base = path.basename(repoRoot);
@@ -133,6 +137,88 @@ async function readHasCommits(repoRoot: string) {
   }
 }
 
+function parseGitHubRemote(remote: string | null) {
+  if (!remote) return null;
+
+  const patterns = [
+    /^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i,
+    /^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/i,
+    /^ssh:\/\/git@github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = remote.match(pattern);
+    if (!match) continue;
+
+    const [, owner, name] = match;
+    return { owner, name, slug: `${owner}/${name}` };
+  }
+
+  return null;
+}
+
+function mapGitHubVisibility(raw: string | null | undefined): RepoSummary["visibility"] {
+  if (raw === "PUBLIC") return "public";
+  if (raw === "PRIVATE" || raw === "INTERNAL") return "private";
+  return "unknown";
+}
+
+async function fetchGitHubVisibilities(entries: Array<{ owner: string; name: string; slug: string }>) {
+  if (entries.length === 0) return;
+
+  for (let index = 0; index < entries.length; index += GITHUB_VISIBILITY_BATCH_SIZE) {
+    const batch = entries.slice(index, index + GITHUB_VISIBILITY_BATCH_SIZE);
+    const query = [
+      "query RepoVisibilityBatch {",
+      ...batch.map((entry, batchIndex) => `repo${batchIndex}: repository(owner: ${JSON.stringify(entry.owner)}, name: ${JSON.stringify(entry.name)}) { visibility }`),
+      "}",
+    ].join("\n");
+
+    try {
+      const { stdout } = await runCommand("gh", ["api", "graphql", "-f", `query=${query}`], {
+        timeoutMs: 15_000,
+        env: { ...process.env, GH_PROMPT_DISABLED: "1" },
+      });
+
+      const parsed = JSON.parse(stdout) as { data?: Record<string, { visibility?: string } | null> };
+      const now = Date.now();
+
+      batch.forEach((entry, batchIndex) => {
+        const rawVisibility = parsed.data?.[`repo${batchIndex}`]?.visibility;
+        githubVisibilityCache.set(entry.slug, {
+          visibility: mapGitHubVisibility(rawVisibility),
+          cachedAt: now,
+        });
+      });
+    } catch {
+      // Leave uncached repos as unknown if GitHub lookup is unavailable.
+    }
+  }
+}
+
+async function loadGitHubVisibilities(repos: RepoSummary[]) {
+  const remoteEntries = Array.from(
+    new Map(
+      repos
+        .map((repo) => parseGitHubRemote(repo.remote))
+        .filter((entry): entry is { owner: string; name: string; slug: string } => Boolean(entry))
+        .map((entry) => [entry.slug, entry]),
+    ).values(),
+  );
+
+  const now = Date.now();
+  const missingEntries = remoteEntries.filter((entry) => {
+    const cached = githubVisibilityCache.get(entry.slug);
+    return !cached || now - cached.cachedAt >= GITHUB_VISIBILITY_TTL_MS;
+  });
+
+  await fetchGitHubVisibilities(missingEntries);
+
+  return new Map(
+    remoteEntries.map((entry) => [entry.slug, githubVisibilityCache.get(entry.slug)?.visibility ?? "unknown"]),
+  );
+}
+
 async function inspectRepo(repoRoot: string, activeAgentWorkspaces: Set<string>): Promise<RepoSummary> {
   const [branch, hasCommits, remote, sync] = await Promise.all([
     readTrimmed("git", ["-C", repoRoot, "rev-parse", "--abbrev-ref", "HEAD"], repoRoot),
@@ -159,6 +245,7 @@ async function inspectRepo(repoRoot: string, activeAgentWorkspaces: Set<string>)
     dirty,
     sync,
     remote,
+    visibility: "unknown",
     hasConvex: hasConvexConfig(repoRoot),
     kind,
     active: kind === "agent" ? activeAgentWorkspaces.has(repoRoot) : true,
@@ -186,7 +273,17 @@ export async function discoverGitRepoRoots() {
 async function loadRepos() {
   const [repoRoots, activeAgentWorkspaces] = await Promise.all([discoverGitRepoRoots(), listActiveAgentWorkspacePaths()]);
   const repos = await Promise.all(repoRoots.map((repoRoot) => inspectRepo(repoRoot, activeAgentWorkspaces)));
-  return repos.sort((a, b) => a.path.localeCompare(b.path));
+  const visibilityBySlug = await loadGitHubVisibilities(repos);
+
+  return repos
+    .map((repo) => {
+      const githubRemote = parseGitHubRemote(repo.remote);
+      return {
+        ...repo,
+        visibility: githubRemote ? (visibilityBySlug.get(githubRemote.slug) ?? "unknown") : "unknown",
+      };
+    })
+    .sort((a, b) => a.path.localeCompare(b.path));
 }
 
 function refreshRepos() {

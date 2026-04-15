@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { RefreshCw } from "lucide-react";
+import { HelpCircle, Lock, RefreshCw } from "lucide-react";
 
 import { authFetch } from "@/components/dashboard/auth";
 import { fmtUptime } from "@/components/dashboard/debug/utils";
@@ -128,6 +128,7 @@ type ReposData = {
     dirty: boolean | null;
     sync: "ahead" | "behind" | "diverged" | null;
     remote: string | null;
+    visibility: "private" | "public" | "unknown";
     hasConvex: boolean;
     kind: "agent" | "other";
     active: boolean;
@@ -276,7 +277,11 @@ function RepoRows({ repos }: { repos: ReposData["repos"] }) {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-sm text-zinc-600 dark:text-zinc-400">{repo.name}</div>
+                <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                  <span>{repo.name}</span>
+                  {repo.visibility === "private" ? <Lock size={12} className="shrink-0 text-zinc-400 dark:text-zinc-500" aria-label="Private repo" title="Private repo" /> : null}
+                  {repo.visibility === "unknown" ? <HelpCircle size={12} className="shrink-0 text-zinc-400 dark:text-zinc-500" aria-label="Repo visibility unknown" title="Repo visibility unknown" /> : null}
+                </div>
                 {expanded ? (
                   <div className="mt-0.5 text-xs text-zinc-400 dark:text-zinc-500">
                     <div className="break-all">{repo.path}</div>
