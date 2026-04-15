@@ -42,7 +42,7 @@ By default, the apps are meant to run alongside OpenClaw in **dev mode**. The id
 ### Optional
 
 - **[Gemini API key](https://aistudio.google.com/)** — optional for dashboard avatar generation during the agent creation flow
-- **[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)** — recommended for exposing/managing apps cleanly
+- **[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)** — recommended for exposing/managing apps cleanly. For new DNS records, prefer direct API/dashboard or a zone-correct `cloudflared` cert; `cloudflared tunnel route dns` can target the wrong zone if the local cert is stale or zone-scoped.
 
 ## Install and use
 

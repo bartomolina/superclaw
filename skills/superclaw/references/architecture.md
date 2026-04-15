@@ -26,6 +26,10 @@ Default assumptions unless the user explicitly asks otherwise:
 - dev mode is acceptable and often preferred
 - long-running services managed by `systemd`
 - when external exposure is needed, prefer `cloudflared.service` / Cloudflare Tunnel
+- for new public hostnames, treat `cloudflared tunnel route dns <tunnel> <hostname>` as convenient but not authoritative. If the local `cloudflared` cert is zone-scoped or stale, it can create records under the wrong zone. Prefer one of these:
+  - re-run `cloudflared tunnel login` for the intended zone before using `route dns`
+  - keep per-zone cert files and pass `--origincert` (or `TUNNEL_ORIGIN_CERT`)
+  - create the DNS record directly with the Cloudflare API/dashboard, pointing the hostname at `<tunnel-id>.cfargotunnel.com`
 - preferred default ports if free:
   - Dashboard: `19830`
   - Kanban: `19831`

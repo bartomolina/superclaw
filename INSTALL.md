@@ -70,6 +70,11 @@ Port rule:
 
 If public exposure is needed later, prefer **Cloudflare Tunnel** via `cloudflared.service`.
 
+For new public DNS records, do not blindly trust `cloudflared tunnel route dns <tunnel> <hostname>`. If the local `cloudflared` login cert is tied to the wrong zone, it can create the record under that wrong zone. Safer options:
+- re-run `cloudflared tunnel login` for the intended zone first,
+- keep per-zone certs and call `cloudflared tunnel --origincert /path/to/<zone>-cert.pem route dns ...`, or
+- create the DNS record directly via the Cloudflare API/dashboard as a proxied `CNAME` to `<tunnel-id>.cfargotunnel.com`.
+
 Do not switch to Docker or production mode unless the user explicitly asks.
 
 ## Prerequisite checks
