@@ -15,7 +15,7 @@ type SkillsListResponse = {
   }>;
 };
 
-const SKILL_OPTIONS_TTL_MS = 10_000;
+const SKILL_OPTIONS_TTL_MS = 60_000;
 
 let skillOptionsCache:
   | {
@@ -54,11 +54,19 @@ export async function fetchSkillOptions(): Promise<SkillOption[]> {
   }
 
   let data: SkillsListResponse = { skills: [] };
+  let stdout = "";
+  let stderr = "";
   try {
-    const { stdout, stderr } = await runOpenClaw(["skills", "list", "--json"], { timeoutMs: 12_000 });
+    const result = await runOpenClaw(["skills", "list", "--json"], { timeoutMs: 30_000 });
+    stdout = result.stdout;
+    stderr = result.stderr;
     data = parseCliJson<SkillsListResponse>(stdout, stderr, { skills: [] });
-  } catch {
-    return [];
+  } catch (error) {
+    throw new Error(`openclaw skills list failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  if (!Array.isArray(data.skills) && (stdout.trim() || stderr.trim())) {
+    throw new Error("openclaw skills list returned an unexpected payload");
   }
 
   const value = (data.skills ?? [])

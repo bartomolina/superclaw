@@ -436,13 +436,13 @@ export async function handleCreateAgent(req: NextRequest) {
 
   const workspace = path.join(OPENCLAW_HOME, `workspace-${id}`);
 
-  await runOpenClaw(["agents", "add", id, "--non-interactive", "--workspace", workspace], { timeoutMs: 15_000 });
+  await runOpenClaw(["agents", "add", id, "--non-interactive", "--workspace", workspace], { timeoutMs: 30_000 });
 
   if (name || emoji) {
-    const args = ["agents", "set-identity", "--agent", id];
+    const args = ["agents", "set-identity", "--agent", id, "--workspace", workspace];
     if (name) args.push("--name", name);
     if (emoji) args.push("--emoji", emoji);
-    await runOpenClaw(args, { timeoutMs: 10_000 });
+    await runOpenClaw(args, { timeoutMs: 30_000 });
   }
 
   let avatarRelativePath: string | null = null;

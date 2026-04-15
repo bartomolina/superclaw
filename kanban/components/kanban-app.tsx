@@ -171,6 +171,35 @@ type AcpOption = {
   isDefault?: boolean;
 };
 
+async function getSkillsLoadError(response: Response | null) {
+  if (!response) {
+    return "Failed to load skills, network error.";
+  }
+
+  let apiError = "";
+  try {
+    const data = (await response.json()) as { error?: unknown };
+    if (typeof data?.error === "string") {
+      apiError = data.error.trim();
+    }
+  } catch {
+    // Ignore JSON parse failures and fall back to status-based text.
+  }
+
+  if (apiError) {
+    if (response.status === 401) {
+      return `Failed to load skills, ${apiError}. Try signing in again.`;
+    }
+    return `Failed to load skills, ${apiError}.`;
+  }
+
+  if (response.status === 401) {
+    return "Failed to load skills, unauthorized. Try signing in again.";
+  }
+
+  return `Failed to load skills (${response.status}).`;
+}
+
 type ChoiceOption = string | { value: string; label: string; title?: string };
 
 const cardTypeOptions: ChoiceOption[] = [
@@ -612,7 +641,9 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const [allAgentOptions, setAllAgentOptions] = useState<AgentOption[]>([]);
   const [sidebarAgentOptions, setSidebarAgentOptions] = useState<AgentOption[]>([]);
   const [isSidebarAgentsLoading, setIsSidebarAgentsLoading] = useState(false);
+  const [isSidebarSkillsLoading, setIsSidebarSkillsLoading] = useState(false);
   const [sidebarSkillOptions, setSidebarSkillOptions] = useState<SkillOption[]>([]);
+  const [sidebarSkillError, setSidebarSkillError] = useState<string | null>(null);
   const [sidebarModelOptions, setSidebarModelOptions] = useState<ModelOption[]>([]);
   const [sidebarAcpOptions, setSidebarAcpOptions] = useState<AcpOption[]>([]);
   const [isSidebarAcpLoading, setIsSidebarAcpLoading] = useState(false);
@@ -832,8 +863,10 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
     let cancelled = false;
     setIsSidebarAgentsLoading(true);
+    setIsSidebarSkillsLoading(true);
     setIsSidebarAcpLoading(true);
     setSidebarAgentOptions([]);
+    setSidebarSkillError(null);
     setSidebarAcpOptions([]);
 
     async function loadSidebarOptions() {
@@ -848,6 +881,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
         const agentsData = agentsResponse && agentsResponse.ok ? ((await agentsResponse.json()) as { agents?: AgentOption[] }) : null;
         const skillsData = skillsResponse && skillsResponse.ok ? ((await skillsResponse.json()) as { skills?: SkillOption[] }) : null;
+        const skillError = skillsResponse?.ok ? null : await getSkillsLoadError(skillsResponse);
         const modelsData = modelsResponse && modelsResponse.ok ? ((await modelsResponse.json()) as { models?: ModelOption[] }) : null;
         const acpData = acpResponse && acpResponse.ok ? ((await acpResponse.json()) as { acp?: AcpOption[] }) : null;
         if (cancelled) return;
@@ -894,6 +928,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
         setSidebarAgentOptions(normalizedAgents);
         setSidebarSkillOptions(normalizedSkills);
+        setSidebarSkillError(skillError);
         setSidebarModelOptions(normalizedModels);
         setSidebarAcpOptions(normalizedAcp);
       } catch {
@@ -901,6 +936,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
       } finally {
         if (!cancelled) {
           setIsSidebarAgentsLoading(false);
+          setIsSidebarSkillsLoading(false);
           setIsSidebarAcpLoading(false);
         }
       }
@@ -1920,6 +1956,8 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
           boards={displayBoards ?? []}
           agentOptions={filterBoardAgentOptions(sidebarAgentOptions, boardView.board.allowedAgentIds)}
           skillOptions={sidebarSkillOptions}
+          skillError={sidebarSkillError}
+          skillsLoading={isSidebarSkillsLoading}
           modelOptions={sidebarModelOptions}
           acpOptions={sidebarAcpOptions}
           acpLoading={isSidebarAcpLoading}
@@ -2719,6 +2757,8 @@ function CardModal({
   boards,
   agentOptions,
   skillOptions,
+  skillError,
+  skillsLoading,
   modelOptions,
   acpOptions,
   acpLoading,
@@ -2729,6 +2769,8 @@ function CardModal({
   boards: BoardModel[];
   agentOptions: AgentOption[];
   skillOptions: SkillOption[];
+  skillError?: string | null;
+  skillsLoading?: boolean;
   modelOptions: ModelOption[];
   acpOptions: AcpOption[];
   acpLoading: boolean;
@@ -3336,7 +3378,9 @@ function CardModal({
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Skills</label>
                 <div className="flex flex-wrap gap-1.5">
                   {availableSkillOptions.length === 0 ? (
-                    <span className="text-xs text-zinc-400 dark:text-zinc-500">No skills available</span>
+                    <span className={`text-xs ${skillError ? "text-amber-600 dark:text-amber-400" : "text-zinc-400 dark:text-zinc-500"}`}>
+                      {skillsLoading ? "Loading skills..." : skillError ?? "No skills available"}
+                    </span>
                   ) : (
                     availableSkillOptions.map((skill) => {
                       const selected = skillsDraft.some(
