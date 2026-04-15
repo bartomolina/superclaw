@@ -1,6 +1,6 @@
 ---
 name: kanban
-description: Work assigned SuperClaw Kanban tasks for autonomous agents. Use when an agent should pick up its assigned Kanban work, leave progress or blocker comments, move cards through TODO/In Progress/Review according to policy, or run a scheduled or manual Kanban worker pass.
+description: Work assigned SuperClaw Kanban tasks for autonomous agents. Use when an agent should pick up its assigned Kanban work, leave progress or blocker comments, move cards through TODO/In Progress/Review according to policy, run a scheduled or manual Kanban worker pass, or create a new task/card in SuperClaw Kanban.
 metadata:
   openclaw:
     emoji: "🦞"
@@ -11,6 +11,17 @@ metadata:
 Read `references/worker-policy.md` before acting.
 
 Use the broader `superclaw` skill when the task is about suite architecture, install conventions, app layout, Dashboard, Extension, or repo-wide SuperClaw changes.
+
+## Task authoring
+
+This skill is primarily a worker/execution skill, but it should also handle direct requests to create a Kanban task/card.
+
+When asked to create a task in SuperClaw Kanban:
+- use the Kanban app/backend card-creation path, not the worker API flow (`/inbox`, `/comment`, `/transition`, `/session/finish`)
+- create the card in the requested board and column, usually `TODO` when the user does not specify another column
+- include the task metadata when provided: `title`, `description`, `agentId`, `reviewerId`, `priority`, `size`, `type`, `acp`, `model`, `skills`
+- if the board or column is ambiguous, ask only for the missing piece needed to place the card correctly
+- do not treat task creation as a worker pass or fabricate a tracked run/session for it
 
 ## Required behavior
 

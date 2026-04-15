@@ -21,8 +21,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useConvexAuth, useMutation, useQueries, useQuery } from "convex/react";
-import { Chrome, Clock3, ExternalLink, Eye, EyeOff, Hash, Menu, Moon, Play, Search, Send, Sun, UserRound, Users, X } from "lucide-react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { Archive, Chrome, Clock3, ExternalLink, Eye, EyeOff, Hash, Menu, Moon, Play, Search, Send, Sun, UserRound, Users, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -72,6 +72,11 @@ type ManagedUserModel = {
   createdAt: number;
   updatedAt: number;
   order: number;
+};
+
+type AgentInboxCountModel = {
+  agentId: string;
+  totalCount: number;
 };
 
 const DESCRIPTION_AUTOSAVE_DELAY_MS = 1200;
@@ -1076,34 +1081,33 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     );
   }, [boardView]);
 
-  const sidebarInboxResults = useQueries(
-    useMemo(() => {
-      if (!isConvexAuthenticated || !effectiveSelectedBoardId || sidebarAgentOptions.length === 0) {
-        return {};
-      }
-
-      return Object.fromEntries(
-        sidebarAgentOptions.map((agent) => [
-          agent.id,
-          {
-            query: api.agent_automation.debugAgentInbox,
-            args: { agentId: agent.id, boardId: effectiveSelectedBoardId, refreshKey: 0 },
-          },
-        ]),
-      );
-    }, [effectiveSelectedBoardId, isConvexAuthenticated, sidebarAgentOptions]),
+  const sidebarAgentIds = useMemo(
+    () => sidebarAgentOptions.map((agent) => agent.id).filter((agentId) => agentId.trim().length > 0),
+    [sidebarAgentOptions],
   );
+
+  const sidebarInboxCounts = useQuery(
+    api.agent_automation.listBoardAgentInboxCounts,
+    isConvexAuthenticated && effectiveSelectedBoardId && sidebarAgentIds.length > 0
+      ? { boardId: effectiveSelectedBoardId, agentIds: sidebarAgentIds }
+      : "skip",
+  ) as AgentInboxCountModel[] | undefined;
 
   const pendingCountByAgent = useMemo(() => {
     const counts = new Map<string, number>();
 
+    for (const row of sidebarInboxCounts ?? []) {
+      counts.set(row.agentId, row.totalCount);
+    }
+
     for (const agent of sidebarAgentOptions) {
-      const result = sidebarInboxResults[agent.id] as { totalCount?: number } | undefined;
-      counts.set(agent.id, typeof result?.totalCount === "number" ? result.totalCount : 0);
+      if (!counts.has(agent.id)) {
+        counts.set(agent.id, 0);
+      }
     }
 
     return counts;
-  }, [sidebarAgentOptions, sidebarInboxResults]);
+  }, [sidebarAgentOptions, sidebarInboxCounts]);
 
   const activeDragCard = useMemo(() => {
     if (!activeDragCardId) return null;
@@ -2552,9 +2556,11 @@ function KanbanColumn({
             type="button"
             onClick={onArchiveAll}
             disabled={archiveAllPending}
-            className="inline-flex items-center rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-200"
+            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-200"
+            title={archiveAllPending ? "Archiving done cards" : "Archive all done cards"}
+            aria-label={archiveAllPending ? "Archiving done cards" : "Archive all done cards"}
           >
-            {archiveAllPending ? "Archiving…" : "Archive All"}
+            <Archive className="h-2.5 w-2.5" />
           </button>
         ) : null}
       </header>

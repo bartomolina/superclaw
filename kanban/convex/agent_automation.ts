@@ -555,6 +555,136 @@ export const debugAgentInbox = query({
   },
 });
 
+export const listBoardAgentInboxCounts = query({
+  args: {
+    boardId: v.id("boards"),
+    agentIds: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireAccessibleBoard(ctx, args.boardId);
+
+    const normalizedAgents = new Map<string, string>();
+
+    for (const agentId of args.agentIds) {
+      const trimmed = agentId.trim();
+      if (!trimmed) continue;
+
+      const normalizedAgentId = normalize(trimmed);
+      if (!normalizedAgentId || normalizedAgents.has(normalizedAgentId)) {
+        continue;
+      }
+
+      normalizedAgents.set(normalizedAgentId, trimmed);
+    }
+
+    const counts = new Map<string, number>();
+    for (const agentId of normalizedAgents.values()) {
+      counts.set(agentId, 0);
+    }
+
+    if (normalizedAgents.size === 0) {
+      return [] as Array<{ agentId: string; totalCount: number }>;
+    }
+
+    const [columns, cards] = await Promise.all([
+      ctx.db
+        .query("columns")
+        .withIndex("by_board_order", (q) => q.eq("boardId", args.boardId))
+        .order("asc")
+        .collect(),
+      ctx.db.query("cards").withIndex("by_board", (q) => q.eq("boardId", args.boardId)).collect(),
+    ]);
+
+    const columnNameById = new Map(columns.map((column) => [String(column._id), column.name]));
+    const pendingCommentCards = new Map<
+      string,
+      {
+        cardId: Id<"cards">;
+        columnName: string;
+        rolesByAgentId: Map<string, AgentRole[]>;
+      }
+    >();
+
+    for (const card of cards) {
+      const columnName = columnNameById.get(String(card.columnId));
+      if (!columnName) continue;
+
+      const state = normalizeColumnName(columnName);
+      if (state === "archive" || state === "done") {
+        continue;
+      }
+
+      const rolesByAgentId = new Map<string, AgentRole[]>();
+      const assigneeId = normalizedAgents.get(normalize(card.agentId));
+      const reviewerId = normalizedAgents.get(normalize(card.reviewerId));
+
+      if (assigneeId) {
+        rolesByAgentId.set(assigneeId, [...(rolesByAgentId.get(assigneeId) ?? []), "assignee"]);
+
+        if (state === "todo") {
+          counts.set(assigneeId, (counts.get(assigneeId) ?? 0) + 1);
+        }
+      }
+
+      if (reviewerId) {
+        rolesByAgentId.set(reviewerId, [...(rolesByAgentId.get(reviewerId) ?? []), "reviewer"]);
+      }
+
+      if (rolesByAgentId.size === 0) {
+        continue;
+      }
+
+      if (state === "ideas" || state === "review") {
+        pendingCommentCards.set(String(card._id), {
+          cardId: card._id,
+          columnName,
+          rolesByAgentId,
+        });
+      }
+    }
+
+    if (pendingCommentCards.size === 0) {
+      return [...counts.entries()].map(([agentId, totalCount]) => ({ agentId, totalCount }));
+    }
+
+    const lastCommentRows = await Promise.all(
+      [...pendingCommentCards.values()].map(async ({ cardId }) => {
+        const rows = await ctx.db
+          .query("comments")
+          .withIndex("by_card_created", (q) => q.eq("cardId", cardId))
+          .order("desc")
+          .take(1);
+
+        return [String(cardId), rows[0] ?? null] as const;
+      }),
+    );
+
+    const lastCommentByCardId = new Map(lastCommentRows);
+
+    for (const [cardId, pendingCard] of pendingCommentCards.entries()) {
+      const lastComment = lastCommentByCardId.get(cardId) ?? null;
+
+      for (const [agentId, roles] of pendingCard.rolesByAgentId.entries()) {
+        const normalizedAgentId = normalize(agentId);
+
+        if (roles.length === 0 || !canComment(pendingCard.columnName, roles)) {
+          continue;
+        }
+
+        const lastAuthor = lastComment ? commentAuthor(lastComment) : null;
+        const agentWasLastCommenter =
+          lastAuthor?.type === "agent" && normalize(lastAuthor.id) === normalizedAgentId;
+
+        if (!agentWasLastCommenter) {
+          counts.set(agentId, (counts.get(agentId) ?? 0) + 1);
+        }
+      }
+    }
+
+    return [...counts.entries()].map(([agentId, totalCount]) => ({ agentId, totalCount }));
+  },
+});
+
 export const getManualSessionTargets = internalQuery({
   args: {
     agentId: v.string(),
