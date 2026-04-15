@@ -22,7 +22,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useConvexAuth, useMutation, useQueries, useQuery } from "convex/react";
-import { Archive, Chrome, Clock3, ExternalLink, Eye, EyeOff, Hash, Menu, Moon, Play, Search, Send, Sun, UserRound, Users, X } from "lucide-react";
+import { Chrome, Clock3, ExternalLink, Eye, EyeOff, Hash, Menu, Moon, Play, Search, Send, Sun, UserRound, Users, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -73,6 +73,8 @@ type ManagedUserModel = {
   updatedAt: number;
   order: number;
 };
+
+const DESCRIPTION_AUTOSAVE_DELAY_MS = 1200;
 
 type CardModel = {
   _id: Id<"cards">;
@@ -1952,9 +1954,8 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                   <button
                     type="button"
                     onClick={() => setIsArchiveOpen(true)}
-                    className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white/95 px-3 py-2 text-sm font-medium text-zinc-600 shadow-lg shadow-zinc-950/5 backdrop-blur transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950/95 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
+                    className="inline-flex items-center rounded-full border border-zinc-200 bg-white/95 px-3 py-2 text-sm font-medium text-zinc-600 shadow-lg shadow-zinc-950/5 backdrop-blur transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950/95 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
                   >
-                    <Archive className="h-4 w-4" aria-hidden="true" />
                     Archive
                   </button>
                 ) : null}
@@ -2940,8 +2941,25 @@ function CardModal({
   const [commentDraft, setCommentDraft] = useState("");
   const [isSavingComment, setIsSavingComment] = useState(false);
   const [isSavingDescription, setIsSavingDescription] = useState(false);
+  const [descriptionSaveState, setDescriptionSaveState] = useState<"idle" | "scheduled" | "saving" | "saved" | "error">("idle");
   const [isSavingCard, setIsSavingCard] = useState(false);
   const [isDeletingCard, setIsDeletingCard] = useState(false);
+  const latestDescriptionDraftRef = useRef(descriptionDraft);
+  const descriptionAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const descriptionSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastDescriptionSaveAttemptRef = useRef<string | null>(null);
+
+  const clearDescriptionAutosaveTimer = useCallback(() => {
+    if (descriptionAutosaveTimerRef.current === null) return;
+    clearTimeout(descriptionAutosaveTimerRef.current);
+    descriptionAutosaveTimerRef.current = null;
+  }, []);
+
+  const clearDescriptionSavedTimer = useCallback(() => {
+    if (descriptionSavedTimerRef.current === null) return;
+    clearTimeout(descriptionSavedTimerRef.current);
+    descriptionSavedTimerRef.current = null;
+  }, []);
 
   useEffect(() => {
     function onEscape(event: KeyboardEvent) {
@@ -2967,6 +2985,18 @@ function CardModal({
       document.documentElement.style.overflow = previousHtmlOverflow;
     };
   }, []);
+
+  useEffect(() => {
+    latestDescriptionDraftRef.current = descriptionDraft;
+  }, [descriptionDraft]);
+
+  useEffect(
+    () => () => {
+      clearDescriptionAutosaveTimer();
+      clearDescriptionSavedTimer();
+    },
+    [clearDescriptionAutosaveTimer, clearDescriptionSavedTimer],
+  );
 
   function handleEditorSubmitShortcut(
     event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -3098,33 +3128,124 @@ function CardModal({
     await submitComment();
   }
 
-  async function handleDescriptionSave() {
-    if (!hasDescriptionChanges || isSavingDescription || isSavingCard || isDeletingCard) {
+  const handleDescriptionSave = useCallback(
+    async ({ force = false }: { force?: boolean } = {}) => {
+      const nextDescription = latestDescriptionDraftRef.current;
+      const normalizedNextDescription = nextDescription.trim();
+
+      if (isSavingDescription || isSavingCard || isDeletingCard) {
+        return;
+      }
+
+      if (normalizedNextDescription === normalizedSavedDescription) {
+        return;
+      }
+
+      if (!force && lastDescriptionSaveAttemptRef.current === normalizedNextDescription) {
+        return;
+      }
+
+      clearDescriptionAutosaveTimer();
+      clearDescriptionSavedTimer();
+      lastDescriptionSaveAttemptRef.current = normalizedNextDescription;
+      setIsSavingDescription(true);
+      setDescriptionSaveState("saving");
+
+      try {
+        await updateCard({
+          cardId: card._id,
+          title: card.title,
+          description: nextDescription,
+          agentId: card.agentId ?? "",
+          reviewerId: card.reviewerId ?? "",
+          priority: card.priority ?? "",
+          size: card.size ?? "",
+          type: card.type ?? "",
+          acp: card.acp ?? "",
+          model: card.model ?? "",
+          skills: card.skills ?? [],
+        });
+
+        if (latestDescriptionDraftRef.current.trim() === normalizedNextDescription) {
+          setDescriptionSaveState("saved");
+          descriptionSavedTimerRef.current = setTimeout(() => {
+            if (latestDescriptionDraftRef.current.trim() === normalizedNextDescription) {
+              setDescriptionSaveState("idle");
+            }
+            descriptionSavedTimerRef.current = null;
+          }, 2000);
+        } else {
+          setDescriptionSaveState("scheduled");
+        }
+      } catch (error) {
+        setDescriptionSaveState("error");
+        toast.error(error instanceof Error ? error.message : "Failed to autosave description");
+      } finally {
+        setIsSavingDescription(false);
+      }
+    },
+    [
+      card._id,
+      card.acp,
+      card.agentId,
+      card.model,
+      card.priority,
+      card.reviewerId,
+      card.size,
+      card.skills,
+      card.title,
+      card.type,
+      clearDescriptionAutosaveTimer,
+      clearDescriptionSavedTimer,
+      isDeletingCard,
+      isSavingCard,
+      isSavingDescription,
+      normalizedSavedDescription,
+      updateCard,
+    ],
+  );
+
+  useEffect(() => {
+    if (!hasDescriptionChanges) {
+      clearDescriptionAutosaveTimer();
+      if (descriptionSaveState !== "saved") {
+        setDescriptionSaveState("idle");
+      }
       return;
     }
 
-    setIsSavingDescription(true);
-
-    try {
-      await updateCard({
-        cardId: card._id,
-        title: card.title,
-        description: descriptionDraft,
-        agentId: card.agentId ?? "",
-        reviewerId: card.reviewerId ?? "",
-        priority: card.priority ?? "",
-        size: card.size ?? "",
-        type: card.type ?? "",
-        acp: card.acp ?? "",
-        model: card.model ?? "",
-        skills: card.skills ?? [],
-      });
-      toast.success("Description updated");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update description");
-    } finally {
-      setIsSavingDescription(false);
+    if (isSavingDescription || isSavingCard || isDeletingCard) {
+      clearDescriptionAutosaveTimer();
+      return;
     }
+
+    if (lastDescriptionSaveAttemptRef.current === normalizedDescriptionDraft) {
+      return;
+    }
+
+    clearDescriptionSavedTimer();
+    setDescriptionSaveState("scheduled");
+    descriptionAutosaveTimerRef.current = setTimeout(() => {
+      void handleDescriptionSave();
+    }, DESCRIPTION_AUTOSAVE_DELAY_MS);
+
+    return clearDescriptionAutosaveTimer;
+  }, [
+    clearDescriptionAutosaveTimer,
+    clearDescriptionSavedTimer,
+    descriptionSaveState,
+    handleDescriptionSave,
+    hasDescriptionChanges,
+    isDeletingCard,
+    isSavingCard,
+    isSavingDescription,
+    normalizedDescriptionDraft,
+  ]);
+
+  function handleDescriptionChange(nextValue: string) {
+    lastDescriptionSaveAttemptRef.current = null;
+    clearDescriptionSavedTimer();
+    setDescriptionDraft(nextValue);
   }
 
   async function handleCommentKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
@@ -3185,6 +3306,9 @@ function CardModal({
     if (isSavingCard || isDeletingCard) {
       return;
     }
+
+    clearDescriptionAutosaveTimer();
+    clearDescriptionSavedTimer();
 
     const parsedSkills = skillsDraft.map((skill) => skill.trim()).filter(Boolean);
 
@@ -3326,23 +3450,23 @@ function CardModal({
               <div>
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400">Description</label>
-                  <div className="relative h-4 min-w-[64px]">
-                    {hasDescriptionChanges ? (
-                      <button
-                        type="button"
-                        className="absolute right-0 top-1/2 inline-flex h-5 -translate-y-1/2 items-center justify-center rounded border border-zinc-300 bg-white/90 px-1.5 text-[10px] font-medium leading-none text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-                        onClick={() => void handleDescriptionSave()}
-                        disabled={isSavingDescription || isSavingCard || isDeletingCard}
-                      >
-                        {isSavingDescription ? "Updating…" : "Update"}
-                      </button>
-                    ) : null}
+                  <div className="min-w-[112px] text-right text-[10px] font-medium text-zinc-400 dark:text-zinc-500">
+                    {descriptionSaveState === "saving"
+                      ? "Autosaving…"
+                      : descriptionSaveState === "saved"
+                        ? "Saved"
+                        : descriptionSaveState === "error"
+                          ? "Autosave failed"
+                          : hasDescriptionChanges
+                            ? "Autosaves after you pause"
+                            : "Autosave enabled"}
                   </div>
                 </div>
                 <textarea
                   className={`${textareaClass} min-h-40`}
                   value={descriptionDraft}
-                  onChange={(event) => setDescriptionDraft(event.target.value)}
+                  onChange={(event) => handleDescriptionChange(event.target.value)}
+                  onBlur={() => void handleDescriptionSave({ force: true })}
                   onKeyDown={handleEditorSubmitShortcut}
                   placeholder="Add a description..."
                 />
