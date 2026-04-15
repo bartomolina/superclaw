@@ -59,6 +59,10 @@ Keep shared product-level docs at the repo root. Keep implementation details clo
 
 - Document preferred default ports centrally before adding/changing them.
 - Document systemd unit names centrally before adding/changing them.
+- For systemd unit `Description=` labels, prefer this convention:
+  - public web apps: use the served domain as the label, for example `kanban.bartomolina.io`, `anto.codes`, `excalidraw.bartomolina.io`
+  - local/internal/non-web services: omit `Description=` instead of using a verbose label, for example `cloudflared`, `superclaw-dashboard`, `superclaw-convex`
+  - short named exceptions are fine when the domain is not the best operator label, for example `marp` or `streamlit`
 - Keep env examples checked in (`.env.example`, `.env.local.example`) when relevant.
 - Prefer server-side OpenClaw/Gateway integration over exposing secrets to the browser.
 - Avoid adding new infrastructure/services unless the user explicitly wants them.
