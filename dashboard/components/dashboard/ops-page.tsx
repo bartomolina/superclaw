@@ -394,7 +394,7 @@ export function OpsPage() {
   const loadingMcp = loading && mcpServers.length === 0;
   const loadingPerformance = loading && !performance;
   const loadingRepos = loading && !repos;
-  const agentRepos = repoList.filter((repo) => repo.kind === "agent" && repo.active && (repo.hasCommits || repo.dirty === true));
+  const agentRepos = repoList.filter((repo) => repo.kind === "agent");
   const otherRepos = repoList.filter((repo) => repo.kind === "other");
   const visibleRepoCount = otherRepos.length + agentRepos.length;
 
@@ -731,7 +731,7 @@ export function OpsPage() {
           <div className="space-y-5">
             {[
               { id: "openclaw", label: "OpenClaw repos", repos: otherRepos },
-              { id: "agents", label: "Active agent repos", repos: agentRepos },
+              { id: "agents", label: "Agent repos", repos: agentRepos },
             ]
               .filter((group) => group.repos.length > 0)
               .map((group) => (
