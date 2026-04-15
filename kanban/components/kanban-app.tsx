@@ -3452,14 +3452,10 @@ function CardModal({
                   <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400">Description</label>
                   <div className="min-w-[112px] text-right text-[10px] font-medium text-zinc-400 dark:text-zinc-500">
                     {descriptionSaveState === "saving"
-                      ? "Autosaving…"
+                      ? "Saving..."
                       : descriptionSaveState === "saved"
                         ? "Saved"
-                        : descriptionSaveState === "error"
-                          ? "Autosave failed"
-                          : hasDescriptionChanges
-                            ? "Autosaves after you pause"
-                            : "Autosave enabled"}
+                        : null}
                   </div>
                 </div>
                 <textarea
