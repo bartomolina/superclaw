@@ -109,6 +109,18 @@ function detectDevelopmentMode(command: string | null | undefined) {
   ].some((pattern) => pattern.test(command));
 }
 
+function normalizeSystemdDescription(description: string | undefined, unitId: string, command: string | null) {
+  if (!description) return null;
+
+  const trimmed = description.trim();
+  if (!trimmed) return null;
+  if (trimmed === unitId) return null;
+  if (trimmed === unitId.replace(/\.service$/, "")) return null;
+  if (command && /\bdocker\s+compose\b/i.test(command)) return null;
+
+  return trimmed;
+}
+
 async function readSystemdServices() {
   const candidates = collectSystemdCandidateUnits();
 
@@ -161,7 +173,7 @@ async function readSystemdServices() {
         return {
           name: props.Id.replace(/\.service$/, ""),
           unit: props.Id,
-          description: props.Description || null,
+          description: normalizeSystemdDescription(props.Description, props.Id, command),
           active: props.ActiveState || null,
           subState: props.SubState || null,
           enabled: props.UnitFileState || null,

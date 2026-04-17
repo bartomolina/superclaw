@@ -44,6 +44,7 @@ export function hasMeaningfulMarkdownContent(content: string | null | undefined)
     if (!trimmed) continue;
     if (/^#+(\s|$)/.test(trimmed)) continue;
     if (/^[-*+]\s*(\[[\sXx]?\]\s*)?$/.test(trimmed)) continue;
+    if (/^```[A-Za-z0-9_-]*$/.test(trimmed)) continue;
     return true;
   }
 

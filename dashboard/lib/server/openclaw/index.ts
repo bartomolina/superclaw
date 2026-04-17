@@ -9,6 +9,8 @@ export { handleConfigGet, parseConfigRaw, readLocalConfig, getConfigDocument, ap
 export { handleConvexDeployments } from "@/lib/server/openclaw/convex";
 export { handleCronModel, handleCronsList } from "@/lib/server/openclaw/crons";
 export { handleDebugWs, handleFeatures, isDebugRpcEnabled } from "@/lib/server/openclaw/debug";
+export { handleDockerContainers } from "@/lib/server/openclaw/docker";
+export { handleFileSearchStores } from "@/lib/server/openclaw/file-search";
 export { handleAgentFileGet, handleAgentFilePut, handleAgentFilesList, handleAvatar, parseAvatarFromIdentity } from "@/lib/server/openclaw/files";
 export { errorResponse, json, parseBody } from "@/lib/server/openclaw/http";
 export { handleKanbanWorkerStatus } from "@/lib/server/openclaw/kanban-runtime";

@@ -179,7 +179,6 @@ export function PerformancePage() {
                             size={12}
                             className="shrink-0 text-amber-500"
                             aria-label="Dev mode (likely hot reload)"
-                            title="Dev mode (likely hot reload)"
                           />
                         ) : null}
                       </div>

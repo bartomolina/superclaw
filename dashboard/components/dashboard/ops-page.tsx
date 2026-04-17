@@ -1,7 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Flame, HelpCircle, Lock, RefreshCw } from "lucide-react";
+import {
+  Bot,
+  Boxes,
+  Cloud,
+  Database,
+  Eye,
+  EyeOff,
+  Flame,
+  FolderGit2,
+  HelpCircle,
+  Lock,
+  Package,
+  PlugZap,
+  RefreshCw,
+  Search,
+  Server,
+  Shield,
+  type LucideIcon,
+} from "lucide-react";
 
 import { authFetch } from "@/components/dashboard/auth";
 import { fmtUptime } from "@/components/dashboard/debug/utils";
@@ -110,6 +128,45 @@ type BrowserProfilesData = {
   }>;
 };
 
+type DockerData = {
+  available: boolean;
+  running: boolean;
+  error?: string | null;
+  containers: Array<{
+    id: string;
+    name: string;
+    image: string | null;
+    imageTag: string | null;
+    state: string | null;
+    health: string | null;
+    status: string;
+    runningFor: string | null;
+    ports: string[];
+    restartPolicy: string | null;
+    composeProject: string | null;
+    composeService: string | null;
+    command: string | null;
+    createdAt: string | null;
+    startedAt: string | null;
+    finishedAt: string | null;
+  }>;
+};
+
+type FileSearchStoresData = {
+  authConfigured: boolean;
+  baseUrl: string | null;
+  error?: string | null;
+  stores: Array<{
+    name: string;
+    displayName: string | null;
+    createTime: string | null;
+    updateTime: string | null;
+    activeDocumentsCount: number | null;
+    failedDocumentsCount: number | null;
+    sizeBytes: number | null;
+  }>;
+};
+
 type AcpData = {
   enabled: boolean;
   pluginEnabled: boolean;
@@ -156,8 +213,13 @@ function pill(label: string, tone: "neutral" | "success" | "warning") {
   return <span className={`inline-flex items-center rounded-md px-2 py-1 text-[10px] font-medium uppercase tracking-wider ${classes}`}>{label}</span>;
 }
 
-function SectionTitle({ title }: { title: string }) {
-  return <h2 className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{title}</h2>;
+function SectionTitle({ title, icon: Icon }: { title: string; icon: LucideIcon }) {
+  return (
+    <h2 className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
+      <Icon size={14} className="text-zinc-500 dark:text-zinc-400" />
+      <span>{title}</span>
+    </h2>
+  );
 }
 
 function DetailRow({ label, value, detail }: { label: ReactNode; value?: ReactNode; detail?: ReactNode }) {
@@ -174,6 +236,37 @@ function DetailRow({ label, value, detail }: { label: ReactNode; value?: ReactNo
 
 function InlineMeta({ children }: { children: ReactNode }) {
   return <span className="ml-2 break-all text-xs text-zinc-400 dark:text-zinc-500">{children}</span>;
+}
+
+function containsMaskableMachineIpv4(value: string | null | undefined) {
+  if (!value) return false;
+
+  const matches = value.match(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g) || [];
+  return matches.some((match) => {
+    const ip = match.replace(/:\d+$/, "");
+    return !ip.startsWith("127.") && ip !== "0.0.0.0";
+  });
+}
+
+function SensitiveValue({ value, link = false, className = "" }: { value: string; link?: boolean; className?: string }) {
+  const [revealed, setRevealed] = useState(false);
+
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5 align-top">
+      <span className={`min-w-0 break-all ${className}`}>
+        {revealed ? (link ? <ExternalLink value={value} /> : value) : <span className="select-none tracking-[0.35em]">••••••</span>}
+      </span>
+      <button
+        type="button"
+        onClick={() => setRevealed((current) => !current)}
+        className="shrink-0 rounded-md p-0.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+        aria-label={revealed ? "Hide sensitive value" : "Reveal sensitive value"}
+        title={revealed ? "Hide" : "Reveal"}
+      >
+        {revealed ? <EyeOff size={12} /> : <Eye size={12} />}
+      </button>
+    </span>
+  );
 }
 
 function toHref(value: string | null | undefined) {
@@ -258,6 +351,48 @@ function sortSystemdServices(services: PerformanceData["systemd"]) {
   });
 }
 
+function dockerStateTone(state: string | null) {
+  if (state === "running") return "success" as const;
+  if (state === "exited" || state === "dead" || state === "restarting") return "warning" as const;
+  return "neutral" as const;
+}
+
+function dockerHealthTone(health: string | null) {
+  if (health === "healthy") return "success" as const;
+  if (health === "unhealthy") return "warning" as const;
+  return "neutral" as const;
+}
+
+function formatRelativeDockerTime(value: string | null | undefined, verb: string) {
+  if (!value) return null;
+
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+
+  const seconds = Math.max(0, (Date.now() - timestamp) / 1000);
+  return `${verb} ${fmtUptime(seconds)} ago`;
+}
+
+function formatBytes(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  if (value < 1024) return `${value} B`;
+
+  const units = ["KB", "MB", "GB", "TB"];
+  let next = value / 1024;
+  let index = 0;
+
+  while (next >= 1024 && index < units.length - 1) {
+    next /= 1024;
+    index += 1;
+  }
+
+  return `${next.toFixed(next >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function compactStoreName(name: string) {
+  return name.replace(/^fileSearchStores\//, "");
+}
+
 function RepoRows({ repos }: { repos: ReposData["repos"] }) {
   const [expandedRepos, setExpandedRepos] = useState<Record<string, boolean>>({});
 
@@ -281,8 +416,8 @@ function RepoRows({ repos }: { repos: ReposData["repos"] }) {
               <div className="min-w-0">
                 <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
                   <span>{repo.name}</span>
-                  {repo.visibility === "private" ? <Lock size={12} className="shrink-0 text-zinc-400 dark:text-zinc-500" aria-label="Private repo" title="Private repo" /> : null}
-                  {repo.visibility === "unknown" ? <HelpCircle size={12} className="shrink-0 text-zinc-400 dark:text-zinc-500" aria-label="Repo visibility unknown" title="Repo visibility unknown" /> : null}
+                  {repo.visibility === "private" ? <Lock size={12} className="shrink-0 text-zinc-400 dark:text-zinc-500" aria-label="Private repo" /> : null}
+                  {repo.visibility === "unknown" ? <HelpCircle size={12} className="shrink-0 text-zinc-400 dark:text-zinc-500" aria-label="Repo visibility unknown" /> : null}
                 </div>
                 {expanded ? (
                   <div className="mt-0.5 text-xs text-zinc-400 dark:text-zinc-500">
@@ -311,12 +446,16 @@ export function OpsPage() {
   const [convex, setConvex] = useState<ConvexData | null>(null);
   const [postgres, setPostgres] = useState<PostgresData | null>(null);
   const [browserProfiles, setBrowserProfiles] = useState<BrowserProfilesData | null>(null);
+  const [docker, setDocker] = useState<DockerData | null>(null);
+  const [fileSearch, setFileSearch] = useState<FileSearchStoresData | null>(null);
   const [acp, setAcp] = useState<AcpData | null>(null);
   const [cloudflared, setCloudflared] = useState<CloudflaredStatus | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
   const [repos, setRepos] = useState<ReposData | null>(null);
   const [expandedConvex, setExpandedConvex] = useState<Record<string, boolean>>({});
+  const [expandedDocker, setExpandedDocker] = useState<Record<string, boolean>>({});
+  const [expandedFileSearch, setExpandedFileSearch] = useState<Record<string, boolean>>({});
   const [expandedSystemd, setExpandedSystemd] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -342,6 +481,12 @@ export function OpsPage() {
         authFetch(`/api/browser-profiles${refreshSuffix}`)
           .catch(() => ({ profiles: [] }))
           .then((browserProfilesData) => setBrowserProfiles(browserProfilesData)),
+        authFetch(`/api/docker${refreshSuffix}`)
+          .catch(() => ({ available: false, running: false, containers: [] }))
+          .then((dockerData) => setDocker(dockerData)),
+        authFetch(`/api/file-search-stores${refreshSuffix}`)
+          .catch(() => ({ authConfigured: false, baseUrl: null, stores: [], error: null }))
+          .then((fileSearchData) => setFileSearch(fileSearchData)),
         authFetch("/api/acp")
           .catch(() => ({ enabled: false, pluginEnabled: false, backend: null, defaultAgent: null, allowedAgents: [], customAgents: [], selectableAgents: [] }))
           .then((acpData) => setAcp(acpData)),
@@ -374,6 +519,14 @@ export function OpsPage() {
     setExpandedConvex((current) => ({ ...current, [id]: !current[id] }));
   }
 
+  function toggleDocker(id: string) {
+    setExpandedDocker((current) => ({ ...current, [id]: !current[id] }));
+  }
+
+  function toggleFileSearch(id: string) {
+    setExpandedFileSearch((current) => ({ ...current, [id]: !current[id] }));
+  }
+
   function toggleSystemd(unit: string) {
     setExpandedSystemd((current) => ({ ...current, [unit]: !current[unit] }));
   }
@@ -391,12 +544,17 @@ export function OpsPage() {
   const repoList = repos?.repos || [];
   const postgresDatabases = postgres?.databases || [];
   const browserProfileList = browserProfiles?.profiles || [];
+  const dockerContainers = docker?.containers || [];
+  const fileSearchStores = fileSearch?.stores || [];
+  const runningDockerCount = dockerContainers.filter((container) => container.state === "running").length;
 
   const loadingAccounts = loading && !accounts;
   const loadingCloudflared = loading && !cloudflared;
   const loadingConvex = loading && !convex;
   const loadingPostgres = loading && !postgres;
   const loadingBrowserProfiles = loading && !browserProfiles;
+  const loadingDocker = loading && !docker;
+  const loadingFileSearch = loading && !fileSearch;
   const loadingAcp = loading && !acp;
   const loadingMcp = loading && mcpServers.length === 0;
   const loadingPerformance = loading && !performance;
@@ -420,7 +578,7 @@ export function OpsPage() {
       </div>
 
       <div className="space-y-2">
-        <SectionTitle title="Kanban" />
+        <SectionTitle title="Kanban" icon={Boxes} />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {loadingKanban ? (
@@ -456,7 +614,7 @@ export function OpsPage() {
       </div>
 
       <div className="space-y-2">
-        <SectionTitle title={`Accounts (${accountProviders.length})`} />
+        <SectionTitle title={`Accounts (${accountProviders.length})`} icon={Shield} />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {loadingAccounts ? (
@@ -474,7 +632,7 @@ export function OpsPage() {
                     label={hasLines || !inlineDetail ? provider.label : (
                       <span>
                         {provider.label}
-                        <InlineMeta>{inlineDetail}</InlineMeta>
+                        <InlineMeta><SensitiveValue value={inlineDetail} /></InlineMeta>
                       </span>
                     )}
                     detail={hasLines ? (
@@ -482,7 +640,7 @@ export function OpsPage() {
                         {provider.lines?.map((line) => (
                           <div key={`${provider.id}-${line.label}`}>
                             <span className="font-medium text-zinc-500 dark:text-zinc-400">{line.label}:</span>{" "}
-                            <span>{line.value}</span>
+                            <SensitiveValue value={line.value} />
                           </div>
                         ))}
                       </div>
@@ -496,7 +654,7 @@ export function OpsPage() {
       </div>
 
       <div className="space-y-2">
-        <SectionTitle title={`Convex DBs (${convexDeployments.length})`} />
+        <SectionTitle title={`Convex DBs (${convexDeployments.length})`} icon={Database} />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {loadingConvex ? (
@@ -541,7 +699,7 @@ export function OpsPage() {
       </div>
 
       <div className="space-y-2">
-        <SectionTitle title={`Postgres DBs (${postgresDatabases.length})`} />
+        <SectionTitle title={`Postgres DBs (${postgresDatabases.length})`} icon={Database} />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {loadingPostgres ? (
@@ -560,7 +718,7 @@ export function OpsPage() {
       </div>
 
       <div className="space-y-2">
-        <SectionTitle title={`Browser profiles (${browserProfileList.length})`} />
+        <SectionTitle title={`Browser profiles (${browserProfileList.length})`} icon={Package} />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {loadingBrowserProfiles ? (
@@ -591,7 +749,7 @@ export function OpsPage() {
       </div>
 
       <div className="space-y-2">
-        <SectionTitle title={`ACP (${acp?.selectableAgents.length || 0})`} />
+        <SectionTitle title={`ACP (${acp?.selectableAgents.length || 0})`} icon={Bot} />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           {loadingAcp ? (
             <div className="px-5 py-4 text-sm text-zinc-400">Loading ACP config...</div>
@@ -612,7 +770,7 @@ export function OpsPage() {
       </div>
 
       <div className="space-y-2">
-        <SectionTitle title={`MCP servers (${mcpServers.length})`} />
+        <SectionTitle title={`MCP servers (${mcpServers.length})`} icon={PlugZap} />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {loadingMcp ? (
@@ -643,7 +801,7 @@ export function OpsPage() {
       </div>
 
       <div className="space-y-2">
-        <SectionTitle title={`Cloudflare Tunnel (${cloudflared?.config.routes?.length || 0})`} />
+        <SectionTitle title={`Cloudflare Tunnel (${cloudflared?.config.routes?.length || 0})`} icon={Cloud} />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {loadingCloudflared ? (
@@ -656,16 +814,16 @@ export function OpsPage() {
                   <div className="px-5 py-4 text-sm text-zinc-400">No hostnames configured</div>
                 ) : (
                   cloudflared.config.routes.map((route) => (
-                    <DetailRow
-                      key={`${route.hostname}-${route.service}`}
-                      label={
-                        <span>
-                          <ExternalLink value={route.hostname} />
-                          <InlineMeta><span className="font-mono">{route.service}</span></InlineMeta>
-                        </span>
-                      }
-                    />
-                  ))
+                  <DetailRow
+                    key={`${route.hostname}-${route.service}`}
+                    label={
+                      <span>
+                        <ExternalLink value={route.hostname} />
+                          <InlineMeta>{containsMaskableMachineIpv4(route.service) ? <SensitiveValue value={route.service} className="font-mono" /> : <span className="font-mono">{route.service}</span>}</InlineMeta>
+                      </span>
+                    }
+                  />
+                ))
                 )}
               </>
             )}
@@ -674,7 +832,7 @@ export function OpsPage() {
       </div>
 
       <div className="space-y-2">
-        <SectionTitle title={`systemd (${systemdServices.length})`} />
+        <SectionTitle title={`systemd (${systemdServices.length})`} icon={Server} />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {loadingPerformance ? (
@@ -709,7 +867,7 @@ export function OpsPage() {
                         <div className="flex items-center gap-2 text-sm text-zinc-800 dark:text-zinc-200">
                           <span className={`h-2 w-2 rounded-full ${dotClass}`} />
                           <span>{service.name}</span>
-                          {service.isDevMode ? <Flame size={12} className="shrink-0 text-amber-500" aria-label="Dev mode (likely hot reload)" title="Dev mode (likely hot reload)" /> : null}
+                          {service.isDevMode ? <Flame size={12} className="shrink-0 text-amber-500" aria-label="Dev mode (likely hot reload)" /> : null}
                           {service.description ? <span className="min-w-0 truncate text-xs text-zinc-400 dark:text-zinc-500">{service.description}</span> : null}
                         </div>
                         {expanded && service.command ? <div className="mt-1 break-all font-mono text-xs text-zinc-400 dark:text-zinc-500">{service.command}</div> : null}
@@ -726,7 +884,7 @@ export function OpsPage() {
       </div>
 
       <div className="space-y-2">
-        <SectionTitle title={`Repos (${visibleRepoCount})`} />
+        <SectionTitle title={`Repos (${visibleRepoCount})`} icon={FolderGit2} />
         {loadingRepos ? (
           <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
             <div className="px-5 py-4 text-sm text-zinc-400">Loading repos...</div>
@@ -738,7 +896,7 @@ export function OpsPage() {
         ) : (
           <div className="space-y-5">
             {[
-              { id: "openclaw", label: "OpenClaw repos", repos: otherRepos },
+              { id: "openclaw", label: "General repos", repos: otherRepos },
               { id: "agents", label: "Agent repos", repos: agentRepos },
             ]
               .filter((group) => group.repos.length > 0)
@@ -755,6 +913,104 @@ export function OpsPage() {
               ))}
           </div>
         )}
+      </div>
+
+      <div className="space-y-2">
+        <SectionTitle title={`File Search stores (${fileSearchStores.length})`} icon={Search} />
+        <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+            {loadingFileSearch ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">Loading File Search stores...</div>
+            ) : !fileSearch?.authConfigured ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">Google File Search is not configured</div>
+            ) : fileSearch.error ? (
+              <div className="px-5 py-4 text-sm text-amber-600 dark:text-amber-400">{fileSearch.error}</div>
+            ) : fileSearchStores.length === 0 ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">No File Search stores found</div>
+            ) : (
+              fileSearchStores.map((store) => {
+                const expanded = !!expandedFileSearch[store.name];
+                const meta = compactStoreName(store.name);
+
+                return (
+                  <button
+                    key={store.name}
+                    type="button"
+                    onClick={() => toggleFileSearch(store.name)}
+                    className="w-full px-5 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="break-all text-sm text-zinc-800 dark:text-zinc-200">{store.displayName || meta}</div>
+                        {expanded ? (
+                          <div className="mt-2 space-y-1 break-all text-xs text-zinc-400 dark:text-zinc-500">
+                            {store.createTime ? <div>created: {new Date(store.createTime).toLocaleString()}</div> : null}
+                            {fileSearch.baseUrl ? <div>api: {fileSearch.baseUrl}</div> : null}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                        {typeof store.activeDocumentsCount === "number" ? pill(`${store.activeDocumentsCount.toLocaleString()} docs`, "neutral") : null}
+                        {typeof store.failedDocumentsCount === "number" && store.failedDocumentsCount > 0 ? pill(`${store.failedDocumentsCount.toLocaleString()} failed`, "warning") : null}
+                        {formatBytes(store.sizeBytes) ? pill(formatBytes(store.sizeBytes) || "", "neutral") : null}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <SectionTitle title={`Docker containers (${runningDockerCount} running / ${dockerContainers.length} total)`} icon={Package} />
+        <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+            {loadingDocker ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">Loading Docker containers...</div>
+            ) : !docker?.available ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">Docker not available on this host</div>
+            ) : dockerContainers.length === 0 ? (
+              <div className="px-5 py-4 text-sm text-zinc-400">No containers found</div>
+            ) : (
+              dockerContainers.map((container) => {
+                const expanded = !!expandedDocker[container.id];
+                const startedText = formatRelativeDockerTime(container.startedAt, "started");
+                const finishedText = formatRelativeDockerTime(container.finishedAt, "stopped");
+                const composeText = [container.composeProject, container.composeService].filter(Boolean).join(" / ");
+
+                return (
+                  <button
+                    key={container.id}
+                    type="button"
+                    onClick={() => toggleDocker(container.id)}
+                    className="w-full px-5 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm text-zinc-800 dark:text-zinc-200">{container.name}</div>
+                        {expanded ? (
+                          <div className="mt-2 space-y-1 break-all text-xs text-zinc-400 dark:text-zinc-500">
+                            {container.image ? <div>image: {container.image}</div> : null}
+                            {container.ports.length > 0 ? <div>ports: {container.ports.join(", ")}</div> : null}
+                            {container.restartPolicy ? <div>restart: {container.restartPolicy}</div> : null}
+                            {composeText ? <div>compose: {composeText}</div> : null}
+                            {container.state === "running" ? (startedText ? <div>{startedText}</div> : null) : finishedText ? <div>{finishedText}</div> : startedText ? <div>{startedText}</div> : null}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {container.health && container.health !== "healthy" ? pill(container.health, dockerHealthTone(container.health)) : null}
+                        {pill(container.state || "unknown", dockerStateTone(container.state))}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
