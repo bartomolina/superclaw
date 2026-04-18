@@ -17,6 +17,7 @@ import {
 import {
   SortableContext,
   arrayMove,
+  hasSortableData,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -1408,11 +1409,16 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     );
 
     setDragColumns((current) => {
-      const working = cloneColumns(current ?? visibleBoardColumns);
+      const baseColumns = current ?? visibleBoardColumns;
+      const activeContainerId = getContainerId(cardId, baseColumns);
+      const overContainerId = getContainerId(overId, baseColumns);
+      if (!activeContainerId || !overContainerId) return current;
+
+      const working = cloneColumns(baseColumns);
       const changed = applyOverMove(working, cardId, overId, insertAfterOverCard);
       if (!changed) return current;
 
-      const previousSig = columnsSignature(current ?? visibleBoardColumns);
+      const previousSig = columnsSignature(baseColumns);
       const nextSig = columnsSignature(working);
       if (previousSig === nextSig) return current;
 
@@ -1463,6 +1469,25 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     }
 
     let finalColumns = dragColumns;
+
+    if (
+      event.over &&
+      hasSortableData(event.active) &&
+      hasSortableData(event.over) &&
+      event.active.data.current.sortable.containerId === event.over.data.current.sortable.containerId &&
+      event.active.data.current.sortable.index !== event.over.data.current.sortable.index
+    ) {
+      const columnId = event.over.data.current.sortable.containerId as Id<"columns">;
+      const activeIndex = event.active.data.current.sortable.index;
+      const overIndex = event.over.data.current.sortable.index;
+      const fallback = cloneColumns(visibleBoardColumns);
+      const targetColumn = fallback.find((column) => column._id === columnId);
+
+      if (targetColumn) {
+        targetColumn.cards = arrayMove(targetColumn.cards, activeIndex, overIndex);
+        finalColumns = fallback;
+      }
+    }
 
     if (!finalColumns && event.over) {
       const fallback = cloneColumns(visibleBoardColumns);
@@ -1958,17 +1983,21 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                   <button
                     type="button"
                     onClick={() => setIsArchiveOpen(true)}
-                    className="inline-flex items-center rounded-full border border-zinc-200 bg-white/95 px-3 py-2 text-sm font-medium text-zinc-600 shadow-lg shadow-zinc-950/5 backdrop-blur transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950/95 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
+                    title="Archive"
+                    aria-label="Archive"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-600 shadow-lg shadow-zinc-950/5 backdrop-blur transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950/95 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
                   >
-                    Archive
+                    <Archive className="h-4 w-4" />
                   </button>
                 ) : null}
                 <button
                   type="button"
                   onClick={() => setIsActivityOpen(true)}
-                  className="inline-flex items-center rounded-full border border-zinc-200 bg-white/95 px-3 py-2 text-sm font-medium text-zinc-600 shadow-lg shadow-zinc-950/5 backdrop-blur transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950/95 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
+                  title="Activity"
+                  aria-label="Activity"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-600 shadow-lg shadow-zinc-950/5 backdrop-blur transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950/95 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
                 >
-                  Activity
+                  <Clock3 className="h-4 w-4" />
                 </button>
               </div>
             </div>
