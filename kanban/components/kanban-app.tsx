@@ -159,13 +159,6 @@ type ColumnModel = {
   cards: CardModel[];
 };
 
-type CardMoveLogPosition = {
-  cardTitle: string;
-  columnId: Id<"columns">;
-  columnName: string;
-  position: number;
-};
-
 type BoardView = {
   board: BoardModel;
   columns: ColumnModel[];
@@ -520,68 +513,6 @@ function columnsSignature(columns: ColumnModel[]) {
     .join("|");
 }
 
-function findCardMoveLogPosition(columns: ColumnModel[], cardId: Id<"cards">): CardMoveLogPosition | null {
-  for (const column of columns) {
-    const position = column.cards.findIndex((card) => card._id === cardId);
-    if (position < 0) continue;
-
-    const card = column.cards[position];
-    return {
-      cardTitle: card.title,
-      columnId: column._id,
-      columnName: formatColumnName(column.name),
-      position,
-    };
-  }
-
-  return null;
-}
-
-function describeCardTarget(columns: ColumnModel[], overId: string) {
-  if (overId.startsWith("column-")) {
-    const columnId = overId.slice("column-".length) as Id<"columns">;
-    const column = columns.find((candidate) => candidate._id === columnId);
-    return {
-      type: "column" as const,
-      columnId,
-      columnName: column ? formatColumnName(column.name) : null,
-      cardTitle: null,
-      cardIndex: null,
-    };
-  }
-
-  for (const column of columns) {
-    const cardIndex = column.cards.findIndex((card) => card._id === (overId as Id<"cards">));
-    if (cardIndex < 0) continue;
-
-    return {
-      type: "card" as const,
-      columnId: column._id,
-      columnName: formatColumnName(column.name),
-      cardTitle: column.cards[cardIndex]?.title ?? null,
-      cardIndex,
-    };
-  }
-
-  return {
-    type: "unknown" as const,
-    columnId: null,
-    columnName: null,
-    cardTitle: null,
-    cardIndex: null,
-  };
-}
-
-function describeDragRect(rect: { top: number; height: number } | null | undefined) {
-  if (!rect) return null;
-
-  return {
-    top: Math.round(rect.top),
-    height: Math.round(rect.height),
-    centerY: Math.round(rect.top + rect.height / 2),
-  };
-}
-
 function getEventClientY(event: Event | null | undefined) {
   if (!event) return null;
 
@@ -611,35 +542,6 @@ function getDragPointerY(activatorEvent: Event | null | undefined, delta: { y: n
   if (initialY === null || !delta) return null;
 
   return initialY + delta.y;
-}
-
-function describeInsertDecision(
-  activeRect: { top: number; height: number; centerY: number } | null,
-  overRect: { top: number; height: number; centerY: number } | null,
-  insertAfterOverCard: boolean,
-  pointerY: number | null,
-) {
-  if (!overRect || overRect.height === 0) {
-    return null;
-  }
-
-  const activeOffsetWithinOver = activeRect ? activeRect.centerY - overRect.top : null;
-  const activeOffsetRatio = activeOffsetWithinOver === null ? null : activeOffsetWithinOver / overRect.height;
-  const pointerOffsetWithinOver = pointerY === null ? null : pointerY - overRect.top;
-  const pointerOffsetRatio = pointerOffsetWithinOver === null ? null : pointerOffsetWithinOver / overRect.height;
-  const decisionY = pointerY ?? activeRect?.centerY ?? null;
-
-  return {
-    decision: insertAfterOverCard ? "after" : "before",
-    decisionSource: pointerY === null ? "activeRect" : "pointer",
-    pointerY: pointerY === null ? null : Math.round(pointerY),
-    pointerOffsetWithinOver: pointerOffsetWithinOver === null ? null : Math.round(pointerOffsetWithinOver),
-    pointerOffsetRatio: pointerOffsetRatio === null ? null : Number(pointerOffsetRatio.toFixed(2)),
-    activeOffsetWithinOver: activeOffsetWithinOver === null ? null : Math.round(activeOffsetWithinOver),
-    activeOffsetRatio: activeOffsetRatio === null ? null : Number(activeOffsetRatio.toFixed(2)),
-    midpointY: overRect.centerY,
-    distanceFromMidpoint: decisionY === null ? null : Math.round(decisionY - overRect.centerY),
-  };
 }
 
 function cardSortableIds(cards: CardModel[]) {
@@ -784,7 +686,6 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const boardReorderQueueRef = useRef<Promise<void>>(Promise.resolve());
   const cardLayoutQueueRef = useRef<Promise<void>>(Promise.resolve());
   const latestCardLayoutRequestRef = useRef(0);
-  const lastCardMoveLogRef = useRef<string | null>(null);
   const [selectedBoardId, setSelectedBoardId] = useState<Id<"boards"> | null>(null);
   const [newBoardName, setNewBoardName] = useState("");
   const [showNewBoardForm, setShowNewBoardForm] = useState(false);
@@ -1598,7 +1499,6 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     const cardId = String(event.active.id) as Id<"cards">;
 
     setActiveDragCardId(cardId);
-    lastCardMoveLogRef.current = null;
 
     if (dndColumns.length > 0) {
       setDragColumns(cloneColumns(dndColumns));
@@ -1632,45 +1532,6 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
       const nextSig = columnsSignature(working);
       if (previousSig === nextSig) return current;
 
-      const projected = findCardMoveLogPosition(working, cardId);
-      if (projected) {
-        const target = describeCardTarget(baseColumns, overId);
-        const activeRect = describeDragRect(event.active.rect.current.translated ?? event.active.rect.current.initial);
-        const overRect = describeDragRect(event.over?.rect);
-        const insertDecision = describeInsertDecision(activeRect, overRect, insertAfterOverCard, pointerY);
-        const targetColumn = working.find((column) => column._id === projected.columnId);
-        const logSig = `${projected.columnId}:${projected.position}:${overId}:${insertAfterOverCard}:${activeRect?.centerY ?? "x"}:${overRect?.centerY ?? "x"}`;
-        if (lastCardMoveLogRef.current !== logSig) {
-          lastCardMoveLogRef.current = logSig;
-          console.info(
-            `[kanban:dnd] hover "${projected.cardTitle}" -> ${projected.columnName} position ${projected.position + 1} ${insertDecision ? `(${insertDecision.decision}, ${insertDecision.decisionSource}Ratio=${insertDecision.pointerOffsetRatio ?? insertDecision.activeOffsetRatio})` : ""} via ${target.type} over=${overId}`,
-            {
-              cardId,
-              overId,
-              overType: target.type,
-              overColumnId: target.columnId,
-              overColumnName: target.columnName,
-              overCardTitle: target.cardTitle,
-              overCardIndex: target.cardIndex,
-              projectedColumnId: projected.columnId,
-              projectedColumnName: projected.columnName,
-              projectedPosition: projected.position,
-              projectedHumanPosition: projected.position + 1,
-              insertAfterOverCard,
-              insertAfterThreshold: CARD_INSERT_AFTER_THRESHOLD,
-              insertDecision,
-              activeRect,
-              overRect,
-              targetColumnCards: targetColumn?.cards.map((card, index) => ({
-                index,
-                id: card._id,
-                title: card.title,
-              })) ?? [],
-            },
-          );
-        }
-      }
-
       return working;
     });
   }
@@ -1678,7 +1539,6 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   function handleCardDragCancel() {
     setActiveDragCardId(null);
     setDragColumns(null);
-    lastCardMoveLogRef.current = null;
   }
 
   async function handleRunAgentNow(agentId: string) {
@@ -1715,7 +1575,6 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     if (!boardView) {
       setActiveDragCardId(null);
       setDragColumns(null);
-      lastCardMoveLogRef.current = null;
       return;
     }
 
@@ -1759,23 +1618,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     if (!finalColumns || columnsSignature(finalColumns) === boardColumnsSig) {
       setActiveDragCardId(null);
       setDragColumns(null);
-      lastCardMoveLogRef.current = null;
       return;
-    }
-
-    const finalPosition = findCardMoveLogPosition(finalColumns, cardId);
-    if (finalPosition) {
-      console.info(
-        `[kanban:dnd] drop "${finalPosition.cardTitle}" -> ${finalPosition.columnName} position ${finalPosition.position + 1}`,
-        {
-          cardId,
-          columnId: finalPosition.columnId,
-          columnName: finalPosition.columnName,
-          position: finalPosition.position,
-          humanPosition: finalPosition.position + 1,
-          source: finalColumns === dragColumns ? "dragColumns" : "fallback",
-        },
-      );
     }
 
     const layoutPayload = {
@@ -1787,7 +1630,6 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     };
 
     setActiveDragCardId(null);
-    lastCardMoveLogRef.current = null;
 
     const requestId = latestCardLayoutRequestRef.current + 1;
     latestCardLayoutRequestRef.current = requestId;
