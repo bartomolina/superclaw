@@ -3,6 +3,10 @@ import { optionalAgentId } from "@/lib/server/validate";
 import { gatewayCall, runOpenClaw } from "@/lib/server/openclaw/cli";
 import { json } from "@/lib/server/openclaw/http";
 
+const SKILLS_LIST_TIMEOUT_MS = 30_000;
+const SKILLS_CACHE_TTL_MS = 60_000;
+const SKILLS_STALE_FALLBACK_TTL_MS = 10 * 60_000;
+
 type SkillRecord = {
   name: string;
   emoji?: string;
@@ -29,6 +33,14 @@ type SkillsListResponse = {
 type SkillsStatusResponse = {
   skills?: SkillRecord[];
 };
+
+type SkillsCacheEntry = {
+  skills: SkillRecord[];
+  cachedAt: number;
+};
+
+let skillsCache: SkillsCacheEntry | null = null;
+let inflightSkillsLoad: Promise<SkillRecord[]> | null = null;
 
 function normalizeSkill(skill: SkillRecord) {
   return {
@@ -117,36 +129,61 @@ function mergeSkills(skills: SkillRecord[]) {
   return Array.from(merged.values());
 }
 
-export async function handleSkills() {
-  const warnings: string[] = [];
-  const combinedSkills: SkillRecord[] = [];
+async function loadSkillsList() {
+  const now = Date.now();
 
-  try {
-    const { stdout, stderr } = await runOpenClaw(["skills", "list", "--json"], { timeoutMs: 15_000 });
-    const data = parseCliJson<SkillsListResponse>(stdout, stderr, { skills: [] });
-    combinedSkills.push(...(data.skills || []));
-  } catch (error) {
-    warnings.push(`openclaw skills list --json: ${error instanceof Error ? error.message : String(error)}`);
+  if (skillsCache && now - skillsCache.cachedAt < SKILLS_CACHE_TTL_MS) {
+    return { skills: skillsCache.skills, warnings: [] as string[] };
   }
 
+  if (!inflightSkillsLoad) {
+    inflightSkillsLoad = (async () => {
+      const { stdout, stderr } = await runOpenClaw(["skills", "list", "--json"], { timeoutMs: SKILLS_LIST_TIMEOUT_MS });
+      const data = parseCliJson<SkillsListResponse>(stdout, stderr, { skills: [] });
+      const merged = mergeSkills(data.skills || []);
+      skillsCache = {
+        skills: merged,
+        cachedAt: Date.now(),
+      };
+      return merged;
+    })().finally(() => {
+      inflightSkillsLoad = null;
+    });
+  }
+
+  try {
+    return { skills: await inflightSkillsLoad, warnings: [] as string[] };
+  } catch (error) {
+    const warning = `openclaw skills list --json: ${error instanceof Error ? error.message : String(error)}`;
+
+    if (skillsCache && now - skillsCache.cachedAt < SKILLS_STALE_FALLBACK_TTL_MS) {
+      return { skills: skillsCache.skills, warnings: [`${warning} (serving cached skills)`] };
+    }
+
+    throw new ApiError(warning, 503);
+  }
+}
+
+export async function handleSkills() {
+  const { skills, warnings } = await loadSkillsList();
+
   return json({
-    skills: mergeSkills(combinedSkills).map(normalizeSkill),
+    skills: skills.map(normalizeSkill),
     ...(warnings.length > 0 ? { warnings } : {}),
   });
 }
+
+const AGENT_SKILLS_TIMEOUT_MS = 30_000;
 
 export async function handleAgentSkills(agentIdRaw: string) {
   const agentId = optionalAgentId(agentIdRaw);
   if (!agentId) throw new ApiError("invalid agent id", 400);
 
   try {
-    const data = (await gatewayCall<SkillsStatusResponse>("skills.status", { agentId })) || {};
+    const data = (await gatewayCall<SkillsStatusResponse>("skills.status", { agentId }, { timeoutMs: AGENT_SKILLS_TIMEOUT_MS })) || {};
     const effectiveSkills = (data.skills || []).filter((skill) => skill.eligible);
     return json({ skills: effectiveSkills.map(normalizeSkill) });
   } catch (error) {
-    return json({
-      skills: [],
-      warnings: [`skills.status(${agentId}): ${error instanceof Error ? error.message : String(error)}`],
-    });
+    throw new ApiError(`skills.status(${agentId}): ${error instanceof Error ? error.message : String(error)}`, 503);
   }
 }

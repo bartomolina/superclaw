@@ -20,6 +20,19 @@ export type RepoSummary = {
   active: boolean;
 };
 
+export type BareRepoSummary = {
+  name: string;
+  path: string;
+  branch: string | null;
+  hasCommits: boolean;
+  remote: string | null;
+};
+
+type ReposSnapshot = {
+  repos: RepoSummary[];
+  bareRepos: BareRepoSummary[];
+};
+
 const REPOS_TTL_MS = 300_000;
 const GITHUB_VISIBILITY_TTL_MS = 1_800_000;
 const GITHUB_VISIBILITY_BATCH_SIZE = 20;
@@ -31,6 +44,12 @@ const FIND_GIT_REPOS_SCRIPT = [
   `find ${JSON.stringify(OPENCLAW_HOME)} -maxdepth 4`,
   "\\( -path '*/node_modules' -o -path '*/vendor_imports' -o -path '*/.tmp' -o -path '*/dist' -o -path '*/.next' \\) -prune -o",
   "-type d -name .git -print",
+].join(" ");
+
+const FIND_BARE_GIT_REPOS_SCRIPT = [
+  `find ${JSON.stringify(OPENCLAW_HOME)} -maxdepth 6`,
+  "\\( -path '*/node_modules' -o -path '*/vendor_imports' -o -path '*/.tmp' -o -path '*/dist' -o -path '*/.next' -o -path '*/.cache' \\) -prune -o",
+  "-type d -name '*.git' -print",
 ].join(" ");
 
 function packageJsonHasConvex(repoRoot: string) {
@@ -57,9 +76,9 @@ function isUsefulRepoRoot(repoRoot: string) {
   return repoRoot.startsWith(`${OPENCLAW_HOME}${path.sep}`) || repoRoot === OPENCLAW_HOME;
 }
 
-let reposCache: RepoSummary[] | null = null;
+let reposCache: ReposSnapshot | null = null;
 let reposCacheTime = 0;
-let reposCacheInFlight: Promise<RepoSummary[]> | null = null;
+let reposCacheInFlight: Promise<ReposSnapshot> | null = null;
 const githubVisibilityCache = new Map<string, { visibility: RepoSummary["visibility"]; cachedAt: number }>();
 
 function repoKind(repoRoot: string): RepoSummary["kind"] {
@@ -270,20 +289,80 @@ export async function discoverGitRepoRoots() {
   }
 }
 
+async function isBareRepo(gitDir: string) {
+  try {
+    const { stdout } = await runCommand("git", ["--git-dir", gitDir, "rev-parse", "--is-bare-repository"], { timeoutMs: 5_000 });
+    return stdout.trim() === "true";
+  } catch {
+    return false;
+  }
+}
+
+export async function discoverBareGitRepoRoots() {
+  try {
+    const { stdout } = await runCommand("bash", ["-lc", FIND_BARE_GIT_REPOS_SCRIPT], { timeoutMs: 20_000 });
+    const candidates = Array.from(
+      new Set(
+        stdout
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .filter(isUsefulRepoRoot),
+      ),
+    );
+
+    const checks = await Promise.all(candidates.map(async (gitDir) => ((await isBareRepo(gitDir)) ? gitDir : null)));
+    return checks.filter((gitDir): gitDir is string => Boolean(gitDir)).sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
+
+async function readBareHasCommits(gitDir: string) {
+  try {
+    await runCommand("git", ["--git-dir", gitDir, "rev-parse", "--verify", "HEAD"], { timeoutMs: 10_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function inspectBareRepo(gitDir: string): Promise<BareRepoSummary> {
+  const [branch, hasCommits, remote] = await Promise.all([
+    readTrimmed("git", ["--git-dir", gitDir, "symbolic-ref", "--short", "HEAD"], OPENCLAW_HOME),
+    readBareHasCommits(gitDir),
+    readTrimmed("git", ["--git-dir", gitDir, "remote", "get-url", "origin"], OPENCLAW_HOME),
+  ]);
+
+  return {
+    name: path.basename(gitDir),
+    path: gitDir,
+    branch,
+    hasCommits,
+    remote,
+  };
+}
+
 async function loadRepos() {
-  const [repoRoots, activeAgentWorkspaces] = await Promise.all([discoverGitRepoRoots(), listActiveAgentWorkspacePaths()]);
-  const repos = await Promise.all(repoRoots.map((repoRoot) => inspectRepo(repoRoot, activeAgentWorkspaces)));
+  const [repoRoots, bareRepoRoots, activeAgentWorkspaces] = await Promise.all([discoverGitRepoRoots(), discoverBareGitRepoRoots(), listActiveAgentWorkspacePaths()]);
+  const [repos, bareRepos] = await Promise.all([
+    Promise.all(repoRoots.map((repoRoot) => inspectRepo(repoRoot, activeAgentWorkspaces))),
+    Promise.all(bareRepoRoots.map((gitDir) => inspectBareRepo(gitDir))),
+  ]);
   const visibilityBySlug = await loadGitHubVisibilities(repos);
 
-  return repos
-    .map((repo) => {
-      const githubRemote = parseGitHubRemote(repo.remote);
-      return {
-        ...repo,
-        visibility: githubRemote ? (visibilityBySlug.get(githubRemote.slug) ?? "unknown") : "unknown",
-      };
-    })
-    .sort((a, b) => a.path.localeCompare(b.path));
+  return {
+    repos: repos
+      .map((repo) => {
+        const githubRemote = parseGitHubRemote(repo.remote);
+        return {
+          ...repo,
+          visibility: githubRemote ? (visibilityBySlug.get(githubRemote.slug) ?? "unknown") : "unknown",
+        };
+      })
+      .sort((a, b) => a.path.localeCompare(b.path)),
+    bareRepos: bareRepos.sort((a, b) => a.path.localeCompare(b.path)),
+  };
 }
 
 function refreshRepos() {
@@ -294,7 +373,7 @@ function refreshRepos() {
         reposCacheTime = Date.now();
         return repos;
       })
-      .catch(() => reposCache || [])
+      .catch(() => reposCache || { repos: [], bareRepos: [] })
       .finally(() => {
         reposCacheInFlight = null;
       });
@@ -303,7 +382,7 @@ function refreshRepos() {
   return reposCacheInFlight;
 }
 
-export async function listRepos(forceRefresh = false) {
+export async function listReposSnapshot(forceRefresh = false) {
   if (forceRefresh) return refreshRepos();
 
   const now = Date.now();
@@ -317,6 +396,10 @@ export async function listRepos(forceRefresh = false) {
   return refreshRepos();
 }
 
+export async function listRepos(forceRefresh = false) {
+  return (await listReposSnapshot(forceRefresh)).repos;
+}
+
 export async function handleReposList(forceRefresh = false) {
-  return json({ repos: await listRepos(forceRefresh) });
+  return json(await listReposSnapshot(forceRefresh));
 }

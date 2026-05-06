@@ -82,49 +82,59 @@ export default function App() {
       return { data: fallback, ok: false };
     }
 
+    async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {
+      const queue = [...items];
+      const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+        while (queue.length > 0) {
+          const next = queue.shift();
+          if (!next) return;
+          await worker(next);
+        }
+      });
+
+      await Promise.all(workers);
+    }
+
     function updateAgent(agentId: string, updater: (agent: Agent) => Agent) {
       setAgents((current) => current.map((agent) => (agent.id === agentId ? updater(agent) : agent)));
     }
 
-    const skillTasks = mapped.map((agent) =>
-      fetchWithRetry(`/api/agents/${agent.id}/skills`, { skills: [] }, 1).then((skillsResult) => {
-        updateAgent(agent.id, (currentAgent) => ({
+    const skillTask = runWithConcurrency(mapped, 3, async (agent) => {
+      const skillsResult = await fetchWithRetry(`/api/agents/${agent.id}/skills`, { skills: [] }, 1);
+      updateAgent(agent.id, (currentAgent) => ({
+        ...currentAgent,
+        skills: (skillsResult.data.skills || []).map((s: any) => ({
+          name: s.name,
+          emoji: s.emoji || "📦",
+          description: s.description || "",
+          eligible: s.eligible ?? false,
+          disabled: s.disabled ?? false,
+          source: s.source || "",
+        })),
+        skillsState: skillsResult.ok ? "ready" : "error",
+      }));
+    });
+
+    const channelTask = fetchWithRetry(`/api/agents/channels`, { channelsByAgent: {} }, 2).then((channelsResult) => {
+      const channelsByAgent = channelsResult.data.channelsByAgent || {};
+
+      setAgents((current) =>
+        current.map((currentAgent) => ({
           ...currentAgent,
-          skills: (skillsResult.data.skills || []).map((s: any) => ({
-            name: s.name,
-            emoji: s.emoji || "📦",
-            description: s.description || "",
-            eligible: s.eligible ?? false,
-            disabled: s.disabled ?? false,
-            source: s.source || "",
+          channels: ((channelsByAgent[currentAgent.id] || []) as any[]).map((c: any) => ({
+            id: c.id,
+            name: c.name || c.id,
+            detail: c.detail || null,
+            running: c.running ?? false,
+            mode: c.mode || null,
+            streaming: c.streaming || null,
+            pairedUsers: (c.pairedUsers || []).map((u: any) => ({ id: u.id, name: u.name || u.id, source: u.source })),
+            groups: (c.groups || []).map((g: any) => ({ id: g.id, requireMention: g.requireMention ?? true, groupPolicy: g.groupPolicy ?? "allowlist" })),
           })),
-          skillsState: skillsResult.ok ? "ready" : "error",
-        }));
-      }),
-    );
-
-    const channelTasks = [
-      fetchWithRetry(`/api/agents/channels`, { channelsByAgent: {} }, 2).then((channelsResult) => {
-        const channelsByAgent = channelsResult.data.channelsByAgent || {};
-
-        setAgents((current) =>
-          current.map((currentAgent) => ({
-            ...currentAgent,
-            channels: ((channelsByAgent[currentAgent.id] || []) as any[]).map((c: any) => ({
-              id: c.id,
-              name: c.name || c.id,
-              detail: c.detail || null,
-              running: c.running ?? false,
-              mode: c.mode || null,
-              streaming: c.streaming || null,
-              pairedUsers: (c.pairedUsers || []).map((u: any) => ({ id: u.id, name: u.name || u.id, source: u.source })),
-              groups: (c.groups || []).map((g: any) => ({ id: g.id, requireMention: g.requireMention ?? true, groupPolicy: g.groupPolicy ?? "allowlist" })),
-            })),
-            channelsState: channelsResult.ok ? "ready" : "error",
-          })),
-        );
-      }),
-    ];
+          channelsState: channelsResult.ok ? "ready" : "error",
+        })),
+      );
+    });
 
     const kanbanTasks = mapped
       .filter((agent) => agent.sandboxed)
@@ -138,7 +148,7 @@ export default function App() {
         }),
       );
 
-    await Promise.all([...skillTasks, ...channelTasks, ...kanbanTasks]);
+    await Promise.all([skillTask, channelTask, ...kanbanTasks]);
   }, []);
 
   useLayoutEffect(() => {

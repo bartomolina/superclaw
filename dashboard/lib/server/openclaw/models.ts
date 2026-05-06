@@ -1,19 +1,46 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import fs from "node:fs";
+import path from "node:path";
+
 import { NextRequest } from "next/server";
 
 import { optionalString, requiredString } from "@/lib/server/validate";
 import { applyConfig, getConfigDocument, parseConfigRaw, readLocalConfig } from "@/lib/server/openclaw/config";
 import { json, parseBody } from "@/lib/server/openclaw/http";
 import { runOpenClawJson } from "@/lib/server/openclaw/cli";
+import { OPENCLAW_PACKAGE_JSON } from "@/lib/server/openclaw/constants";
 
 let modelsCache: Record<string, any[]> | null = null;
 let modelsCacheTime = 0;
 let modelsCacheInFlight: Promise<Record<string, any[]>> | null = null;
 
 const MODELS_CATALOG_TTL_MS = 300_000;
+const BUILT_IN_CATALOG_PROVIDER_IDS = [
+  "google",
+];
 
-async function loadModelsCatalog() {
-  const data = await runOpenClawJson<{ models?: Array<any> }>(["models", "list", "--all", "--json"], {}, { timeoutMs: 60_000 });
+function getKnownCatalogProviderIds() {
+  const providers = new Set(BUILT_IN_CATALOG_PROVIDER_IDS);
+  const packageRoot = path.dirname(OPENCLAW_PACKAGE_JSON);
+  const extensionsDir = path.join(packageRoot, "dist", "extensions");
+
+  try {
+    for (const entry of fs.readdirSync(extensionsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const providerDir = path.join(extensionsDir, entry.name);
+      if (fs.existsSync(path.join(providerDir, "provider-catalog.js")) || fs.existsSync(path.join(providerDir, "catalog-provider.js"))) {
+        providers.add(entry.name);
+      }
+    }
+  } catch {
+    // Best-effort only. The actual provider model list still loads through the OpenClaw CLI per provider.
+  }
+
+  return Array.from(providers).sort();
+}
+
+async function loadModelCatalogRows(args: string[], timeoutMs: number) {
+  const data = await runOpenClawJson<{ models?: Array<any> }>(args, {}, { timeoutMs });
   const byProvider = new Map<string, Map<string, { key: string; name: string; input: string | null; contextWindow: number; available: boolean }>>();
 
   for (const model of data.models || []) {
@@ -55,6 +82,17 @@ async function loadModelsCatalog() {
   );
 }
 
+async function loadModelsCatalog() {
+  try {
+    const catalog = await loadModelCatalogRows(["models", "list", "--all", "--json"], 20_000);
+    if (Object.keys(catalog).length > 0) return catalog;
+  } catch (error) {
+    console.warn("Full OpenClaw model catalog unavailable; falling back to configured models", error);
+  }
+
+  return loadModelCatalogRows(["models", "list", "--json"], 15_000);
+}
+
 export async function getModelsCatalog() {
   function refreshModelsCatalog() {
     if (!modelsCacheInFlight) {
@@ -82,6 +120,29 @@ export async function getModelsCatalog() {
   }
 
   return refreshModelsCatalog();
+}
+
+async function getProviderModelsCatalog(provider: string) {
+  const cached = modelsCache?.[provider];
+  if (cached && cached.length > 0) return cached;
+
+  const providerCatalog = await loadModelCatalogRows(["models", "list", "--all", "--provider", provider, "--json"], 35_000);
+  let models = providerCatalog[provider] || [];
+
+  if (models.length === 0) {
+    const configuredCatalog = await loadModelCatalogRows(["models", "list", "--json"], 15_000);
+    models = configuredCatalog[provider] || [];
+  }
+
+  if (models.length > 0) {
+    modelsCache = {
+      ...(modelsCache || {}),
+      [provider]: models,
+    };
+    modelsCacheTime = Date.now();
+  }
+
+  return models;
 }
 
 export function aliasToFullModel(alias: string, providerMap: Record<string, any>) {
@@ -241,16 +302,16 @@ export async function handleModelsGet() {
 
 export async function handleModelsCatalogProviders() {
   const catalog = await getModelsCatalog();
-  const providers = Object.keys(catalog)
+  const providers = Array.from(new Set([...getKnownCatalogProviderIds(), ...Object.keys(catalog)]))
     .sort()
-    .map((provider) => ({ id: provider, count: catalog[provider].length }));
+    .map((provider) => ({ id: provider, count: catalog[provider]?.length ?? null }));
   return json({ providers });
 }
 
 export async function handleModelsCatalogProvider(providerRaw: string) {
   const provider = decodeURIComponent(providerRaw);
-  const catalog = await getModelsCatalog();
-  return json({ provider, models: catalog[provider] || [] });
+  const models = await getProviderModelsCatalog(provider);
+  return json({ provider, models });
 }
 
 export async function handleModelsAdd(req: NextRequest) {

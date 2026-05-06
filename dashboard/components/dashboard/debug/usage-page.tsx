@@ -71,19 +71,27 @@ function getAgentColor(index: number) {
 
 export function UsagePage() {
   const [data, setData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState<7 | 14 | 30>(7);
 
   useEffect(() => {
-    authFetch("/api/usage")
+    const endDate = getUtcToday();
+    const startDate = shiftUtcDate(endDate, -29);
+
+    authFetch(`/api/usage?startDate=${startDate}&endDate=${endDate}&limit=50`)
       .then((d) => {
         setData(d);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : String(err));
+        setLoading(false);
+      });
   }, []);
 
   if (loading) return <StateMessage>Loading usage data...</StateMessage>;
+  if (error) return <StateMessage>Usage failed to load: {error}</StateMessage>;
   if (!data?.aggregates) return <StateMessage>No usage data available</StateMessage>;
 
   const endDate = getUtcToday();

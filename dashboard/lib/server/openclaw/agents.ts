@@ -51,9 +51,22 @@ function normalizeAgentsList(parsed: any): { agents: any[]; defaultId: string | 
 
 const execFileAsync = promisify(execFile);
 const KANBAN_APP_DIR = path.join(OPENCLAW_HOME, "workspace", "apps", "superclaw", "kanban");
+const AGENT_CREATE_TIMEOUT_MS = 300_000;
+const AVATAR_GENERATION_TIMEOUT_MS = 60_000;
 
 function addWarning(warnings: string[], label: string, error: unknown) {
   warnings.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 function parseCliJsonValue<T>(stdout: string, stderr: string, fallback: T): T {
@@ -436,15 +449,18 @@ export async function handleCreateAgent(req: NextRequest) {
 
   const workspace = path.join(OPENCLAW_HOME, `workspace-${id}`);
 
-  await runOpenClaw(["agents", "add", id, "--non-interactive", "--workspace", workspace], { timeoutMs: 30_000 });
+  await runOpenClaw(["agents", "add", id, "--non-interactive", "--workspace", workspace], {
+    timeoutMs: AGENT_CREATE_TIMEOUT_MS,
+  });
 
   if (name || emoji) {
     const args = ["agents", "set-identity", "--agent", id, "--workspace", workspace];
     if (name) args.push("--name", name);
     if (emoji) args.push("--emoji", emoji);
-    await runOpenClaw(args, { timeoutMs: 30_000 });
+    await runOpenClaw(args, { timeoutMs: AGENT_CREATE_TIMEOUT_MS });
   }
 
+  const warnings: string[] = [];
   let avatarRelativePath: string | null = null;
 
   if (description) {
@@ -461,15 +477,19 @@ export async function handleCreateAgent(req: NextRequest) {
         throw new Error("Missing GEMINI_API_KEY");
       }
 
-      await generateAvatarImage({
-        apiKey,
-        prompt: fullPrompt,
-        outputPath: avatarPath,
-      });
+      await withTimeout(
+        generateAvatarImage({
+          apiKey,
+          prompt: fullPrompt,
+          outputPath: avatarPath,
+        }),
+        AVATAR_GENERATION_TIMEOUT_MS,
+        "Avatar generation",
+      );
 
       avatarRelativePath = `avatars/${id}-avatar.webp`;
-    } catch {
-      // Non-fatal; agent creation succeeded.
+    } catch (error) {
+      addWarning(warnings, "Avatar generation skipped", error);
     }
   }
 
@@ -484,21 +504,38 @@ export async function handleCreateAgent(req: NextRequest) {
   writeFileSync(path.join(workspace, "IDENTITY.md"), identityContent, "utf8");
 
   if (telegramToken) {
-    await runOpenClaw(["channels", "add", "--channel", "telegram", "--account", id, "--token", telegramToken], {
-      timeoutMs: 15_000,
-    });
+    try {
+      const config = await getConfigDocument();
+      const raw = parseConfigRaw(config.raw, {} as any);
+      raw.channels ??= {};
+      raw.channels.telegram ??= {};
+      raw.channels.telegram.enabled = true;
+      raw.channels.telegram.accounts ??= {};
+      raw.channels.telegram.accounts[id] = {
+        ...(raw.channels.telegram.accounts[id] && typeof raw.channels.telegram.accounts[id] === "object"
+          ? raw.channels.telegram.accounts[id]
+          : {}),
+        enabled: true,
+        botToken: telegramToken,
+      };
+      delete raw.channels.telegram.accounts[id].tokenFile;
 
-    await new Promise((resolve) => setTimeout(resolve, 2_000));
+      if (!raw.bindings) raw.bindings = [];
+      const hasBinding = raw.bindings.some(
+        (binding: any) =>
+          binding?.agentId === id && binding?.match?.channel === "telegram" && binding?.match?.accountId === id,
+      );
+      if (!hasBinding) {
+        raw.bindings.push({ agentId: id, match: { channel: "telegram", accountId: id } });
+      }
 
-    const config = await getConfigDocument();
-    const raw = parseConfigRaw(config.raw, {} as any);
-    if (!raw.bindings) raw.bindings = [];
-    raw.bindings.push({ agentId: id, match: { channel: "telegram", accountId: id } });
-
-    await applyConfig(JSON.stringify(raw, null, 2), config.hash);
+      await applyConfig(JSON.stringify(raw, null, 2), config.hash);
+    } catch (error) {
+      addWarning(warnings, "Telegram channel setup skipped", error);
+    }
   }
 
-  return json({ ok: true, id, workspace });
+  return json({ ok: true, id, workspace, ...(warnings.length ? { warnings } : {}) });
 }
 
 export async function handleDeleteAgent(req: NextRequest, agentIdRaw: string) {

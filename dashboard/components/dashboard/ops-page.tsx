@@ -75,6 +75,8 @@ type PerformanceData = {
     description: string | null;
     active: string | null;
     subState: string | null;
+    type: string | null;
+    result: string | null;
     enabled: string | null;
     mainPid: number;
     uptime: number | null;
@@ -190,6 +192,13 @@ type ReposData = {
     hasConvex: boolean;
     kind: "agent" | "other";
     active: boolean;
+  }>;
+  bareRepos?: Array<{
+    name: string;
+    path: string;
+    branch: string | null;
+    hasCommits: boolean;
+    remote: string | null;
   }>;
 };
 
@@ -319,11 +328,24 @@ function envSummary(baseUrl: string | null, hasToken: boolean) {
   };
 }
 
-function systemdStatusLabel(active: string | null, subState: string | null, uptime: number | null) {
+function systemdStatusTone(service: PerformanceData["systemd"][number]) {
+  if (service.active === "active") return "bg-emerald-400";
+  if (service.active === "failed" || service.result === "exit-code" || service.result === "timeout") return "bg-red-400";
+  if (service.type === "oneshot" && service.result === "success") return "bg-emerald-400";
+  if (service.active === "inactive") return "bg-red-400";
+  return "bg-zinc-300 dark:bg-zinc-600";
+}
+
+function systemdStatusLabel(service: PerformanceData["systemd"][number]) {
+  const { active, subState, uptime } = service;
   const uptimeText = uptime ? fmtUptime(Math.max(0, (Date.now() - uptime) / 1000)) : null;
 
   if (active === "active" && uptimeText) {
     return uptimeText;
+  }
+
+  if (service.type === "oneshot" && service.result === "success") {
+    return "Completed";
   }
 
   const parts: string[] = [];
@@ -440,6 +462,42 @@ function RepoRows({ repos }: { repos: ReposData["repos"] }) {
   );
 }
 
+function BareRepoRows({ repos }: { repos: NonNullable<ReposData["bareRepos"]> }) {
+  const [expandedRepos, setExpandedRepos] = useState<Record<string, boolean>>({});
+
+  function toggleRepo(path: string) {
+    setExpandedRepos((current) => ({ ...current, [path]: !current[path] }));
+  }
+
+  return (
+    <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+      {repos.map((repo) => {
+        const expanded = !!expandedRepos[repo.path];
+
+        return (
+          <button
+            key={repo.path}
+            type="button"
+            onClick={() => toggleRepo(repo.path)}
+            className="w-full px-5 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm text-zinc-600 dark:text-zinc-400">{repo.name}</div>
+                {expanded ? <div className="mt-0.5 break-all text-xs text-zinc-400 dark:text-zinc-500">{repo.path}</div> : null}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {repo.branch ? pill(repo.branch, "neutral") : null}
+                {!repo.hasCommits ? pill("empty", "neutral") : null}
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function OpsPage() {
   const [data, setData] = useState<KanbanWorkerStatus | null>(null);
   const [accounts, setAccounts] = useState<AccountsData | null>(null);
@@ -542,6 +600,7 @@ export function OpsPage() {
   const convexDeployments = convex?.deployments || [];
   const systemdServices = sortSystemdServices(performance?.systemd || []);
   const repoList = repos?.repos || [];
+  const bareRepoList = repos?.bareRepos || [];
   const postgresDatabases = postgres?.databases || [];
   const browserProfileList = browserProfiles?.profiles || [];
   const dockerContainers = docker?.containers || [];
@@ -561,7 +620,7 @@ export function OpsPage() {
   const loadingRepos = loading && !repos;
   const agentRepos = repoList.filter((repo) => repo.kind === "agent");
   const otherRepos = repoList.filter((repo) => repo.kind === "other");
-  const visibleRepoCount = otherRepos.length + agentRepos.length;
+  const visibleRepoCount = otherRepos.length + agentRepos.length + bareRepoList.length;
 
   return (
     <div className="space-y-4">
@@ -801,11 +860,11 @@ export function OpsPage() {
       </div>
 
       <div className="space-y-2">
-        <SectionTitle title={`Cloudflare Tunnel (${cloudflared?.config.routes?.length || 0})`} icon={Cloud} />
+        <SectionTitle title={`Cloudflare Routes (${cloudflared?.config.routes?.length || 0})`} icon={Cloud} />
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {loadingCloudflared ? (
-              <div className="px-5 py-4 text-sm text-zinc-400">Loading Cloudflare Tunnel...</div>
+              <div className="px-5 py-4 text-sm text-zinc-400">Loading Cloudflare Routes...</div>
             ) : !cloudflared?.config.exists ? (
               <div className="px-5 py-4 text-sm text-zinc-400">No local cloudflared config found</div>
             ) : (
@@ -842,12 +901,7 @@ export function OpsPage() {
             ) : (
               systemdServices.map((service) => {
                 const expanded = !!expandedSystemd[service.unit];
-                const dotClass =
-                  service.active === "active"
-                    ? "bg-emerald-400"
-                    : service.active === "failed" || service.active === "inactive"
-                      ? "bg-red-400"
-                      : "bg-zinc-300 dark:bg-zinc-600";
+                const dotClass = systemdStatusTone(service);
 
                 const metadata: string[] = [];
                 if (service.workingDirectory) metadata.push(`cwd: ${service.workingDirectory}`);
@@ -873,7 +927,7 @@ export function OpsPage() {
                         {expanded && service.command ? <div className="mt-1 break-all font-mono text-xs text-zinc-400 dark:text-zinc-500">{service.command}</div> : null}
                         {expanded && metadata.length > 0 ? <div className="mt-1 break-all text-xs text-zinc-400 dark:text-zinc-500">{metadata.join(" · ")}</div> : null}
                       </div>
-                      <div className="shrink-0 text-xs text-zinc-400 dark:text-zinc-500">{systemdStatusLabel(service.active, service.subState, service.uptime)}</div>
+                      <div className="shrink-0 text-xs text-zinc-400 dark:text-zinc-500">{systemdStatusLabel(service)}</div>
                     </div>
                   </button>
                 );
@@ -889,7 +943,7 @@ export function OpsPage() {
           <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
             <div className="px-5 py-4 text-sm text-zinc-400">Loading repos...</div>
           </div>
-        ) : repoList.length === 0 ? (
+        ) : repoList.length === 0 && bareRepoList.length === 0 ? (
           <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
             <div className="px-5 py-4 text-sm text-zinc-400">None found</div>
           </div>
@@ -911,6 +965,17 @@ export function OpsPage() {
                   </div>
                 </section>
               ))}
+            {bareRepoList.length > 0 ? (
+              <section className="space-y-2.5">
+                <div className="flex items-center justify-between gap-3 px-1">
+                  <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Bare repos</h2>
+                  <span className="text-xs text-zinc-400 dark:text-zinc-500 shrink-0">{bareRepoList.length} repos</span>
+                </div>
+                <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/60 dark:bg-zinc-900/80 dark:shadow-none">
+                  <BareRepoRows repos={bareRepoList} />
+                </div>
+              </section>
+            ) : null}
           </div>
         )}
       </div>
@@ -945,7 +1010,6 @@ export function OpsPage() {
                         {expanded ? (
                           <div className="mt-2 space-y-1 break-all text-xs text-zinc-400 dark:text-zinc-500">
                             {store.createTime ? <div>created: {new Date(store.createTime).toLocaleString()}</div> : null}
-                            {fileSearch.baseUrl ? <div>api: {fileSearch.baseUrl}</div> : null}
                           </div>
                         ) : null}
                       </div>

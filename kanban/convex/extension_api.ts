@@ -32,18 +32,20 @@ async function listAccessibleBoards(
     .withIndex("by_owner_order", (q) => q.eq("ownerId", credential.ownerId))
     .order("asc")
     .collect();
+  const activeOwnedBoards = ownedBoards.filter((board) => !board.hiddenAt);
 
   const permissions = await ctx.db
     .query("boardPermissions")
     .withIndex("by_email", (q) => q.eq("userEmail", credential.ownerEmail))
     .collect();
 
-  const seen = new Set(ownedBoards.map((board) => String(board._id)));
+  const seen = new Set(activeOwnedBoards.map((board) => String(board._id)));
   const sharedBoards = (
     await Promise.all(
       permissions.map(async (permission) => {
         const board = await ctx.db.get(permission.boardId);
         if (!board) return null;
+        if (board.hiddenAt) return null;
         if (board.ownerId === credential.ownerId) return null;
         if (seen.has(String(board._id))) return null;
         seen.add(String(board._id));
@@ -55,7 +57,7 @@ async function listAccessibleBoards(
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
   return [
-    ...ownedBoards.map((board) => ({ ...board, isOwner: true })),
+    ...activeOwnedBoards.map((board) => ({ ...board, isOwner: true })),
     ...sharedBoards.map((board) => ({ ...board, isOwner: false })),
   ];
 }
@@ -68,6 +70,10 @@ async function requireAccessibleBoardForCredential(
   const board = await ctx.db.get(boardId);
 
   if (!board) {
+    throw new Error("Board not found");
+  }
+
+  if (board.hiddenAt) {
     throw new Error("Board not found");
   }
 

@@ -31,7 +31,7 @@ export function ModelsPage({
           ...configuredModels.slice(primaryModelIndex + 1),
         ];
 
-  const [providers, setProviders] = useState<{ id: string; count: number }[]>([]);
+  const [providers, setProviders] = useState<{ id: string; count: number | null }[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [providerModels, setProviderModels] = useState<any[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
@@ -61,7 +61,9 @@ export function ModelsPage({
     setLoadingCatalog(true);
     try {
       const data = await authFetch(`/api/models/catalog/${provider}`);
-      setProviderModels(data.models || []);
+      const models = data.models || [];
+      setProviderModels(models);
+      setProviders((current) => current.map((p) => (p.id === provider ? { ...p, count: models.length } : p)));
     } catch {
       setProviderModels([]);
       toast.error(`Failed to load ${provider} models`);
@@ -260,17 +262,6 @@ export function ModelsPage({
               {configuredProviders.map((provider) => (
                 <div key={provider.id} className="px-5 py-4">
                   <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{provider.id}</div>
-                  {provider.models.length > 0 ? (
-                    <div className="mt-2 space-y-1">
-                      {provider.models.map((model) => (
-                        <div key={`${provider.id}-${model}`} className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">
-                          {model}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">No models listed</div>
-                  )}
                 </div>
               ))}
             </div>
@@ -301,7 +292,7 @@ export function ModelsPage({
                         : "bg-zinc-50 dark:bg-zinc-950 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                     }`}
                   >
-                    {p.id} ({p.count})
+                    {p.id}{typeof p.count === "number" ? ` (${p.count})` : ""}
                   </button>
                 ))}
               </div>

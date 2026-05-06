@@ -221,8 +221,8 @@ async function buildBaseTasks(
   ]);
 
   let boards = filters?.ownerId
-    ? allBoards.filter((board) => board.ownerId === filters.ownerId)
-    : allBoards;
+    ? allBoards.filter((board) => board.ownerId === filters.ownerId && !board.hiddenAt)
+    : allBoards.filter((board) => !board.hiddenAt);
 
   if (filters?.boardId) {
     boards = boards.filter((board) => board._id === filters.boardId);

@@ -20,7 +20,18 @@ export function authHeaders(): HeadersInit {
 }
 
 export async function authFetch(url: string): Promise<any> {
-  const res = await fetch(url, { headers: authHeaders() });
+  const res = await fetch(url, {
+    headers: authHeaders(),
+    cache: "no-store",
+  });
+
   if (res.status === 401) throw new Error("unauthorized");
-  return res.json();
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message = typeof data?.error === "string" && data.error.trim().length > 0 ? data.error : `request failed: ${res.status}`;
+    throw new Error(message);
+  }
+
+  return data;
 }

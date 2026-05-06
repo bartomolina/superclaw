@@ -23,9 +23,10 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { Archive, Chrome, Clock3, ExternalLink, Eye, EyeOff, Hash, Menu, Moon, Play, Search, Send, Sun, UserRound, Users, X } from "lucide-react";
+import { Archive, Chrome, Clock3, ExternalLink, Eye, EyeOff, GripVertical, Hash, Menu, Moon, Play, Search, Send, Sun, UserRound, Users, X } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
 import { ActivitySheet } from "@/components/activity-sheet";
@@ -60,6 +61,7 @@ type BoardModel = {
   url?: string;
   sharedUserIds?: Id<"managedUsers">[];
   allowedAgentIds?: string[];
+  hiddenAt?: number;
   createdAt: number;
   updatedAt: number;
   order: number;
@@ -81,6 +83,10 @@ type AgentInboxCountModel = {
 };
 
 const DESCRIPTION_AUTOSAVE_DELAY_MS = 1200;
+const CARD_MOUSE_SENSOR_OPTIONS = { activationConstraint: { distance: 6 } };
+const CARD_TOUCH_SENSOR_OPTIONS = { activationConstraint: { delay: 180, tolerance: 10 } };
+const BOARD_MOUSE_SENSOR_OPTIONS = { activationConstraint: { distance: 4 } };
+const BOARD_TOUCH_SENSOR_OPTIONS = { activationConstraint: { delay: 220, tolerance: 12 } };
 
 type CardModel = {
   _id: Id<"cards">;
@@ -150,6 +156,13 @@ type ColumnModel = {
   name: string;
   order: number;
   cards: CardModel[];
+};
+
+type CardMoveLogPosition = {
+  cardTitle: string;
+  columnId: Id<"columns">;
+  columnName: string;
+  position: number;
 };
 
 type BoardView = {
@@ -506,6 +519,97 @@ function columnsSignature(columns: ColumnModel[]) {
     .join("|");
 }
 
+function findCardMoveLogPosition(columns: ColumnModel[], cardId: Id<"cards">): CardMoveLogPosition | null {
+  for (const column of columns) {
+    const position = column.cards.findIndex((card) => card._id === cardId);
+    if (position < 0) continue;
+
+    const card = column.cards[position];
+    return {
+      cardTitle: card.title,
+      columnId: column._id,
+      columnName: formatColumnName(column.name),
+      position,
+    };
+  }
+
+  return null;
+}
+
+function describeCardTarget(columns: ColumnModel[], overId: string) {
+  if (overId.startsWith("column-")) {
+    const columnId = overId.slice("column-".length) as Id<"columns">;
+    const column = columns.find((candidate) => candidate._id === columnId);
+    return {
+      type: "column" as const,
+      columnId,
+      columnName: column ? formatColumnName(column.name) : null,
+      cardTitle: null,
+      cardIndex: null,
+    };
+  }
+
+  for (const column of columns) {
+    const cardIndex = column.cards.findIndex((card) => card._id === (overId as Id<"cards">));
+    if (cardIndex < 0) continue;
+
+    return {
+      type: "card" as const,
+      columnId: column._id,
+      columnName: formatColumnName(column.name),
+      cardTitle: column.cards[cardIndex]?.title ?? null,
+      cardIndex,
+    };
+  }
+
+  return {
+    type: "unknown" as const,
+    columnId: null,
+    columnName: null,
+    cardTitle: null,
+    cardIndex: null,
+  };
+}
+
+function describeDragRect(rect: { top: number; height: number } | null | undefined) {
+  if (!rect) return null;
+
+  return {
+    top: Math.round(rect.top),
+    height: Math.round(rect.height),
+    centerY: Math.round(rect.top + rect.height / 2),
+  };
+}
+
+function describeInsertDecision(
+  activeRect: { top: number; height: number; centerY: number } | null,
+  overRect: { top: number; height: number; centerY: number } | null,
+  insertAfterOverCard: boolean,
+) {
+  if (!activeRect || !overRect || overRect.height === 0) {
+    return null;
+  }
+
+  const activeOffsetWithinOver = activeRect.centerY - overRect.top;
+  const activeOffsetRatio = activeOffsetWithinOver / overRect.height;
+
+  return {
+    decision: insertAfterOverCard ? "after" : "before",
+    activeOffsetWithinOver: Math.round(activeOffsetWithinOver),
+    activeOffsetRatio: Number(activeOffsetRatio.toFixed(2)),
+    midpointY: overRect.centerY,
+    distanceFromMidpoint: Math.round(activeRect.centerY - overRect.centerY),
+  };
+}
+
+function cardSortableIds(cards: CardModel[]) {
+  return cards.map((card) => String(card._id));
+}
+
+function boardSortableIds(boards: BoardModel[] | undefined) {
+  return boards?.map((board) => String(board._id)) ?? [];
+}
+
 function renderCommentText(text: string, keyPrefix: string) {
   const inlineCodePattern = /`([^`]+)`/g;
   const parts: ReactNode[] = [];
@@ -631,6 +735,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const createBoard = useMutation(api.boards.create);
   const ensureFixedColumns = useMutation(api.boards.ensureFixedColumns);
   const renameBoard = useMutation(api.boards.rename);
+  const setBoardHidden = useMutation(api.boards.setHidden);
   const deleteBoard = useMutation(api.boards.remove);
   const reorderBoards = useMutation(api.boards.reorder);
   const applyCardLayout = useMutation(api.cards.applyLayout);
@@ -639,10 +744,12 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const boardReorderQueueRef = useRef<Promise<void>>(Promise.resolve());
   const cardLayoutQueueRef = useRef<Promise<void>>(Promise.resolve());
   const latestCardLayoutRequestRef = useRef(0);
+  const lastCardMoveLogRef = useRef<string | null>(null);
   const [selectedBoardId, setSelectedBoardId] = useState<Id<"boards"> | null>(null);
   const [newBoardName, setNewBoardName] = useState("");
   const [showNewBoardForm, setShowNewBoardForm] = useState(false);
   const [isCreatingBoard, setIsCreatingBoard] = useState(false);
+  const [isArchivedBoardsOpen, setIsArchivedBoardsOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isInboxDebugOpen, setIsInboxDebugOpen] = useState(false);
@@ -678,7 +785,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const searchParams = useSearchParams();
   const boardParam = searchParams.get("board");
 
-  const displayBoards = useMemo(() => {
+  const orderedBoards = useMemo(() => {
     if (!boards) return boards;
     if (!optimisticBoards || optimisticBoards.length === 0) return boards;
 
@@ -695,19 +802,29 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     });
   }, [boards, optimisticBoards]);
 
-  const effectiveSelectedBoardId = useMemo(() => {
-    if (!displayBoards || displayBoards.length === 0) return null;
+  const displayBoards = useMemo(
+    () => orderedBoards?.filter((board) => !board.hiddenAt),
+    [orderedBoards],
+  );
 
-    if (boardParam && displayBoards.some((board) => board._id === boardParam)) {
+  const hiddenBoards = useMemo(
+    () => orderedBoards?.filter((board) => Boolean(board.hiddenAt)),
+    [orderedBoards],
+  );
+
+  const effectiveSelectedBoardId = useMemo(() => {
+    if (!orderedBoards || orderedBoards.length === 0) return null;
+
+    if (boardParam && orderedBoards.some((board) => board._id === boardParam)) {
       return boardParam as Id<"boards">;
     }
 
-    if (selectedBoardId && displayBoards.some((board) => board._id === selectedBoardId)) {
+    if (selectedBoardId && orderedBoards.some((board) => board._id === selectedBoardId)) {
       return selectedBoardId;
     }
 
-    return displayBoards[0]._id;
-  }, [displayBoards, selectedBoardId, boardParam]);
+    return displayBoards?.[0]?._id ?? null;
+  }, [orderedBoards, selectedBoardId, boardParam, displayBoards]);
 
   const navigateToBoard = useCallback(
     (boardId: Id<"boards"> | null, mode: "push" | "replace" = "replace") => {
@@ -731,6 +848,17 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     [pathname, router, searchParams],
   );
 
+  const getBoardHref = useCallback(
+    (boardId: Id<"boards">) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("board", boardId);
+
+      const query = params.toString();
+      return query ? `${pathname}?${query}` : pathname;
+    },
+    [pathname, searchParams],
+  );
+
   const boardView = useQuery(
     api.boards.get,
     effectiveSelectedBoardId ? { boardId: effectiveSelectedBoardId } : "skip",
@@ -742,11 +870,11 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   ) as ActivityEventModel[] | undefined;
 
   const selectedBoard = useMemo(() => {
-    if (!displayBoards || displayBoards.length === 0) return null;
-    if (!effectiveSelectedBoardId) return displayBoards[0] ?? null;
+    if (!orderedBoards || orderedBoards.length === 0) return null;
+    if (!effectiveSelectedBoardId) return displayBoards?.[0] ?? null;
 
-    return displayBoards.find((board) => board._id === effectiveSelectedBoardId) ?? displayBoards[0] ?? null;
-  }, [displayBoards, effectiveSelectedBoardId]);
+    return orderedBoards.find((board) => board._id === effectiveSelectedBoardId) ?? displayBoards?.[0] ?? null;
+  }, [orderedBoards, displayBoards, effectiveSelectedBoardId]);
 
   const selectedBoardName = selectedBoard?.name ?? "Kanban";
   const selectedBoardUrl = selectedBoard?.url;
@@ -872,13 +1000,13 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   }, [isFullScreenModalOpen]);
 
   useEffect(() => {
-    if (!displayBoards) return;
-    if (displayBoards.length > 0) return;
+    if (!orderedBoards) return;
+    if (!boardParam) return;
 
-    if (boardParam) {
+    if (!orderedBoards.some((board) => board._id === boardParam)) {
       navigateToBoard(null, "replace");
     }
-  }, [displayBoards, boardParam, navigateToBoard]);
+  }, [orderedBoards, boardParam, navigateToBoard]);
 
   useEffect(() => {
     if (!displayBoards || displayBoards.length === 0) return;
@@ -1086,6 +1214,8 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     () => sidebarAgentOptions.map((agent) => agent.id).filter((agentId) => agentId.trim().length > 0),
     [sidebarAgentOptions],
   );
+  const displayBoardSortableIds = useMemo(() => boardSortableIds(displayBoards), [displayBoards]);
+  const hiddenBoardSortableIds = useMemo(() => boardSortableIds(hiddenBoards), [hiddenBoards]);
 
   const sidebarInboxCounts = useQuery(
     api.agent_automation.listBoardAgentInboxCounts,
@@ -1141,15 +1271,19 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   }, [activeDragCardId, dragColumns, isSearchActive]);
 
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 10 } }),
+    useSensor(MouseSensor, CARD_MOUSE_SENSOR_OPTIONS),
+    useSensor(TouchSensor, CARD_TOUCH_SENSOR_OPTIONS),
     useSensor(KeyboardSensor),
   );
 
   const boardSensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 12 } }),
+    useSensor(MouseSensor, BOARD_MOUSE_SENSOR_OPTIONS),
+    useSensor(TouchSensor, BOARD_TOUCH_SENSOR_OPTIONS),
   );
+
+  const handleOpenCard = useCallback((cardId: Id<"cards">) => {
+    setActiveCardId(cardId);
+  }, []);
 
   async function handleCreateBoard(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1246,17 +1380,29 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     }
   }
 
-  async function handleBoardReorder(sourceBoardId: Id<"boards">, targetBoardId: Id<"boards">) {
-    if (!displayBoards || sourceBoardId === targetBoardId) return;
+  async function handleSetBoardHidden(boardId: Id<"boards">, hidden: boolean) {
+    await setBoardHidden({ boardId, hidden });
 
-    const sourceBoard = displayBoards.find((board) => board._id === sourceBoardId);
-    const targetBoard = displayBoards.find((board) => board._id === targetBoardId);
+    if (hidden && effectiveSelectedBoardId === boardId) {
+      const nextBoard = displayBoards?.find((board) => board._id !== boardId) ?? null;
+      setSelectedBoardId(nextBoard?._id ?? null);
+      setActiveCardId(null);
+      navigateToBoard(nextBoard?._id ?? null, "replace");
+    }
+  }
+
+  async function handleBoardReorder(sourceBoardId: Id<"boards">, targetBoardId: Id<"boards">, hidden: boolean) {
+    const sectionBoards = hidden ? hiddenBoards : displayBoards;
+    if (!orderedBoards || !sectionBoards || sourceBoardId === targetBoardId) return;
+
+    const sourceBoard = sectionBoards.find((board) => board._id === sourceBoardId);
+    const targetBoard = sectionBoards.find((board) => board._id === targetBoardId);
 
     if (!sourceBoard?.isOwner || !targetBoard?.isOwner) {
       return;
     }
 
-    const ownedBoards = displayBoards.filter((board) => board.isOwner);
+    const ownedBoards = sectionBoards.filter((board) => board.isOwner);
     const orderedIds = ownedBoards.map((board) => board._id);
     const sourceIndex = orderedIds.indexOf(sourceBoardId);
     const targetIndex = orderedIds.indexOf(targetBoardId);
@@ -1266,7 +1412,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     const nextOrderedIds = arrayMove(orderedIds, sourceIndex, targetIndex);
     const ownedBoardById = new Map(ownedBoards.map((board) => [String(board._id), board]));
     let ownedIndex = 0;
-    const nextBoards = displayBoards.map((board) => {
+    const nextSectionBoards = sectionBoards.map((board) => {
       if (!board.isOwner) {
         return board;
       }
@@ -1275,19 +1421,32 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
       ownedIndex += 1;
       return nextBoard ?? board;
     });
+    let sectionIndex = 0;
+    const nextBoards = orderedBoards.map((board) => {
+      if (Boolean(board.hiddenAt) !== hidden) {
+        return board;
+      }
+
+      const nextBoard = nextSectionBoards[sectionIndex];
+      sectionIndex += 1;
+      return nextBoard ?? board;
+    });
 
     setOptimisticBoards(nextBoards);
 
     const run = boardReorderQueueRef.current
       .catch(() => undefined)
       .then(async () => {
-        await reorderBoards({ boardIds: nextOrderedIds });
+        await reorderBoards({ boardIds: nextOrderedIds, hidden });
       });
 
     boardReorderQueueRef.current = run;
 
     try {
       await run;
+      if (boardReorderQueueRef.current === run) {
+        setOptimisticBoards(null);
+      }
     } catch (error) {
       setOptimisticBoards(null);
       toast.error(error instanceof Error ? error.message : "Failed to save board order");
@@ -1298,14 +1457,14 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     setActiveBoardId(String(event.active.id) as Id<"boards">);
   }
 
-  function handleBoardDragEnd(event: DragEndEvent) {
+  function handleBoardDragEnd(event: DragEndEvent, hidden = false) {
     const sourceBoardId = String(event.active.id) as Id<"boards">;
     const targetBoardId = event.over ? (String(event.over.id) as Id<"boards">) : null;
 
     setActiveBoardId(null);
 
     if (!targetBoardId || sourceBoardId === targetBoardId) return;
-    void handleBoardReorder(sourceBoardId, targetBoardId);
+    void handleBoardReorder(sourceBoardId, targetBoardId, hidden);
   }
 
   function handleBoardDragCancel() {
@@ -1391,6 +1550,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     const cardId = String(event.active.id) as Id<"cards">;
 
     setActiveDragCardId(cardId);
+    lastCardMoveLogRef.current = null;
 
     if (dndColumns.length > 0) {
       setDragColumns(cloneColumns(dndColumns));
@@ -1422,6 +1582,44 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
       const nextSig = columnsSignature(working);
       if (previousSig === nextSig) return current;
 
+      const projected = findCardMoveLogPosition(working, cardId);
+      if (projected) {
+        const target = describeCardTarget(baseColumns, overId);
+        const activeRect = describeDragRect(event.active.rect.current.translated ?? event.active.rect.current.initial);
+        const overRect = describeDragRect(event.over?.rect);
+        const insertDecision = describeInsertDecision(activeRect, overRect, insertAfterOverCard);
+        const targetColumn = working.find((column) => column._id === projected.columnId);
+        const logSig = `${projected.columnId}:${projected.position}:${overId}:${insertAfterOverCard}:${activeRect?.centerY ?? "x"}:${overRect?.centerY ?? "x"}`;
+        if (lastCardMoveLogRef.current !== logSig) {
+          lastCardMoveLogRef.current = logSig;
+          console.info(
+            `[kanban:dnd] hover "${projected.cardTitle}" -> ${projected.columnName} position ${projected.position + 1} ${insertDecision ? `(${insertDecision.decision}, ratio=${insertDecision.activeOffsetRatio})` : ""} via ${target.type} over=${overId}`,
+            {
+              cardId,
+              overId,
+              overType: target.type,
+              overColumnId: target.columnId,
+              overColumnName: target.columnName,
+              overCardTitle: target.cardTitle,
+              overCardIndex: target.cardIndex,
+              projectedColumnId: projected.columnId,
+              projectedColumnName: projected.columnName,
+              projectedPosition: projected.position,
+              projectedHumanPosition: projected.position + 1,
+              insertAfterOverCard,
+              insertDecision,
+              activeRect,
+              overRect,
+              targetColumnCards: targetColumn?.cards.map((card, index) => ({
+                index,
+                id: card._id,
+                title: card.title,
+              })) ?? [],
+            },
+          );
+        }
+      }
+
       return working;
     });
   }
@@ -1429,6 +1627,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   function handleCardDragCancel() {
     setActiveDragCardId(null);
     setDragColumns(null);
+    lastCardMoveLogRef.current = null;
   }
 
   async function handleRunAgentNow(agentId: string) {
@@ -1465,6 +1664,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     if (!boardView) {
       setActiveDragCardId(null);
       setDragColumns(null);
+      lastCardMoveLogRef.current = null;
       return;
     }
 
@@ -1506,7 +1706,23 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     if (!finalColumns || columnsSignature(finalColumns) === boardColumnsSig) {
       setActiveDragCardId(null);
       setDragColumns(null);
+      lastCardMoveLogRef.current = null;
       return;
+    }
+
+    const finalPosition = findCardMoveLogPosition(finalColumns, cardId);
+    if (finalPosition) {
+      console.info(
+        `[kanban:dnd] drop "${finalPosition.cardTitle}" -> ${finalPosition.columnName} position ${finalPosition.position + 1}`,
+        {
+          cardId,
+          columnId: finalPosition.columnId,
+          columnName: finalPosition.columnName,
+          position: finalPosition.position,
+          humanPosition: finalPosition.position + 1,
+          source: finalColumns === dragColumns ? "dragColumns" : "fallback",
+        },
+      );
     }
 
     const layoutPayload = {
@@ -1518,6 +1734,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     };
 
     setActiveDragCardId(null);
+    lastCardMoveLogRef.current = null;
 
     const requestId = latestCardLayoutRequestRef.current + 1;
     latestCardLayoutRequestRef.current = requestId;
@@ -1775,11 +1992,12 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                   onDragEnd={handleBoardDragEnd}
                   onDragCancel={handleBoardDragCancel}
                 >
-                  <SortableContext items={displayBoards.map((board) => String(board._id))} strategy={verticalListSortingStrategy}>
+                  <SortableContext items={displayBoardSortableIds} strategy={verticalListSortingStrategy}>
                     {displayBoards.map((board) => (
                       <BoardSidebarItem
                         key={board._id}
                         board={board}
+                        href={getBoardHref(board._id)}
                         isActive={board._id === effectiveSelectedBoardId}
                         isDragging={activeBoardId === board._id}
                         onSelect={() => {
@@ -1788,6 +2006,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                           navigateToBoard(board._id, "push");
                         }}
                         onRename={() => setEditingBoard(board)}
+                        onHiddenChange={(hidden) => void handleSetBoardHidden(board._id, hidden)}
                         onDelete={() => void handleDeleteBoard(board._id, board.name)}
                       />
                     ))}
@@ -1795,9 +2014,69 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                 </DndContext>
               ) : null}
 
-              {displayBoards && displayBoards.length === 0 ? (
+              {hiddenBoards && hiddenBoards.length > 0 ? (
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsArchivedBoardsOpen((value) => !value)}
+                    className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-200"
+                    aria-expanded={isArchivedBoardsOpen}
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <Archive className="h-3.5 w-3.5 shrink-0" />
+                      <span>Archived</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">{hiddenBoards.length}</span>
+                      <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 transition-transform ${isArchivedBoardsOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </span>
+                  </button>
+
+                  {isArchivedBoardsOpen ? (
+                    <DndContext
+                      sensors={boardSensors}
+                      collisionDetection={closestCorners}
+                      onDragStart={handleBoardDragStart}
+                      onDragEnd={(event) => handleBoardDragEnd(event, true)}
+                      onDragCancel={handleBoardDragCancel}
+                    >
+                      <SortableContext items={hiddenBoardSortableIds} strategy={verticalListSortingStrategy}>
+                        <div className="mt-1 space-y-0.5">
+                          {hiddenBoards.map((board) => (
+                            <ArchivedBoardSidebarItem
+                              key={board._id}
+                              board={board}
+                              href={getBoardHref(board._id)}
+                              isActive={board._id === effectiveSelectedBoardId}
+                              isDragging={activeBoardId === board._id}
+                              onSelect={() => {
+                                setSelectedBoardId(board._id);
+                                setIsMobileSidebarOpen(false);
+                                navigateToBoard(board._id, "push");
+                              }}
+                              onRename={() => setEditingBoard(board)}
+                              onHiddenChange={(hidden) => void handleSetBoardHidden(board._id, hidden)}
+                              onDelete={() => void handleDeleteBoard(board._id, board.name)}
+                            />
+                          ))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {displayBoards && displayBoards.length === 0 && (!hiddenBoards || hiddenBoards.length === 0) ? (
                 <div className="rounded-lg border border-dashed border-zinc-300 px-3 py-4 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
                   No boards yet.
+                </div>
+              ) : null}
+
+              {displayBoards && displayBoards.length === 0 && hiddenBoards && hiddenBoards.length > 0 ? (
+                <div className="rounded-lg border border-dashed border-zinc-300 px-3 py-4 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+                  No active boards. Open Archived to unarchive one.
                 </div>
               ) : null}
             </div>
@@ -1914,14 +2193,21 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
         </aside>
 
         <main className="hide-scrollbar relative min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain bg-zinc-50 p-3 dark:bg-zinc-900 lg:p-4">
-          {!displayBoards || (displayBoards.length > 0 && boardView === undefined) ? (
+          {!orderedBoards || (effectiveSelectedBoardId && boardView === undefined) ? (
             <div className="px-1 py-2 text-sm text-zinc-500 dark:text-zinc-400">Loading board...</div>
           ) : null}
 
-          {displayBoards?.length === 0 ? (
+          {orderedBoards?.length === 0 ? (
             <EmptyState
               title="Create your first board"
               description="Once a board exists, you can add cards and start moving work between stages."
+            />
+          ) : null}
+
+          {orderedBoards && orderedBoards.length > 0 && displayBoards?.length === 0 && !effectiveSelectedBoardId ? (
+            <EmptyState
+              title="No active boards"
+              description="Your boards are archived. Open the Archived section in the sidebar to unarchive one."
             />
           ) : null}
 
@@ -1948,7 +2234,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                           key={column._id}
                           column={column}
                           accentClass={getColumnTone(column.name)}
-                          onOpenCard={(cardId) => setActiveCardId(cardId)}
+                          onOpenCard={handleOpenCard}
                           draggable={!isSearchActive}
                           hideComposer={isSearchActive}
                           archiveAvailable={Boolean(archiveColumn)}
@@ -2018,7 +2304,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
         onClose={() => setIsArchiveOpen(false)}
         boardName={selectedBoardName}
         cards={archivedCards}
-        onOpenCard={(cardId) => setActiveCardId(cardId)}
+        onOpenCard={handleOpenCard}
       />
 
       <InboxDebugSheet
@@ -2422,17 +2708,21 @@ function BoardEditModal({
 
 function BoardSidebarItem({
   board,
+  href,
   isActive,
   isDragging,
   onSelect,
   onRename,
+  onHiddenChange,
   onDelete,
 }: {
   board: BoardModel;
+  href: string;
   isActive: boolean;
   isDragging: boolean;
   onSelect: () => void;
   onRename: () => void;
+  onHiddenChange: (hidden: boolean) => void;
   onDelete: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
@@ -2444,63 +2734,276 @@ function BoardSidebarItem({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      {...attributes}
-      {...listeners}
       className={`group w-full touch-pan-y select-none [-webkit-touch-callout:none] [-webkit-user-select:none] flex items-center gap-0 overflow-hidden rounded-lg transition-colors ${
         isActive ? "bg-zinc-200 dark:bg-zinc-800" : "hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
       } ${isDragging ? "opacity-60" : ""}`}
     >
-      <button
-        type="button"
-        onClick={onSelect}
-        className={`min-w-0 flex-1 appearance-none border-0 bg-transparent rounded-none px-2.5 py-2 text-left text-sm font-medium transition-colors ${
+      {board.isOwner ? (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          className="ml-0.5 inline-flex h-7 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-zinc-300 transition hover:bg-zinc-100 hover:text-zinc-500 active:cursor-grabbing dark:text-zinc-600 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-400"
+          aria-label={`Reorder ${board.name}`}
+          title="Drag to reorder"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+      <a
+        href={href}
+        draggable={false}
+        onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
+          if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.altKey || event.ctrlKey || event.shiftKey) {
+            return;
+          }
+
+          event.preventDefault();
+          onSelect();
+        }}
+        className={`min-w-0 flex-1 appearance-none border-0 bg-transparent rounded-none py-2 pl-1 pr-2.5 text-left text-sm font-medium transition-colors ${
           isActive
             ? "text-zinc-900 dark:text-zinc-100"
             : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
         }`}
+        aria-current={isActive ? "page" : undefined}
       >
         <div className="truncate">{board.name}</div>
-      </button>
+      </a>
 
       {board.isOwner ? (
-        <div className="flex items-center gap-0.5 px-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-          <button
-            type="button"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              onRename();
-            }}
-            className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-            aria-label={`Edit ${board.name}`}
-            title="Edit board"
-          >
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M12 20h9" />
-              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              onDelete();
-            }}
-            className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-            aria-label={`Delete ${board.name}`}
-            title="Delete board"
-          >
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M3 6h18" />
-              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-              <line x1="10" y1="11" x2="10" y2="17" />
-              <line x1="14" y1="11" x2="14" y2="17" />
-            </svg>
-          </button>
-        </div>
+        <BoardActionsMenu
+          boardName={board.name}
+          hidden={false}
+          onRename={onRename}
+          onHiddenChange={onHiddenChange}
+          onDelete={onDelete}
+        />
       ) : null}
+    </div>
+  );
+}
+
+function ArchivedBoardSidebarItem({
+  board,
+  href,
+  isActive,
+  isDragging,
+  onSelect,
+  onRename,
+  onHiddenChange,
+  onDelete,
+}: {
+  board: BoardModel;
+  href: string;
+  isActive: boolean;
+  isDragging: boolean;
+  onSelect: () => void;
+  onRename: () => void;
+  onHiddenChange: (hidden: boolean) => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: String(board._id),
+    disabled: !board.isOwner,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`group w-full touch-pan-y select-none [-webkit-touch-callout:none] [-webkit-user-select:none] flex items-center gap-0 overflow-hidden rounded-lg transition-colors ${
+        isActive ? "bg-zinc-200 dark:bg-zinc-800" : "hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
+      } ${isDragging ? "opacity-60" : ""}`}
+    >
+      {board.isOwner ? (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          className="ml-0.5 inline-flex h-7 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-zinc-300 transition hover:bg-zinc-100 hover:text-zinc-500 active:cursor-grabbing dark:text-zinc-600 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-400"
+          aria-label={`Reorder ${board.name}`}
+          title="Drag to reorder"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+      <a
+        href={href}
+        draggable={false}
+        onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
+          if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.altKey || event.ctrlKey || event.shiftKey) {
+            return;
+          }
+
+          event.preventDefault();
+          onSelect();
+        }}
+        className={`min-w-0 flex-1 appearance-none border-0 bg-transparent rounded-none py-2 pl-1 pr-2.5 text-left text-sm font-medium transition-colors ${
+          isActive
+            ? "text-zinc-900 dark:text-zinc-100"
+            : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+        }`}
+        aria-current={isActive ? "page" : undefined}
+      >
+        <div className="truncate">{board.name}</div>
+      </a>
+
+      {board.isOwner ? (
+        <BoardActionsMenu
+          boardName={board.name}
+          hidden
+          onRename={onRename}
+          onHiddenChange={onHiddenChange}
+          onDelete={onDelete}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function BoardActionsMenu({
+  boardName,
+  hidden,
+  onRename,
+  onHiddenChange,
+  onDelete,
+}: {
+  boardName: string;
+  hidden: boolean;
+  onRename: () => void;
+  onHiddenChange: (hidden: boolean) => void;
+  onDelete: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!menuPosition) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setMenuPosition(null);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuPosition(null);
+      }
+    };
+
+    const handleViewportChange = () => {
+      setMenuPosition(null);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, [menuPosition]);
+
+  function openMenu(event: ReactMouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuWidth = 184;
+    const menuHeight = 132;
+
+    setMenuPosition({
+      x: Math.max(12, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 12)),
+      y: Math.max(12, Math.min(rect.bottom + 4, window.innerHeight - menuHeight - 12)),
+    });
+  }
+
+  function runAction(action: () => void) {
+    setMenuPosition(null);
+    action();
+  }
+
+  return (
+    <div className="shrink-0 px-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+      <button
+        type="button"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={openMenu}
+        className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+        aria-label={`Board options for ${boardName}`}
+        aria-haspopup="menu"
+        aria-expanded={Boolean(menuPosition)}
+        title="Board options"
+      >
+        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="1" />
+          <circle cx="19" cy="12" r="1" />
+          <circle cx="5" cy="12" r="1" />
+        </svg>
+      </button>
+
+      {menuPosition && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              className="fixed z-50 min-w-40 overflow-hidden rounded-xl border border-zinc-200 bg-white p-1 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+              style={{ left: menuPosition.x, top: menuPosition.y }}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                onClick={() => runAction(onRename)}
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+                Settings
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                onClick={() => runAction(() => onHiddenChange(!hidden))}
+              >
+                {hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                {hidden ? "Unarchive" : "Archive"}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                onClick={() => runAction(onDelete)}
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 6h18" />
+                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                  <line x1="10" y1="11" x2="10" y2="17" />
+                  <line x1="14" y1="11" x2="14" y2="17" />
+                </svg>
+                Delete
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -2525,9 +3028,14 @@ function KanbanColumn({
   archiveAllPending: boolean;
 }) {
   const createCard = useMutation(api.cards.create);
+  const droppableData = useMemo(
+    () => ({ type: "column" as const, columnId: column._id }),
+    [column._id],
+  );
+  const sortableCardIds = useMemo(() => cardSortableIds(column.cards), [column.cards]);
   const { setNodeRef, isOver } = useDroppable({
     id: `column-${column._id}`,
-    data: { type: "column", columnId: column._id },
+    data: droppableData,
   });
 
   const [showComposer, setShowComposer] = useState(false);
@@ -2594,7 +3102,7 @@ function KanbanColumn({
         ) : null}
       </header>
 
-      <SortableContext items={column.cards.map((card) => String(card._id))} strategy={verticalListSortingStrategy}>
+      <SortableContext items={sortableCardIds} strategy={verticalListSortingStrategy}>
         <div className="space-y-2">
           {column.cards.map((card) => (
             <KanbanCard
@@ -2668,9 +3176,13 @@ function KanbanCard({
 }) {
   const archiveCard = useMutation(api.cards.archiveCard);
   const deleteCard = useMutation(api.cards.remove);
+  const sortableData = useMemo(
+    () => ({ type: "card" as const, columnId }),
+    [columnId],
+  );
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(card._id),
-    data: { type: "card", columnId },
+    data: sortableData,
     disabled: !draggable,
   });
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -2903,7 +3415,7 @@ function KanbanCard({
               className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
               onClick={handleArchiveCard}
             >
-              Archive card
+              Archive
             </button>
           ) : null}
           <button
@@ -2911,7 +3423,7 @@ function KanbanCard({
             className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
             onClick={handleDeleteCard}
           >
-            Delete card
+            Delete
           </button>
         </div>
       ) : null}
@@ -3702,7 +4214,7 @@ function CardModal({
               onClick={handleDelete}
               disabled={isSavingDescription || isSavingCard || isDeletingCard}
             >
-              {isDeletingCard ? "Deleting…" : "Delete card"}
+              {isDeletingCard ? "Deleting…" : "Delete"}
             </button>
             <div className="flex items-center gap-2">
               <button

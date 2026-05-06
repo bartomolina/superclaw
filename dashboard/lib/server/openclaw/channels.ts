@@ -9,7 +9,7 @@ import { OPENCLAW_HOME } from "@/lib/server/openclaw/constants";
 import { json } from "@/lib/server/openclaw/http";
 import { runOpenClawJson } from "@/lib/server/openclaw/cli";
 
-const CHANNELS_STATUS_TIMEOUT_MS = 20_000;
+const CHANNELS_STATUS_TIMEOUT_MS = 60_000;
 
 function readStoredAllowFrom(channel: string, accountId: string) {
   try {

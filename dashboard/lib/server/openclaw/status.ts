@@ -40,8 +40,8 @@ export async function handleGatewayStatus() {
   }
 }
 
-export async function handleUsage() {
-  const data = await runtimeGatewayRequest("sessions.usage", {}, 10_000);
+export async function handleUsage(params: Record<string, unknown> = {}) {
+  const data = await runtimeGatewayRequest("sessions.usage", params, 30_000);
   return json(data);
 }
 
@@ -145,6 +145,10 @@ async function readSystemdServices() {
             "-p",
             "SubState",
             "-p",
+            "Type",
+            "-p",
+            "Result",
+            "-p",
             "MainPID",
             "-p",
             "ExecMainStartTimestamp",
@@ -176,6 +180,8 @@ async function readSystemdServices() {
           description: normalizeSystemdDescription(props.Description, props.Id, command),
           active: props.ActiveState || null,
           subState: props.SubState || null,
+          type: props.Type || null,
+          result: props.Result || null,
           enabled: props.UnitFileState || null,
           mainPid: Number.parseInt(props.MainPID || "0", 10) || 0,
           uptime: parseSystemdTimestamp(props.ExecMainStartTimestamp),

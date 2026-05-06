@@ -13,9 +13,11 @@ import {
 } from "./access";
 
 const FIXED_COLUMNS = ["Ideas", "TODO", "In Progress", "Review", "Done", "Archive"] as const;
+const ORDER_STEP = 1_000;
 
 type ManagedUserDoc = Doc<"managedUsers">;
 type BoardPermissionDoc = Doc<"boardPermissions">;
+type BoardDoc = Doc<"boards">;
 type ReadCtx = QueryCtx | MutationCtx;
 
 function normalizeSharedUserIds(sharedUserIds?: Id<"managedUsers">[]) {
@@ -84,6 +86,68 @@ async function ensureBoardFixedColumns(ctx: MutationCtx, boardId: Id<"boards">) 
 
     if (existing.order !== order) {
       await ctx.db.patch(existing._id, { order });
+    }
+  }
+}
+
+function isHiddenBoard(board: Pick<BoardDoc, "hiddenAt">) {
+  return Boolean(board.hiddenAt);
+}
+
+async function listOwnerBoards(ctx: MutationCtx, ownerId: string | undefined) {
+  return await ctx.db
+    .query("boards")
+    .withIndex("by_owner_order", (q) => q.eq("ownerId", ownerId))
+    .order("asc")
+    .collect();
+}
+
+async function writeBoardOrder(ctx: MutationCtx, boards: BoardDoc[]) {
+  for (let index = 0; index < boards.length; index += 1) {
+    const board = boards[index];
+    const order = (index + 1) * ORDER_STEP;
+
+    if (board.order !== order) {
+      await ctx.db.patch(board._id, { order });
+    }
+  }
+}
+
+async function moveBoardBetweenVisibilitySections(
+  ctx: MutationCtx,
+  board: BoardDoc,
+  hidden: boolean,
+  now: number,
+) {
+  const siblingBoards = (await listOwnerBoards(ctx, board.ownerId)).filter(
+    (candidate) => candidate._id !== board._id,
+  );
+  const updatedBoard = {
+    ...board,
+    hiddenAt: hidden ? now : undefined,
+    updatedAt: now,
+  } satisfies BoardDoc;
+  const activeBoards = siblingBoards.filter((candidate) => !isHiddenBoard(candidate));
+  const hiddenBoards = siblingBoards.filter(isHiddenBoard);
+  const nextBoards = hidden
+    ? [...activeBoards, ...hiddenBoards, updatedBoard]
+    : [...activeBoards, updatedBoard, ...hiddenBoards];
+
+  for (let index = 0; index < nextBoards.length; index += 1) {
+    const nextBoard = nextBoards[index];
+    const order = (index + 1) * ORDER_STEP;
+
+    if (nextBoard._id === board._id) {
+      await ctx.db.patch(board._id, {
+        hiddenAt: hidden ? now : undefined,
+        updatedAt: now,
+        order,
+      });
+      continue;
+    }
+
+    if (nextBoard.order !== order) {
+      await ctx.db.patch(nextBoard._id, { order });
     }
   }
 }
@@ -380,6 +444,7 @@ export const rename = mutation({
       ...(url ? { url } : {}),
       ...(normalizedIds.length > 0 ? { sharedUserIds: normalizedIds } : {}),
       ...(normalizedAllowedAgentIds.length > 0 ? { allowedAgentIds: normalizedAllowedAgentIds } : {}),
+      ...(board.hiddenAt ? { hiddenAt: board.hiddenAt } : {}),
       createdAt: board.createdAt,
       updatedAt: now,
       order: board.order,
@@ -393,6 +458,24 @@ export const rename = mutation({
     });
 
     await clearDisallowedBoardAgents(ctx, args.boardId, normalizedAllowedAgentIds);
+  },
+});
+
+export const setHidden = mutation({
+  args: {
+    boardId: v.id("boards"),
+    hidden: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    await requireSuperuser(ctx);
+
+    const board = await ctx.db.get(args.boardId);
+    if (!board) {
+      throw new Error("Board not found");
+    }
+
+    const now = Date.now();
+    await moveBoardBetweenVisibilitySections(ctx, board, args.hidden, now);
   },
 });
 
@@ -441,20 +524,21 @@ export const remove = mutation({
 export const reorder = mutation({
   args: {
     boardIds: v.array(v.id("boards")),
+    hidden: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const user = await requireSuperuser(ctx);
+    const hidden = Boolean(args.hidden);
 
-    const boards = await ctx.db
-      .query("boards")
-      .withIndex("by_owner_order", (q) => q.eq("ownerId", user.userId))
-      .order("asc")
-      .collect();
+    const boards = await listOwnerBoards(ctx, user.userId);
+    const activeBoards = boards.filter((board) => !isHiddenBoard(board));
+    const hiddenBoards = boards.filter(isHiddenBoard);
+    const sectionBoards = hidden ? hiddenBoards : activeBoards;
 
-    const boardById = new Map(boards.map((board) => [board._id, board]));
+    const boardById = new Map(sectionBoards.map((board) => [board._id, board]));
 
     const seen = new Set<string>();
-    const orderedIds: string[] = [];
+    const orderedIds: Id<"boards">[] = [];
 
     for (const boardId of args.boardIds) {
       const key = String(boardId);
@@ -464,7 +548,7 @@ export const reorder = mutation({
       }
     }
 
-    for (const board of boards) {
+    for (const board of sectionBoards) {
       const key = String(board._id);
       if (!seen.has(key)) {
         orderedIds.push(board._id);
@@ -472,15 +556,14 @@ export const reorder = mutation({
       }
     }
 
-    for (let index = 0; index < orderedIds.length; index += 1) {
-      const boardId = orderedIds[index] as typeof boards[number]["_id"];
+    const reorderedSectionBoards = orderedIds.flatMap((boardId) => {
       const board = boardById.get(boardId);
-      if (!board) continue;
+      return board ? [board] : [];
+    });
+    const nextBoards = hidden
+      ? [...activeBoards, ...reorderedSectionBoards]
+      : [...reorderedSectionBoards, ...hiddenBoards];
 
-      const order = (index + 1) * 1_000;
-      if (board.order !== order) {
-        await ctx.db.patch(boardId, { order });
-      }
-    }
+    await writeBoardOrder(ctx, nextBoards);
   },
 });

@@ -36,7 +36,7 @@ export function CreateAgentForm({ runRestartOperation, open, onClose }: CreateAg
     const agentId = newId.trim();
     setCreating(true);
     try {
-      await runRestartOperation(
+      const data = await runRestartOperation(
         {
           title: `Creating ${agentId}`,
           message: "Setting up the agent and waiting for the gateway to come back.",
@@ -64,6 +64,9 @@ export function CreateAgentForm({ runRestartOperation, open, onClose }: CreateAg
       resetForm();
       onClose();
       toast.success(`Created ${agentId}`);
+      if (Array.isArray(data.warnings) && data.warnings.length) {
+        toast.warning(data.warnings.join("\n"));
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create agent");
     } finally {

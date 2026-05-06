@@ -9,6 +9,7 @@ export default defineSchema({
     url: v.optional(v.string()),
     sharedUserIds: v.optional(v.array(v.id("managedUsers"))),
     allowedAgentIds: v.optional(v.array(v.string())),
+    hiddenAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     order: v.number(),

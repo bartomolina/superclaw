@@ -1,4 +1,4 @@
-import { runCommand } from "@/lib/server/command";
+import { CommandExecutionError, runCommand } from "@/lib/server/command";
 import { OPENCLAW_BIN, GATEWAY_TOKEN } from "@/lib/server/openclaw/constants";
 
 type CliOptions = {
@@ -20,7 +20,15 @@ export async function runOpenClaw(args: string[], options: CliOptions = {}) {
 }
 
 export async function runOpenClawJson<T>(args: string[], fallback: T, options: CliOptions = {}) {
-  const { stdout } = await runOpenClaw(args, options);
+  let stdout = "";
+
+  try {
+    const result = await runOpenClaw(args, options);
+    stdout = result.stdout;
+  } catch (error) {
+    if (!(error instanceof CommandExecutionError) || !error.stdout.trim()) throw error;
+    stdout = error.stdout;
+  }
 
   try {
     return JSON.parse(stdout) as T;
@@ -29,13 +37,13 @@ export async function runOpenClawJson<T>(args: string[], fallback: T, options: C
   }
 }
 
-export async function gatewayCall<T>(method: string, params: Record<string, unknown> = {}) {
+export async function gatewayCall<T>(method: string, params: Record<string, unknown> = {}, options: CliOptions = {}) {
   if (!GATEWAY_TOKEN) {
     throw new Error("GATEWAY_TOKEN is required in environment");
   }
 
   const args = ["gateway", "call", method, "--json", "--params", JSON.stringify(params), "--token", GATEWAY_TOKEN];
-  const { stdout } = await runOpenClaw(args);
+  const { stdout } = await runOpenClaw(args, options);
 
   try {
     return JSON.parse(stdout) as T;
