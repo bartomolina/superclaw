@@ -87,6 +87,7 @@ const CARD_MOUSE_SENSOR_OPTIONS = { activationConstraint: { distance: 6 } };
 const CARD_TOUCH_SENSOR_OPTIONS = { activationConstraint: { delay: 180, tolerance: 10 } };
 const BOARD_MOUSE_SENSOR_OPTIONS = { activationConstraint: { distance: 4 } };
 const BOARD_TOUCH_SENSOR_OPTIONS = { activationConstraint: { delay: 220, tolerance: 12 } };
+const CARD_INSERT_AFTER_THRESHOLD = 0.75;
 
 type CardModel = {
   _id: Id<"cards">;
@@ -581,24 +582,63 @@ function describeDragRect(rect: { top: number; height: number } | null | undefin
   };
 }
 
+function getEventClientY(event: Event | null | undefined) {
+  if (!event) return null;
+
+  if ("clientY" in event && typeof event.clientY === "number") {
+    return event.clientY;
+  }
+
+  if ("touches" in event) {
+    const touches = (event as TouchEvent).touches;
+    if (touches.length > 0) {
+      return touches[0]?.clientY ?? null;
+    }
+  }
+
+  if ("changedTouches" in event) {
+    const changedTouches = (event as TouchEvent).changedTouches;
+    if (changedTouches.length > 0) {
+      return changedTouches[0]?.clientY ?? null;
+    }
+  }
+
+  return null;
+}
+
+function getDragPointerY(activatorEvent: Event | null | undefined, delta: { y: number } | null | undefined) {
+  const initialY = getEventClientY(activatorEvent);
+  if (initialY === null || !delta) return null;
+
+  return initialY + delta.y;
+}
+
 function describeInsertDecision(
   activeRect: { top: number; height: number; centerY: number } | null,
   overRect: { top: number; height: number; centerY: number } | null,
   insertAfterOverCard: boolean,
+  pointerY: number | null,
 ) {
-  if (!activeRect || !overRect || overRect.height === 0) {
+  if (!overRect || overRect.height === 0) {
     return null;
   }
 
-  const activeOffsetWithinOver = activeRect.centerY - overRect.top;
-  const activeOffsetRatio = activeOffsetWithinOver / overRect.height;
+  const activeOffsetWithinOver = activeRect ? activeRect.centerY - overRect.top : null;
+  const activeOffsetRatio = activeOffsetWithinOver === null ? null : activeOffsetWithinOver / overRect.height;
+  const pointerOffsetWithinOver = pointerY === null ? null : pointerY - overRect.top;
+  const pointerOffsetRatio = pointerOffsetWithinOver === null ? null : pointerOffsetWithinOver / overRect.height;
+  const decisionY = pointerY ?? activeRect?.centerY ?? null;
 
   return {
     decision: insertAfterOverCard ? "after" : "before",
-    activeOffsetWithinOver: Math.round(activeOffsetWithinOver),
-    activeOffsetRatio: Number(activeOffsetRatio.toFixed(2)),
+    decisionSource: pointerY === null ? "activeRect" : "pointer",
+    pointerY: pointerY === null ? null : Math.round(pointerY),
+    pointerOffsetWithinOver: pointerOffsetWithinOver === null ? null : Math.round(pointerOffsetWithinOver),
+    pointerOffsetRatio: pointerOffsetRatio === null ? null : Number(pointerOffsetRatio.toFixed(2)),
+    activeOffsetWithinOver: activeOffsetWithinOver === null ? null : Math.round(activeOffsetWithinOver),
+    activeOffsetRatio: activeOffsetRatio === null ? null : Number(activeOffsetRatio.toFixed(2)),
     midpointY: overRect.centerY,
-    distanceFromMidpoint: Math.round(activeRect.centerY - overRect.centerY),
+    distanceFromMidpoint: decisionY === null ? null : Math.round(decisionY - overRect.centerY),
   };
 }
 
@@ -1487,14 +1527,22 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     activeRect: { top: number; height: number } | null | undefined,
     overRect: { top: number; height: number } | null | undefined,
     overId: string,
+    pointerY: number | null,
   ) {
-    if (overId.startsWith("column-") || !activeRect || !overRect) {
+    if (overId.startsWith("column-") || !overRect) {
+      return false;
+    }
+
+    if (pointerY !== null) {
+      return (pointerY - overRect.top) / overRect.height >= CARD_INSERT_AFTER_THRESHOLD;
+    }
+
+    if (!activeRect) {
       return false;
     }
 
     const activeCenterY = activeRect.top + activeRect.height / 2;
-    const overCenterY = overRect.top + overRect.height / 2;
-    return activeCenterY > overCenterY;
+    return (activeCenterY - overRect.top) / overRect.height >= CARD_INSERT_AFTER_THRESHOLD;
   }
 
   function applyOverMove(
@@ -1562,10 +1610,12 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
     const cardId = String(event.active.id) as Id<"cards">;
     const overId = String(event.over.id);
+    const pointerY = getDragPointerY(event.activatorEvent, event.delta);
     const insertAfterOverCard = shouldInsertAfterOverCard(
       event.active.rect.current.translated ?? event.active.rect.current.initial,
       event.over.rect,
       overId,
+      pointerY,
     );
 
     setDragColumns((current) => {
@@ -1587,13 +1637,13 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
         const target = describeCardTarget(baseColumns, overId);
         const activeRect = describeDragRect(event.active.rect.current.translated ?? event.active.rect.current.initial);
         const overRect = describeDragRect(event.over?.rect);
-        const insertDecision = describeInsertDecision(activeRect, overRect, insertAfterOverCard);
+        const insertDecision = describeInsertDecision(activeRect, overRect, insertAfterOverCard, pointerY);
         const targetColumn = working.find((column) => column._id === projected.columnId);
         const logSig = `${projected.columnId}:${projected.position}:${overId}:${insertAfterOverCard}:${activeRect?.centerY ?? "x"}:${overRect?.centerY ?? "x"}`;
         if (lastCardMoveLogRef.current !== logSig) {
           lastCardMoveLogRef.current = logSig;
           console.info(
-            `[kanban:dnd] hover "${projected.cardTitle}" -> ${projected.columnName} position ${projected.position + 1} ${insertDecision ? `(${insertDecision.decision}, ratio=${insertDecision.activeOffsetRatio})` : ""} via ${target.type} over=${overId}`,
+            `[kanban:dnd] hover "${projected.cardTitle}" -> ${projected.columnName} position ${projected.position + 1} ${insertDecision ? `(${insertDecision.decision}, ${insertDecision.decisionSource}Ratio=${insertDecision.pointerOffsetRatio ?? insertDecision.activeOffsetRatio})` : ""} via ${target.type} over=${overId}`,
             {
               cardId,
               overId,
@@ -1607,6 +1657,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
               projectedPosition: projected.position,
               projectedHumanPosition: projected.position + 1,
               insertAfterOverCard,
+              insertAfterThreshold: CARD_INSERT_AFTER_THRESHOLD,
               insertDecision,
               activeRect,
               overRect,
@@ -1692,10 +1743,12 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     if (!finalColumns && event.over) {
       const fallback = cloneColumns(visibleBoardColumns);
       const overId = String(event.over.id);
+      const pointerY = getDragPointerY(event.activatorEvent, event.delta);
       const insertAfterOverCard = shouldInsertAfterOverCard(
         event.active.rect.current.translated ?? event.active.rect.current.initial,
         event.over.rect,
         overId,
+        pointerY,
       );
       const changed = applyOverMove(fallback, cardId, overId, insertAfterOverCard);
       if (changed) {
