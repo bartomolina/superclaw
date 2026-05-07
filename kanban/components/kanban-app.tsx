@@ -1,27 +1,16 @@
 "use client";
 
+import { CollisionPriority } from "@dnd-kit/abstract";
+import { arrayMove, move } from "@dnd-kit/helpers";
 import {
-  DndContext,
+  DragDropProvider,
   DragOverlay,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  closestCorners,
   useDroppable,
-  useSensor,
-  useSensors,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  hasSortableData,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+} from "@dnd-kit/react";
+import { isSortable, useSortable } from "@dnd-kit/react/sortable";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { Archive, Chrome, Clock3, ExternalLink, Eye, EyeOff, GripVertical, Hash, Menu, Moon, Play, Search, Send, Sun, UserRound, Users, X } from "lucide-react";
 import Image from "next/image";
@@ -83,11 +72,6 @@ type AgentInboxCountModel = {
 };
 
 const DESCRIPTION_AUTOSAVE_DELAY_MS = 1200;
-const CARD_MOUSE_SENSOR_OPTIONS = { activationConstraint: { distance: 6 } };
-const CARD_TOUCH_SENSOR_OPTIONS = { activationConstraint: { delay: 180, tolerance: 10 } };
-const BOARD_MOUSE_SENSOR_OPTIONS = { activationConstraint: { distance: 4 } };
-const BOARD_TOUCH_SENSOR_OPTIONS = { activationConstraint: { delay: 220, tolerance: 12 } };
-const CARD_INSERT_AFTER_THRESHOLD = 0.75;
 
 type CardModel = {
   _id: Id<"cards">;
@@ -158,6 +142,9 @@ type ColumnModel = {
   order: number;
   cards: CardModel[];
 };
+
+type CardSortableItem = CardModel & { id: string };
+type CardGroups = Record<string, CardSortableItem[]>;
 
 type BoardView = {
   board: BoardModel;
@@ -513,43 +500,31 @@ function columnsSignature(columns: ColumnModel[]) {
     .join("|");
 }
 
-function getEventClientY(event: Event | null | undefined) {
-  if (!event) return null;
-
-  if ("clientY" in event && typeof event.clientY === "number") {
-    return event.clientY;
-  }
-
-  if ("touches" in event) {
-    const touches = (event as TouchEvent).touches;
-    if (touches.length > 0) {
-      return touches[0]?.clientY ?? null;
-    }
-  }
-
-  if ("changedTouches" in event) {
-    const changedTouches = (event as TouchEvent).changedTouches;
-    if (changedTouches.length > 0) {
-      return changedTouches[0]?.clientY ?? null;
-    }
-  }
-
-  return null;
+function boardDndGroup(hidden: boolean) {
+  return hidden ? "boards:hidden" : "boards:active";
 }
 
-function getDragPointerY(activatorEvent: Event | null | undefined, delta: { y: number } | null | undefined) {
-  const initialY = getEventClientY(activatorEvent);
-  if (initialY === null || !delta) return null;
-
-  return initialY + delta.y;
+function columnDndKey(columnId: Id<"columns">) {
+  return `column:${columnId}`;
 }
 
-function cardSortableIds(cards: CardModel[]) {
-  return cards.map((card) => String(card._id));
+function columnsToCardGroups(columns: ColumnModel[]): CardGroups {
+  return Object.fromEntries(
+    columns.map((column) => [
+      columnDndKey(column._id),
+      column.cards.map((card) => ({ ...card, id: String(card._id) })),
+    ]),
+  ) as CardGroups;
 }
 
-function boardSortableIds(boards: BoardModel[] | undefined) {
-  return boards?.map((board) => String(board._id)) ?? [];
+function cardGroupsToColumns(columns: ColumnModel[], groups: CardGroups): ColumnModel[] {
+  return columns.map((column) => ({
+    ...column,
+    cards: (groups[columnDndKey(column._id)] ?? []).map((card) => ({
+      ...card,
+      columnId: column._id,
+    })),
+  }));
 }
 
 function renderCommentText(text: string, keyPrefix: string) {
@@ -686,6 +661,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   const boardReorderQueueRef = useRef<Promise<void>>(Promise.resolve());
   const cardLayoutQueueRef = useRef<Promise<void>>(Promise.resolve());
   const latestCardLayoutRequestRef = useRef(0);
+  const initialCardGroupsRef = useRef<CardGroups | null>(null);
   const [selectedBoardId, setSelectedBoardId] = useState<Id<"boards"> | null>(null);
   const [newBoardName, setNewBoardName] = useState("");
   const [showNewBoardForm, setShowNewBoardForm] = useState(false);
@@ -1155,9 +1131,6 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     () => sidebarAgentOptions.map((agent) => agent.id).filter((agentId) => agentId.trim().length > 0),
     [sidebarAgentOptions],
   );
-  const displayBoardSortableIds = useMemo(() => boardSortableIds(displayBoards), [displayBoards]);
-  const hiddenBoardSortableIds = useMemo(() => boardSortableIds(hiddenBoards), [hiddenBoards]);
-
   const sidebarInboxCounts = useQuery(
     api.agent_automation.listBoardAgentInboxCounts,
     isConvexAuthenticated && effectiveSelectedBoardId && sidebarAgentIds.length > 0
@@ -1211,16 +1184,6 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     }
   }, [activeDragCardId, dragColumns, isSearchActive]);
 
-  const sensors = useSensors(
-    useSensor(MouseSensor, CARD_MOUSE_SENSOR_OPTIONS),
-    useSensor(TouchSensor, CARD_TOUCH_SENSOR_OPTIONS),
-    useSensor(KeyboardSensor),
-  );
-
-  const boardSensors = useSensors(
-    useSensor(MouseSensor, BOARD_MOUSE_SENSOR_OPTIONS),
-    useSensor(TouchSensor, BOARD_TOUCH_SENSOR_OPTIONS),
-  );
 
   const handleOpenCard = useCallback((cardId: Id<"cards">) => {
     setActiveCardId(cardId);
@@ -1332,36 +1295,21 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     }
   }
 
-  async function handleBoardReorder(sourceBoardId: Id<"boards">, targetBoardId: Id<"boards">, hidden: boolean) {
+  async function handleBoardReorderByIndex(
+    sourceBoardId: Id<"boards">,
+    initialIndex: number,
+    index: number,
+    hidden: boolean,
+  ) {
     const sectionBoards = hidden ? hiddenBoards : displayBoards;
-    if (!orderedBoards || !sectionBoards || sourceBoardId === targetBoardId) return;
+    if (!orderedBoards || !sectionBoards || initialIndex === index) return;
 
     const sourceBoard = sectionBoards.find((board) => board._id === sourceBoardId);
-    const targetBoard = sectionBoards.find((board) => board._id === targetBoardId);
+    if (!sourceBoard?.isOwner) return;
 
-    if (!sourceBoard?.isOwner || !targetBoard?.isOwner) {
-      return;
-    }
+    const nextSectionBoards = arrayMove(sectionBoards, initialIndex, index);
+    const nextOrderedIds = nextSectionBoards.filter((board) => board.isOwner).map((board) => board._id);
 
-    const ownedBoards = sectionBoards.filter((board) => board.isOwner);
-    const orderedIds = ownedBoards.map((board) => board._id);
-    const sourceIndex = orderedIds.indexOf(sourceBoardId);
-    const targetIndex = orderedIds.indexOf(targetBoardId);
-
-    if (sourceIndex < 0 || targetIndex < 0) return;
-
-    const nextOrderedIds = arrayMove(orderedIds, sourceIndex, targetIndex);
-    const ownedBoardById = new Map(ownedBoards.map((board) => [String(board._id), board]));
-    let ownedIndex = 0;
-    const nextSectionBoards = sectionBoards.map((board) => {
-      if (!board.isOwner) {
-        return board;
-      }
-
-      const nextBoard = ownedBoardById.get(String(nextOrderedIds[ownedIndex]));
-      ownedIndex += 1;
-      return nextBoard ?? board;
-    });
     let sectionIndex = 0;
     const nextBoards = orderedBoards.map((board) => {
       if (Boolean(board.hiddenAt) !== hidden) {
@@ -1395,150 +1343,113 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
   }
 
   function handleBoardDragStart(event: DragStartEvent) {
-    setActiveBoardId(String(event.active.id) as Id<"boards">);
+    const { source } = event.operation;
+    if (!source) return;
+    setActiveBoardId(String(source.id) as Id<"boards">);
   }
 
   function handleBoardDragEnd(event: DragEndEvent, hidden = false) {
-    const sourceBoardId = String(event.active.id) as Id<"boards">;
-    const targetBoardId = event.over ? (String(event.over.id) as Id<"boards">) : null;
-
+    const { source } = event.operation;
     setActiveBoardId(null);
 
-    if (!targetBoardId || sourceBoardId === targetBoardId) return;
-    void handleBoardReorder(sourceBoardId, targetBoardId, hidden);
-  }
+    if (event.canceled || !source || !isSortable(source)) return;
 
-  function handleBoardDragCancel() {
-    setActiveBoardId(null);
-  }
-
-  function getContainerId(overId: string, columns: ColumnModel[]) {
-    if (overId.startsWith("column-")) {
-      const parsed = overId.slice("column-".length) as Id<"columns">;
-      return columns.some((column) => column._id === parsed) ? parsed : null;
-    }
-
-    const parent = columns.find((column) =>
-      column.cards.some((card) => card._id === (overId as Id<"cards">)),
+    void handleBoardReorderByIndex(
+      String(source.id) as Id<"boards">,
+      source.initialIndex,
+      source.index,
+      hidden,
     );
-    return parent?._id ?? null;
-  }
-
-  function shouldInsertAfterOverCard(
-    activeRect: { top: number; height: number } | null | undefined,
-    overRect: { top: number; height: number } | null | undefined,
-    overId: string,
-    pointerY: number | null,
-  ) {
-    if (overId.startsWith("column-") || !overRect) {
-      return false;
-    }
-
-    if (pointerY !== null) {
-      return (pointerY - overRect.top) / overRect.height >= CARD_INSERT_AFTER_THRESHOLD;
-    }
-
-    if (!activeRect) {
-      return false;
-    }
-
-    const activeCenterY = activeRect.top + activeRect.height / 2;
-    return (activeCenterY - overRect.top) / overRect.height >= CARD_INSERT_AFTER_THRESHOLD;
-  }
-
-  function applyOverMove(
-    columns: ColumnModel[],
-    cardId: Id<"cards">,
-    overId: string,
-    insertAfterOverCard = false,
-  ) {
-    const activeContainerId = getContainerId(cardId, columns);
-    const overContainerId = getContainerId(overId, columns);
-
-    if (!activeContainerId || !overContainerId) return false;
-
-    const activeContainer = columns.find((column) => column._id === activeContainerId);
-    const overContainer = columns.find((column) => column._id === overContainerId);
-
-    if (!activeContainer || !overContainer) return false;
-
-    const activeIndex = activeContainer.cards.findIndex((card) => card._id === cardId);
-    if (activeIndex < 0) return false;
-
-    if (activeContainerId === overContainerId) {
-      const overIndex = overId.startsWith("column-")
-        ? overContainer.cards.length - 1
-        : overContainer.cards.findIndex((card) => card._id === (overId as Id<"cards">));
-
-      if (overIndex < 0 || overIndex === activeIndex) return false;
-
-      overContainer.cards = arrayMove(overContainer.cards, activeIndex, overIndex);
-      return true;
-    }
-
-    const [movingCard] = activeContainer.cards.splice(activeIndex, 1);
-    if (!movingCard) return false;
-
-    const overIndex = overId.startsWith("column-")
-      ? overContainer.cards.length
-      : overContainer.cards.findIndex((card) => card._id === (overId as Id<"cards">));
-
-    const insertIndex = overIndex >= 0
-      ? Math.min(overIndex + (insertAfterOverCard ? 1 : 0), overContainer.cards.length)
-      : overContainer.cards.length;
-
-    overContainer.cards.splice(insertIndex, 0, {
-      ...movingCard,
-      columnId: overContainer._id,
-    });
-
-    return true;
   }
 
   function handleCardDragStart(event: DragStartEvent) {
-    const cardId = String(event.active.id) as Id<"cards">;
+    const { source } = event.operation;
+    if (!source) return;
 
-    setActiveDragCardId(cardId);
-
-    if (dndColumns.length > 0) {
-      setDragColumns(cloneColumns(dndColumns));
-    }
+    setActiveDragCardId(String(source.id) as Id<"cards">);
+    initialCardGroupsRef.current = columnsToCardGroups(visibleBoardColumns);
+    setDragColumns(cloneColumns(visibleBoardColumns));
   }
 
   function handleCardDragOver(event: DragOverEvent) {
-    if (!boardView || !event.over) return;
-
-    const cardId = String(event.active.id) as Id<"cards">;
-    const overId = String(event.over.id);
-    const pointerY = getDragPointerY(event.activatorEvent, event.delta);
-    const insertAfterOverCard = shouldInsertAfterOverCard(
-      event.active.rect.current.translated ?? event.active.rect.current.initial,
-      event.over.rect,
-      overId,
-      pointerY,
-    );
+    const { source } = event.operation;
+    if (!source || source.type !== "card") return;
 
     setDragColumns((current) => {
       const baseColumns = current ?? visibleBoardColumns;
-      const activeContainerId = getContainerId(cardId, baseColumns);
-      const overContainerId = getContainerId(overId, baseColumns);
-      if (!activeContainerId || !overContainerId) return current;
+      const baseGroups = columnsToCardGroups(baseColumns);
+      const nextGroups = move(baseGroups, event) as CardGroups;
 
-      const working = cloneColumns(baseColumns);
-      const changed = applyOverMove(working, cardId, overId, insertAfterOverCard);
-      if (!changed) return current;
+      if (nextGroups === baseGroups) return current;
 
-      const previousSig = columnsSignature(baseColumns);
-      const nextSig = columnsSignature(working);
-      if (previousSig === nextSig) return current;
+      const nextColumns = cardGroupsToColumns(visibleBoardColumns, nextGroups);
+      if (columnsSignature(nextColumns) === columnsSignature(baseColumns)) return current;
 
-      return working;
+      return nextColumns;
     });
   }
 
-  function handleCardDragCancel() {
+  function handleCardDragEnd(event: DragEndEvent) {
+    const { source } = event.operation;
+    const cardId = source ? (String(source.id) as Id<"cards">) : null;
+
+    if (!boardView || !source || source.type !== "card" || !cardId) {
+      setActiveDragCardId(null);
+      setDragColumns(null);
+      initialCardGroupsRef.current = null;
+      return;
+    }
+
+    let finalColumns: ColumnModel[] | null = null;
+
+    if (event.canceled) {
+      finalColumns = initialCardGroupsRef.current
+        ? cardGroupsToColumns(visibleBoardColumns, initialCardGroupsRef.current)
+        : null;
+    } else if (dragColumns) {
+      finalColumns = dragColumns;
+    } else if (isSortable(source)) {
+      const nextGroups = move(columnsToCardGroups(visibleBoardColumns), event) as CardGroups;
+      finalColumns = cardGroupsToColumns(visibleBoardColumns, nextGroups);
+    }
+
+    initialCardGroupsRef.current = null;
+
+    if (event.canceled || !finalColumns || columnsSignature(finalColumns) === boardColumnsSig) {
+      setActiveDragCardId(null);
+      setDragColumns(null);
+      return;
+    }
+
+    const layoutPayload = {
+      boardId: boardView.board._id,
+      columns: finalColumns.map((column) => ({
+        columnId: column._id,
+        cardIds: column.cards.map((card) => card._id),
+      })),
+    };
+
     setActiveDragCardId(null);
-    setDragColumns(null);
+    setDragColumns(finalColumns);
+
+    const requestId = latestCardLayoutRequestRef.current + 1;
+    latestCardLayoutRequestRef.current = requestId;
+
+    const run = cardLayoutQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        await applyCardLayout(layoutPayload);
+      });
+
+    cardLayoutQueueRef.current = run;
+
+    void run.catch((error) => {
+      if (latestCardLayoutRequestRef.current === requestId) {
+        setDragColumns(null);
+      }
+
+      toast.error(error instanceof Error ? error.message : "Failed to save card order");
+    });
   }
 
   async function handleRunAgentNow(agentId: string) {
@@ -1567,88 +1478,6 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
     } finally {
       setRunningAgentId(null);
     }
-  }
-
-  function handleCardDragEnd(event: DragEndEvent) {
-    const cardId = String(event.active.id) as Id<"cards">;
-
-    if (!boardView) {
-      setActiveDragCardId(null);
-      setDragColumns(null);
-      return;
-    }
-
-    let finalColumns = dragColumns;
-
-    if (
-      event.over &&
-      hasSortableData(event.active) &&
-      hasSortableData(event.over) &&
-      event.active.data.current.sortable.containerId === event.over.data.current.sortable.containerId &&
-      event.active.data.current.sortable.index !== event.over.data.current.sortable.index
-    ) {
-      const columnId = event.over.data.current.sortable.containerId as Id<"columns">;
-      const activeIndex = event.active.data.current.sortable.index;
-      const overIndex = event.over.data.current.sortable.index;
-      const fallback = cloneColumns(visibleBoardColumns);
-      const targetColumn = fallback.find((column) => column._id === columnId);
-
-      if (targetColumn) {
-        targetColumn.cards = arrayMove(targetColumn.cards, activeIndex, overIndex);
-        finalColumns = fallback;
-      }
-    }
-
-    if (!finalColumns && event.over) {
-      const fallback = cloneColumns(visibleBoardColumns);
-      const overId = String(event.over.id);
-      const pointerY = getDragPointerY(event.activatorEvent, event.delta);
-      const insertAfterOverCard = shouldInsertAfterOverCard(
-        event.active.rect.current.translated ?? event.active.rect.current.initial,
-        event.over.rect,
-        overId,
-        pointerY,
-      );
-      const changed = applyOverMove(fallback, cardId, overId, insertAfterOverCard);
-      if (changed) {
-        finalColumns = fallback;
-      }
-    }
-
-    if (!finalColumns || columnsSignature(finalColumns) === boardColumnsSig) {
-      setActiveDragCardId(null);
-      setDragColumns(null);
-      return;
-    }
-
-    const layoutPayload = {
-      boardId: boardView.board._id,
-      columns: finalColumns.map((column) => ({
-        columnId: column._id,
-        cardIds: column.cards.map((card) => card._id),
-      })),
-    };
-
-    setActiveDragCardId(null);
-
-    const requestId = latestCardLayoutRequestRef.current + 1;
-    latestCardLayoutRequestRef.current = requestId;
-
-    const run = cardLayoutQueueRef.current
-      .catch(() => undefined)
-      .then(async () => {
-        await applyCardLayout(layoutPayload);
-      });
-
-    cardLayoutQueueRef.current = run;
-
-    void run.catch((error) => {
-      if (latestCardLayoutRequestRef.current === requestId) {
-        setDragColumns(null);
-      }
-
-      toast.error(error instanceof Error ? error.message : "Failed to save card order");
-    });
   }
 
   async function handleArchiveAllDoneCards() {
@@ -1880,33 +1709,30 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
               ) : null}
 
               {displayBoards && displayBoards.length > 0 ? (
-                <DndContext
-                  sensors={boardSensors}
-                  collisionDetection={closestCorners}
+                <DragDropProvider
                   onDragStart={handleBoardDragStart}
-                  onDragEnd={handleBoardDragEnd}
-                  onDragCancel={handleBoardDragCancel}
+                  onDragEnd={(event) => handleBoardDragEnd(event)}
                 >
-                  <SortableContext items={displayBoardSortableIds} strategy={verticalListSortingStrategy}>
-                    {displayBoards.map((board) => (
-                      <BoardSidebarItem
-                        key={board._id}
-                        board={board}
-                        href={getBoardHref(board._id)}
-                        isActive={board._id === effectiveSelectedBoardId}
-                        isDragging={activeBoardId === board._id}
-                        onSelect={() => {
-                          setSelectedBoardId(board._id);
-                          setIsMobileSidebarOpen(false);
-                          navigateToBoard(board._id, "push");
-                        }}
-                        onRename={() => setEditingBoard(board)}
-                        onHiddenChange={(hidden) => void handleSetBoardHidden(board._id, hidden)}
-                        onDelete={() => void handleDeleteBoard(board._id, board.name)}
-                      />
-                    ))}
-                  </SortableContext>
-                </DndContext>
+                  {displayBoards.map((board, index) => (
+                    <BoardSidebarItem
+                      key={board._id}
+                      board={board}
+                      index={index}
+                      group={boardDndGroup(false)}
+                      href={getBoardHref(board._id)}
+                      isActive={board._id === effectiveSelectedBoardId}
+                      isDragging={activeBoardId === board._id}
+                      onSelect={() => {
+                        setSelectedBoardId(board._id);
+                        setIsMobileSidebarOpen(false);
+                        navigateToBoard(board._id, "push");
+                      }}
+                      onRename={() => setEditingBoard(board)}
+                      onHiddenChange={(hidden) => void handleSetBoardHidden(board._id, hidden)}
+                      onDelete={() => void handleDeleteBoard(board._id, board.name)}
+                    />
+                  ))}
+                </DragDropProvider>
               ) : null}
 
               {hiddenBoards && hiddenBoards.length > 0 ? (
@@ -1930,35 +1756,32 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                   </button>
 
                   {isArchivedBoardsOpen ? (
-                    <DndContext
-                      sensors={boardSensors}
-                      collisionDetection={closestCorners}
+                    <DragDropProvider
                       onDragStart={handleBoardDragStart}
                       onDragEnd={(event) => handleBoardDragEnd(event, true)}
-                      onDragCancel={handleBoardDragCancel}
                     >
-                      <SortableContext items={hiddenBoardSortableIds} strategy={verticalListSortingStrategy}>
-                        <div className="mt-1 space-y-0.5">
-                          {hiddenBoards.map((board) => (
-                            <ArchivedBoardSidebarItem
-                              key={board._id}
-                              board={board}
-                              href={getBoardHref(board._id)}
-                              isActive={board._id === effectiveSelectedBoardId}
-                              isDragging={activeBoardId === board._id}
-                              onSelect={() => {
-                                setSelectedBoardId(board._id);
-                                setIsMobileSidebarOpen(false);
-                                navigateToBoard(board._id, "push");
-                              }}
-                              onRename={() => setEditingBoard(board)}
-                              onHiddenChange={(hidden) => void handleSetBoardHidden(board._id, hidden)}
-                              onDelete={() => void handleDeleteBoard(board._id, board.name)}
-                            />
-                          ))}
-                        </div>
-                      </SortableContext>
-                    </DndContext>
+                      <div className="mt-1 space-y-0.5">
+                        {hiddenBoards.map((board, index) => (
+                          <ArchivedBoardSidebarItem
+                            key={board._id}
+                            board={board}
+                            index={index}
+                            group={boardDndGroup(true)}
+                            href={getBoardHref(board._id)}
+                            isActive={board._id === effectiveSelectedBoardId}
+                            isDragging={activeBoardId === board._id}
+                            onSelect={() => {
+                              setSelectedBoardId(board._id);
+                              setIsMobileSidebarOpen(false);
+                              navigateToBoard(board._id, "push");
+                            }}
+                            onRename={() => setEditingBoard(board)}
+                            onHiddenChange={(hidden) => void handleSetBoardHidden(board._id, hidden)}
+                            onDelete={() => void handleDeleteBoard(board._id, board.name)}
+                          />
+                        ))}
+                      </div>
+                    </DragDropProvider>
                   ) : null}
                 </div>
               ) : null}
@@ -2115,13 +1938,10 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                 />
               ) : (
                 <>
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCorners}
+                  <DragDropProvider
                     onDragStart={handleCardDragStart}
                     onDragOver={handleCardDragOver}
                     onDragEnd={handleCardDragEnd}
-                    onDragCancel={handleCardDragCancel}
                   >
                     <div className="flex min-w-max items-start gap-2.5 pb-16 pr-3">
                       {visibleColumns.map((column) => (
@@ -2141,7 +1961,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
 
                     <DragOverlay>
                       {!isSearchActive && activeDragCard ? (
-                        <div className="w-[220px] rounded-lg border border-zinc-200 bg-white px-3 py-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+                        <div className="w-[204px] rounded-lg border border-zinc-200 bg-white px-3 py-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
                           <div className="break-words text-sm font-medium text-zinc-900 dark:text-zinc-100">{activeDragCard.title}</div>
                           {summarize(activeDragCard.description) ? (
                             <div className="mt-1 whitespace-pre-line break-words text-xs text-zinc-500 dark:text-zinc-400">
@@ -2151,7 +1971,7 @@ export function KanbanApp({ onLogout }: { onLogout?: () => void }) {
                         </div>
                       ) : null}
                     </DragOverlay>
-                  </DndContext>
+                  </DragDropProvider>
                 </>
               )}
             </div>
@@ -2603,6 +2423,8 @@ function BoardEditModal({
 
 function BoardSidebarItem({
   board,
+  index,
+  group,
   href,
   isActive,
   isDragging,
@@ -2612,6 +2434,8 @@ function BoardSidebarItem({
   onDelete,
 }: {
   board: BoardModel;
+  index: number;
+  group: string;
   href: string;
   isActive: boolean;
   isDragging: boolean;
@@ -2620,15 +2444,18 @@ function BoardSidebarItem({
   onHiddenChange: (hidden: boolean) => void;
   onDelete: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+  const { ref: setNodeRef, handleRef } = useSortable({
     id: String(board._id),
+    index,
+    group,
+    type: "board",
+    accept: "board",
     disabled: !board.isOwner,
   });
 
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
       className={`group w-full touch-pan-y select-none [-webkit-touch-callout:none] [-webkit-user-select:none] flex items-center gap-0 overflow-hidden rounded-lg transition-colors ${
         isActive ? "bg-zinc-200 dark:bg-zinc-800" : "hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
       } ${isDragging ? "opacity-60" : ""}`}
@@ -2636,8 +2463,7 @@ function BoardSidebarItem({
       {board.isOwner ? (
         <button
           type="button"
-          {...attributes}
-          {...listeners}
+          ref={handleRef}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -2685,6 +2511,8 @@ function BoardSidebarItem({
 
 function ArchivedBoardSidebarItem({
   board,
+  index,
+  group,
   href,
   isActive,
   isDragging,
@@ -2694,6 +2522,8 @@ function ArchivedBoardSidebarItem({
   onDelete,
 }: {
   board: BoardModel;
+  index: number;
+  group: string;
   href: string;
   isActive: boolean;
   isDragging: boolean;
@@ -2702,15 +2532,18 @@ function ArchivedBoardSidebarItem({
   onHiddenChange: (hidden: boolean) => void;
   onDelete: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+  const { ref: setNodeRef, handleRef } = useSortable({
     id: String(board._id),
+    index,
+    group,
+    type: "board",
+    accept: "board",
     disabled: !board.isOwner,
   });
 
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
       className={`group w-full touch-pan-y select-none [-webkit-touch-callout:none] [-webkit-user-select:none] flex items-center gap-0 overflow-hidden rounded-lg transition-colors ${
         isActive ? "bg-zinc-200 dark:bg-zinc-800" : "hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
       } ${isDragging ? "opacity-60" : ""}`}
@@ -2718,8 +2551,7 @@ function ArchivedBoardSidebarItem({
       {board.isOwner ? (
         <button
           type="button"
-          {...attributes}
-          {...listeners}
+          ref={handleRef}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -2927,9 +2759,11 @@ function KanbanColumn({
     () => ({ type: "column" as const, columnId: column._id }),
     [column._id],
   );
-  const sortableCardIds = useMemo(() => cardSortableIds(column.cards), [column.cards]);
-  const { setNodeRef, isOver } = useDroppable({
-    id: `column-${column._id}`,
+  const { ref: setNodeRef, isDropTarget: isOver } = useDroppable({
+    id: columnDndKey(column._id),
+    type: "column",
+    accept: "card",
+    collisionPriority: CollisionPriority.Low,
     data: droppableData,
   });
 
@@ -2997,13 +2831,13 @@ function KanbanColumn({
         ) : null}
       </header>
 
-      <SortableContext items={sortableCardIds} strategy={verticalListSortingStrategy}>
-        <div className="space-y-2">
-          {column.cards.map((card) => (
+      <div className="space-y-2">
+          {column.cards.map((card, index) => (
             <KanbanCard
               key={card._id}
               card={card}
               columnId={column._id}
+              index={index}
               onOpenCard={onOpenCard}
               draggable={draggable}
               canArchive={archiveAvailable && normalizeColumnName(column.name) !== "archive"}
@@ -3051,7 +2885,6 @@ function KanbanColumn({
             </form>
           )}
         </div>
-      </SortableContext>
     </section>
   );
 }
@@ -3059,12 +2892,14 @@ function KanbanColumn({
 function KanbanCard({
   card,
   columnId,
+  index,
   onOpenCard,
   draggable,
   canArchive,
 }: {
   card: CardModel;
   columnId: Id<"columns">;
+  index: number;
   onOpenCard: (cardId: Id<"cards">) => void;
   draggable: boolean;
   canArchive: boolean;
@@ -3075,11 +2910,22 @@ function KanbanCard({
     () => ({ type: "card" as const, columnId }),
     [columnId],
   );
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const { ref: setNodeRef, handleRef, isDragging } = useSortable({
     id: String(card._id),
+    index,
+    group: columnDndKey(columnId),
+    type: "card",
+    accept: "card",
     data: sortableData,
     disabled: !draggable,
   });
+  const setCardRef = useCallback(
+    (element: HTMLButtonElement | null) => {
+      setNodeRef(element);
+      handleRef(element);
+    },
+    [handleRef, setNodeRef],
+  );
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
 
@@ -3225,15 +3071,12 @@ function KanbanCard({
   return (
     <>
       <button
-        ref={setNodeRef}
+        ref={setCardRef}
         type="button"
         title={activeSessionSummary || undefined}
-        {...attributes}
-        {...listeners}
         onClick={() => onOpenCard(card._id)}
         onContextMenu={handleContextMenu}
-        style={{ transform: CSS.Transform.toString(transform), transition }}
-        className={`group relative w-full touch-pan-y select-none [-webkit-touch-callout:none] [-webkit-user-select:none] ${draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} overflow-hidden rounded-xl border bg-white px-3 py-2 text-left transition duration-200 dark:bg-zinc-900 ${
+          className={`group relative w-full touch-pan-y select-none [-webkit-touch-callout:none] [-webkit-user-select:none] ${draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} overflow-hidden rounded-xl border bg-white px-3 py-2 text-left transition duration-200 dark:bg-zinc-900 ${
           isActive
             ? "border-transparent shadow-[0_10px_26px_-22px_rgba(56,189,248,0.5)] hover:shadow-[0_12px_30px_-20px_rgba(56,189,248,0.7)]"
             : "border-zinc-200 hover:border-zinc-300 hover:shadow-sm dark:border-zinc-800 dark:hover:border-zinc-700"

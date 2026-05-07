@@ -21,14 +21,17 @@ export function ModelsPage({
 }) {
   const primaryModel = defaultModel.primary || "—";
   const fallbacks = defaultModel.fallbacks || [];
-  const primaryModelIndex = configuredModels.findIndex((model) => model.id === primaryModel);
+  const displayedModels = primaryModel && primaryModel !== "—" && !configuredModels.some((model) => model.id === primaryModel)
+    ? [{ id: primaryModel, name: primaryModel.split("/").pop() || primaryModel, provider: primaryModel.split("/")[0] || primaryModel }, ...configuredModels]
+    : configuredModels;
+  const primaryModelIndex = displayedModels.findIndex((model) => model.id === primaryModel);
   const orderedConfiguredModels =
     primaryModelIndex <= 0
-      ? configuredModels
+      ? displayedModels
       : [
-          configuredModels[primaryModelIndex],
-          ...configuredModels.slice(0, primaryModelIndex),
-          ...configuredModels.slice(primaryModelIndex + 1),
+          displayedModels[primaryModelIndex],
+          ...displayedModels.slice(0, primaryModelIndex),
+          ...displayedModels.slice(primaryModelIndex + 1),
         ];
 
   const [providers, setProviders] = useState<{ id: string; count: number | null }[]>([]);
@@ -198,12 +201,11 @@ export function ModelsPage({
   }
 
   const configuredKeys = new Set(configuredModels.map((m) => m.id));
-
   return (
     <div className="space-y-6">
       <div>
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">Configured Models</h2>
+          <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">Models</h2>
           <button
             onClick={handleClearFallbacks}
             disabled={fallbacks.length === 0 || removingFallbacks}
@@ -214,8 +216,8 @@ export function ModelsPage({
           </button>
         </div>
         <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl overflow-hidden shadow-sm dark:shadow-none">
-          {configuredModels.length === 0 ? (
-            <div className="p-5 text-sm text-zinc-400 dark:text-zinc-500">No models configured</div>
+          {displayedModels.length === 0 ? (
+            <div className="p-5 text-sm text-zinc-400 dark:text-zinc-500">No explicit model allow-list entries configured.</div>
           ) : (
             <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
               {orderedConfiguredModels.map((m) => {
@@ -261,7 +263,17 @@ export function ModelsPage({
             <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
               {configuredProviders.map((provider) => (
                 <div key={provider.id} className="px-5 py-4">
-                  <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{provider.id}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{provider.id}</div>
+                    {provider.configuredModelCount > 0 && <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">model allow-list</span>}
+                    {provider.hasProviderConfig && <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">provider config</span>}
+                    {provider.authProfileCount > 0 && <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-green-700 dark:bg-green-900/30 dark:text-green-300">auth profile</span>}
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+                    Sources: {provider.sources.length > 0 ? provider.sources.join(", ") : "unknown"}
+                    {provider.providerConfigModelCount > 0 && ` · provider config models: ${provider.providerConfigModelCount}`}
+                    {provider.configuredModelCount > 0 && ` · allow-list entries: ${provider.configuredModelCount}`}
+                  </div>
                 </div>
               ))}
             </div>
@@ -270,7 +282,7 @@ export function ModelsPage({
       </div>
 
       <div>
-        <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200 mb-3">Add from Catalog</h2>
+        <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200 mb-3">Catalog</h2>
         <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-xl overflow-hidden shadow-sm dark:shadow-none p-5 space-y-4">
           <div>
             <label className="text-[11px] text-zinc-400 uppercase tracking-wider font-medium mb-2 block">Provider</label>

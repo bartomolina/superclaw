@@ -1,5 +1,6 @@
 export { handleAccountsList } from "@/lib/server/openclaw/accounts";
 export { handleAcpSummary } from "@/lib/server/openclaw/acp";
+export { handleAppsList } from "@/lib/server/openclaw/apps";
 export { isAuthorized, handleVerify } from "@/lib/server/openclaw/auth";
 export { gatewayCall, runOpenClaw, runOpenClawJson } from "@/lib/server/openclaw/cli";
 export { handleBrowserProfiles } from "@/lib/server/openclaw/browser-profiles";

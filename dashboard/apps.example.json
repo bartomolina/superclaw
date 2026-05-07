@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Grafana",
+    "url": "http://127.0.0.1:3000",
+    "category": "Ops",
+    "image": "/local-app-icons/grafana.svg",
+    "icon": "G"
+  },
+  {
+    "name": "anto.codes",
+    "url": "https://anto.codes",
+    "category": "Apps",
+    "image": "/local-app-icons/anto-codes.svg",
+    "icon": "A"
+  }
+]

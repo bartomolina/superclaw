@@ -2,10 +2,11 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, Gauge, Layers, LogOut, Moon, Puzzle, Server, Sun, Terminal, Users, Wifi, WifiOff } from "lucide-react";
+import { AppWindow, BarChart3, Gauge, Layers, LogOut, Moon, Puzzle, Server, Sun, Terminal, Users, Wifi, WifiOff } from "lucide-react";
 
 import { clearToken, getToken, setToken, authFetch } from "@/components/dashboard/auth";
 import { AgentsPage } from "@/components/dashboard/agents";
+import { AppsPage } from "@/components/dashboard/apps-page";
 import { DebugPage, PerformancePage, UsagePage } from "@/components/dashboard/debug";
 import { LoginScreen } from "@/components/dashboard/login-screen";
 import { ModelsPage } from "@/components/dashboard/models-page";
@@ -16,6 +17,7 @@ import { type Agent, type Model, type Page, type ProviderSummary, type RestartOp
 import { useTheme } from "@/components/dashboard/use-theme";
 
 const BASE_NAV_ITEMS: { id: Page; label: string; icon: typeof Users }[] = [
+  { id: "apps", label: "Apps", icon: AppWindow },
   { id: "agents", label: "Agents", icon: Users },
   { id: "models", label: "Models", icon: Layers },
   { id: "skills", label: "Skills", icon: Puzzle },
@@ -27,7 +29,7 @@ const BASE_NAV_ITEMS: { id: Page; label: string; icon: typeof Users }[] = [
 
 function pageFromHash(hash: string): Page {
   const normalized = hash.replace(/^#/, "") as Page;
-  return BASE_NAV_ITEMS.some((item) => item.id === normalized) ? normalized : "agents";
+  return BASE_NAV_ITEMS.some((item) => item.id === normalized) ? normalized : "apps";
 }
 
 function documentTitleForPage(page: Page) {
@@ -40,7 +42,7 @@ export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [page, setPageState] = useState<Page>(() => {
-    if (typeof window === "undefined") return "agents";
+    if (typeof window === "undefined") return "apps";
     return pageFromHash(window.location.hash);
   });
   const [debugRpcEnabled, setDebugRpcEnabled] = useState(false);
@@ -205,11 +207,11 @@ export default function App() {
 
   useEffect(() => {
     if (!navItems.some((item) => item.id === page)) {
-      setPage("agents");
+      setPage("apps");
     }
   }, [navItems, page]);
 
-  const effectivePage = navItems.some((item) => item.id === page) ? page : "agents";
+  const effectivePage = navItems.some((item) => item.id === page) ? page : "apps";
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -532,6 +534,7 @@ export default function App() {
         <main className="flex-1 min-w-0 pb-20 md:pb-0">
           {loading ? <div className="text-center py-24 text-zinc-400 dark:text-zinc-500 text-sm">Connecting to gateway...</div> : (
             <>
+              {page === "apps" && <AppsPage />}
               {page === "agents" && <AgentsPage agents={agents} defaultPrimary={defaultModel.primary || "—"} runRestartOperation={runRestartOperation} onRefreshQuick={fetchAll} />}
               {page === "models" && <ModelsPage configuredProviders={configuredProviders} configuredModels={configuredModels} defaultModel={defaultModel} runRestartOperation={runRestartOperation} />}
               {page === "skills" && <SkillsPage />}

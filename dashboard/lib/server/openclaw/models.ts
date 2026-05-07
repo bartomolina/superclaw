@@ -19,6 +19,19 @@ const BUILT_IN_CATALOG_PROVIDER_IDS = [
   "google",
 ];
 
+type ModelsStatus = {
+  defaultModel?: string;
+  fallbacks?: string[];
+  allowed?: string[];
+  auth?: {
+    providers?: Array<{
+      provider?: string;
+      effective?: { kind?: string };
+      profiles?: { count?: number; oauth?: number; token?: number; apiKey?: number };
+    }>;
+  };
+};
+
 function getKnownCatalogProviderIds() {
   const providers = new Set(BUILT_IN_CATALOG_PROVIDER_IDS);
   const packageRoot = path.dirname(OPENCLAW_PACKAGE_JSON);
@@ -193,19 +206,15 @@ export function inferAvailableModels(providerMap: Record<string, any>) {
 
 export async function handleModelsGet() {
   const config = readLocalConfig();
+  const status = await runOpenClawJson<ModelsStatus | null>(["models", "--status-json"], null, { timeoutMs: 15_000 });
   const providerMap = config.models?.providers || {};
-  const authProfiles = config.auth?.profiles || {};
-  const primaryModel = config.agents?.defaults?.model?.primary ?? null;
-  const fallbackModels = Array.isArray(config.agents?.defaults?.model?.fallbacks) ? config.agents.defaults.model.fallbacks : [];
-  const configuredModelKeys = Array.from(
-    new Set(
-      [
-        ...Object.keys(config.agents?.defaults?.models || {}),
-        primaryModel,
-        ...fallbackModels,
-      ].filter((value): value is string => typeof value === "string" && value.length > 0),
-    ),
-  );
+  const primaryModel = status?.defaultModel ?? config.agents?.defaults?.model?.primary ?? null;
+  const fallbackModels = Array.isArray(status?.fallbacks)
+    ? status.fallbacks
+    : Array.isArray(config.agents?.defaults?.model?.fallbacks)
+      ? config.agents.defaults.model.fallbacks
+      : [];
+  const allowedModelKeys = Array.isArray(status?.allowed) ? status.allowed : Object.keys(config.agents?.defaults?.models || {});
 
   const providerSummary = new Map<string, {
     id: string;
@@ -249,21 +258,30 @@ export async function handleModelsGet() {
     }
   }
 
-  for (const profile of Object.values(authProfiles) as any[]) {
-    const providerId = typeof profile?.provider === "string" ? profile.provider : "";
+  for (const authProvider of status?.auth?.providers || []) {
+    const providerId = typeof authProvider?.provider === "string" ? authProvider.provider : "";
     if (!providerId) continue;
     const summary = ensureProvider(providerId);
-    summary.authProfileCount += 1;
-    if (typeof profile?.mode === "string") summary.authModes.add(profile.mode);
-    summary.sources.add("auth profile");
+    summary.authProfileCount += Number(authProvider.profiles?.count) || 0;
+    const effectiveKind = typeof authProvider.effective?.kind === "string" ? authProvider.effective.kind : "auth";
+    summary.authModes.add(effectiveKind);
+    summary.sources.add("auth");
   }
 
-  for (const modelKey of configuredModelKeys) {
+  for (const modelKey of allowedModelKeys) {
     const providerId = modelKey.split("/")[0];
     if (!providerId) continue;
     const summary = ensureProvider(providerId);
     summary.configuredModelCount += 1;
-    summary.sources.add("configured model");
+    summary.sources.add("model allow-list");
+    summary.models.add(modelKey.split("/").slice(1).join("/") || modelKey);
+  }
+
+  for (const modelKey of [primaryModel, ...fallbackModels].filter((value): value is string => typeof value === "string" && value.length > 0)) {
+    const providerId = modelKey.split("/")[0];
+    if (!providerId) continue;
+    const summary = ensureProvider(providerId);
+    summary.sources.add(modelKey === primaryModel ? "default model" : "fallback model");
     summary.models.add(modelKey.split("/").slice(1).join("/") || modelKey);
   }
 
@@ -280,7 +298,7 @@ export async function handleModelsGet() {
       models: Array.from(provider.models).sort((a, b) => a.localeCompare(b)),
     }));
 
-  const configuredModels = Object.keys(config.agents?.defaults?.models || {}).map((key) => {
+  const configuredModels = allowedModelKeys.map((key) => {
     const provider = key.split("/")[0];
     const name = key.split("/").pop() || key;
     return {
@@ -292,7 +310,7 @@ export async function handleModelsGet() {
 
   return json({
     configuredProviders,
-    configuredModels: configuredModels.length > 0 ? configuredModels : inferAvailableModels(providerMap),
+    configuredModels,
     defaultModel: {
       primary: primaryModel,
       fallbacks: fallbackModels,

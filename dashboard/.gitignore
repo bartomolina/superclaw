@@ -35,6 +35,11 @@ yarn-error.log*
 .env*
 !.env.example
 
+# local dashboard app bookmarks
+/apps.local.json
+/public/local-app-icons/*
+!/public/local-app-icons/.gitkeep
+
 # vercel
 .vercel
 

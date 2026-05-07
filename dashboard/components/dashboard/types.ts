@@ -85,4 +85,4 @@ export type Agent = {
   files: AgentFile[];
 };
 
-export type Page = "agents" | "models" | "skills" | "debug" | "performance" | "usage" | "ops";
+export type Page = "apps" | "agents" | "models" | "skills" | "debug" | "performance" | "usage" | "ops";

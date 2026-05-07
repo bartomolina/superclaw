@@ -39,6 +39,32 @@ Optional:
 - `GEMINI_API_KEY`
 - `DEBUG_RPC_ENABLED`
 
+## Local app bookmarks
+
+The Apps page reads local bookmarks from `apps.local.json` in this directory. That file is intentionally gitignored because it can contain bespoke/private local URLs.
+
+Create it from the example:
+
+```bash
+cp apps.example.json apps.local.json
+```
+
+Each app has these fields:
+
+```json
+[
+  {
+    "name": "Grafana",
+    "url": "http://127.0.0.1:3000",
+    "category": "Ops",
+    "image": "/local-app-icons/grafana.svg",
+    "icon": "G"
+  }
+]
+```
+
+`name`, `url`, and `category` are required. `image` is optional and can point at an SVG or other image path. Put local bookmark icons in `public/local-app-icons/`; the folder contents are intentionally gitignored except for `.gitkeep`. `icon` is optional text fallback, such as an emoji or letter, used when `image` is omitted.
+
 ## Notes
 
 - The browser talks to the dashboard app, not directly to the Gateway WebSocket.
